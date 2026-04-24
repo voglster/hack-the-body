@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# Env / secrets
+.env
+.env.local
+*.local
+
+# Garmin session cache
+.garminsession/
+services/*/.garminsession/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

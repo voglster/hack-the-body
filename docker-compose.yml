@@ -1,0 +1,60 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./services/api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB: ${MONGO_DB}
+      API_KEY: ${API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      TZ: ${TZ}
+    ports:
+      - "${API_PORT}:8000"
+
+  ingestor-garmin:
+    build: ./services/ingestor-garmin
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB: ${MONGO_DB}
+      GARMIN_EMAIL: ${GARMIN_EMAIL}
+      GARMIN_PASSWORD: ${GARMIN_PASSWORD}
+      GARMIN_SESSION_DIR: ${GARMIN_SESSION_DIR}
+      GARMIN_BACKFILL_DAYS: ${GARMIN_BACKFILL_DAYS}
+      GARMIN_SCHEDULE_CRON: ${GARMIN_SCHEDULE_CRON}
+      TZ: ${TZ}
+    volumes:
+      - garmin_session:/data/garmin-session
+
+  web:
+    build:
+      context: ./services/web
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_API_KEY: ${VITE_API_KEY}
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+
+volumes:
+  mongo_data:
+  garmin_session:

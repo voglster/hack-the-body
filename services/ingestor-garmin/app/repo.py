@@ -10,21 +10,22 @@ class GarminRepo:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
 
-    async def _ts_upsert(self, coll: str, source_id: str, doc: dict) -> None:
+    async def _ts_upsert(self, coll: str, source_id: str, doc: dict) -> bool:
         existing = await self.db[coll].find_one({"meta.source_id": source_id}, {"_id": 1})
         if existing:
-            return
+            return False
         await self.db[coll].insert_one(doc)
+        return True
 
-    async def upsert_weight(self, w: Weight) -> None:
-        await self._ts_upsert(
+    async def upsert_weight(self, w: Weight) -> bool:
+        return await self._ts_upsert(
             "metrics_weight",
             w.source_id,
             {"ts": w.ts, "kg": w.kg, "meta": {"source": w.source, "source_id": w.source_id}},
         )
 
-    async def upsert_sleep(self, s: Sleep) -> None:
-        await self._ts_upsert(
+    async def upsert_sleep(self, s: Sleep) -> bool:
+        return await self._ts_upsert(
             "metrics_sleep",
             s.source_id,
             {
@@ -39,24 +40,24 @@ class GarminRepo:
             },
         )
 
-    async def upsert_hrv(self, h: HRV) -> None:
-        await self._ts_upsert(
+    async def upsert_hrv(self, h: HRV) -> bool:
+        return await self._ts_upsert(
             "metrics_hrv",
             h.source_id,
             {"ts": h.ts, "rmssd_ms": h.rmssd_ms,
              "meta": {"source": h.source, "source_id": h.source_id}},
         )
 
-    async def upsert_rhr(self, r: RHR) -> None:
-        await self._ts_upsert(
+    async def upsert_rhr(self, r: RHR) -> bool:
+        return await self._ts_upsert(
             "metrics_rhr",
             r.source_id,
             {"ts": r.ts, "bpm": r.bpm,
              "meta": {"source": r.source, "source_id": r.source_id}},
         )
 
-    async def upsert_body_comp(self, b: BodyComp) -> None:
-        await self._ts_upsert(
+    async def upsert_body_comp(self, b: BodyComp) -> bool:
+        return await self._ts_upsert(
             "metrics_body_comp",
             b.source_id,
             {
@@ -70,20 +71,20 @@ class GarminRepo:
             },
         )
 
-    async def upsert_vo2max(self, v: VO2Max) -> None:
-        await self._ts_upsert(
+    async def upsert_vo2max(self, v: VO2Max) -> bool:
+        return await self._ts_upsert(
             "metrics_vo2max",
             v.source_id,
             {"ts": v.ts, "value": v.value,
              "meta": {"source": v.source, "source_id": v.source_id}},
         )
 
-    async def upsert_workout(self, w: Workout) -> None:
-        await self.db["workouts"].update_one(
-            {"source_id": w.source_id},
-            {"$set": w.model_dump()},
-            upsert=True,
-        )
+    async def upsert_workout(self, w: Workout) -> bool:
+        existing = await self.db["workouts"].find_one({"source_id": w.source_id}, {"_id": 1})
+        if existing:
+            return False
+        await self.db["workouts"].insert_one(w.model_dump())
+        return True
 
     async def write_log(
         self, *, source: str, status: str, started_at: datetime,

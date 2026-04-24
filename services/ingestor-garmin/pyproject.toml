@@ -1,0 +1,29 @@
+[project]
+name = "hack-the-body-ingestor-garmin"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "garth>=0.4.46",
+  "motor>=3.6",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "apscheduler>=3.10",
+  "python-dateutil>=2.9",
+  "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "mongomock-motor>=0.0.34",
+  "ruff>=0.7",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,13 @@
+[
+  {
+    "activityId": 13000000001,
+    "activityName": "Outdoor Walk",
+    "startTimeGMT": "2026-04-23 12:30:00",
+    "activityType": {"typeKey": "walking"},
+    "duration": 1800.5,
+    "distance": 2500.4,
+    "averageHR": 112.0,
+    "maxHR": 128.0,
+    "calories": 240.0
+  }
+]

@@ -11,6 +11,7 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "skipLibCheck": true,
     "isolatedModules": true,
+    "noEmit": true,
     "resolveJsonModule": true
   },
   "include": ["src"]

@@ -2,8 +2,12 @@ import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, Workout,
 } from "./types";
 
-const BASE = import.meta.env.VITE_API_URL;
-const KEY = import.meta.env.VITE_API_KEY;
+declare global {
+  interface Window { __HTB__?: { apiUrl?: string; apiKey?: string }; }
+}
+
+const BASE = window.__HTB__?.apiUrl ?? import.meta.env.VITE_API_URL ?? "";
+const KEY = window.__HTB__?.apiKey ?? import.meta.env.VITE_API_KEY ?? "";
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`, { headers: { "X-API-Key": KEY } });

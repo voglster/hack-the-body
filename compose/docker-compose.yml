@@ -1,0 +1,66 @@
+# Production compose for Hack the Body.
+# Drop this on a host as `~/compose/hack-the-body/docker-compose.yml`,
+# put a `.env` next to it (see compose/.env.example), and `docker compose up -d`.
+# Watchtower (running elsewhere on the host) auto-updates the two app images.
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: hack-the-body-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - htb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/voglster/hack-the-body-app:latest
+    container_name: hack-the-body-app
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: hackthebody
+      API_KEY: ${API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TZ: ${TZ:-America/Denver}
+    ports:
+      - "${APP_PORT:-8080}:8000"
+    networks:
+      - htb
+
+  ingestor-garmin:
+    image: ghcr.io/voglster/hack-the-body-ingestor-garmin:latest
+    container_name: hack-the-body-ingestor
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: hackthebody
+      GARMIN_EMAIL: ${GARMIN_EMAIL}
+      GARMIN_PASSWORD: ${GARMIN_PASSWORD}
+      GARMIN_SESSION_DIR: /data/garmin-session
+      GARMIN_BACKFILL_DAYS: ${GARMIN_BACKFILL_DAYS:-90}
+      GARMIN_SCHEDULE_CRON: ${GARMIN_SCHEDULE_CRON:-0 4 * * *}
+      TZ: ${TZ:-America/Denver}
+    volumes:
+      - garmin_session:/data/garmin-session
+    networks:
+      - htb
+
+volumes:
+  mongo_data:
+  garmin_session:
+
+networks:
+  htb:
+    driver: bridge

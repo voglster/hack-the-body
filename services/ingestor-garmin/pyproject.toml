@@ -3,7 +3,7 @@ name = "hack-the-body-ingestor-garmin"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-  "garth>=0.4.46",
+  "garminconnect>=0.2.30",
   "motor>=3.6",
   "pydantic>=2.9",
   "pydantic-settings>=2.5",

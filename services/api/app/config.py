@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     weekly_timeout_s: float = 600.0
     coach_weekly_local: str = "21:00"  # Sunday HH:MM
 
+    # USDA FoodData Central — fallback barcode/food lookup for items not in
+    # Open Food Facts (which is EU-leaning). Free key from api.data.gov.
+    # TODO: implement /foods/barcode chain + /foods/search FDC fallback.
+    usda_fdc_api_key: str = ""
+
     # Web Push (VAPID). The 'subject' is a contact mailto: per RFC 8292.
     # Keys are optional — if either is empty, the app generates a fresh
     # keypair on first start and persists it in the user_profile collection.

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { Food, MealEntry, MealSlot } from "../api/types";
@@ -138,37 +138,46 @@ interface QuickLogState {
   scanning: boolean;
   busy: boolean;
   error: string | null;
+  // When set, the user scanned/typed a barcode that's not in OFF or our DB.
+  // We surface a small "create custom food" form so they can move forward.
+  unknownBarcode: string | null;
 }
 
 function QuickLog({ onLogged }: { onLogged: () => void }) {
   const [s, setS] = useState<QuickLogState>({
     q: "", hits: [], picked: null, qty: "",
     slot: "snack", scanning: false, busy: false, error: null,
+    unknownBarcode: null,
   });
   const update = (patch: Partial<QuickLogState>) => setS(p => ({ ...p, ...patch }));
 
   const search = async (val: string) => {
-    update({ q: val, error: null });
+    update({ q: val, error: null, unknownBarcode: null });
     if (val.length < 2) { update({ hits: [] }); return; }
     if (/^\d{8,}$/.test(val)) {
       try {
         const food = await api.foodByBarcode(val);
         update({ hits: [food], picked: food, qty: String(food.serving_g) });
         return;
-      } catch { /* fall through */ }
+      } catch { /* fall through to text search */ }
     }
     try { update({ hits: await api.searchFoods(val, 8) }); }
     catch { update({ hits: [] }); }
   };
 
-  const onScanned = async (barcode: string) => {
-    update({ scanning: false, q: barcode });
-    try {
-      const food = await api.foodByBarcode(barcode);
-      update({ picked: food, qty: String(food.serving_g), hits: [food] });
-    } catch {
-      update({ error: "barcode not found in Open Food Facts — try typing the name" });
-    }
+  const onScanned = (barcode: string) => {
+    // Show the entry form instantly. Lookup happens inside the form so the
+    // user can start typing the name immediately — if OFF/cache returns a
+    // hit it pre-fills any empty fields, otherwise the user just fills in
+    // what they know now and details can be added later.
+    update({ scanning: false, q: barcode, unknownBarcode: barcode, picked: null });
+  };
+
+  const onCustomCreated = (food: Food) => {
+    update({
+      unknownBarcode: null, picked: food, qty: String(food.serving_g),
+      hits: [food], q: food.name, error: null,
+    });
   };
 
   const submit = async () => {
@@ -179,7 +188,8 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
         food_id: s.picked.id, quantity_g: parseFloat(s.qty), slot: s.slot,
       });
       setS({ q: "", hits: [], picked: null, qty: "",
-             slot: s.slot, scanning: false, busy: false, error: null });
+             slot: s.slot, scanning: false, busy: false, error: null,
+             unknownBarcode: null });
       onLogged();
     } catch (err) {
       update({ busy: false, error: (err as Error).message });
@@ -191,7 +201,7 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
       <div className="text-xs uppercase tracking-wide text-neutral-500">Quick log</div>
       {s.scanning && (
         <BarcodeScanner
-          onScanned={(b) => { void onScanned(b); }}
+          onScanned={onScanned}
           onClose={() => update({ scanning: false })}
         />
       )}
@@ -210,6 +220,13 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
           onSlot={(slot) => update({ slot })}
           onSubmit={() => { void submit(); }}
           onCancel={() => update({ picked: null, qty: "" })}
+        />
+      )}
+      {s.unknownBarcode && !s.picked && (
+        <CreateFromBarcode
+          barcode={s.unknownBarcode}
+          onCreated={onCustomCreated}
+          onCancel={() => update({ unknownBarcode: null })}
         />
       )}
       {s.error && <div className="text-xs text-red-400">{s.error}</div>}
@@ -266,6 +283,141 @@ function FoodPickerList({ hits, onPick }: {
         </li>
       ))}
     </ul>
+  );
+}
+
+function CreateFromBarcode({ barcode, onCreated, onCancel }: {
+  barcode: string;
+  onCreated: (f: Food) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [brand, setBrand] = useState("");
+  const [serving, setServing] = useState("");
+  const [cal, setCal] = useState("");
+  const [p, setP] = useState("");
+  const [c, setC] = useState("");
+  const [f, setF] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [lookup, setLookup] = useState<"pending" | "hit" | "miss">("pending");
+  // If lookup hit, this is the already-saved Food — submit logs against it
+  // directly without creating a duplicate.
+  const [existing, setExisting] = useState<Food | null>(null);
+
+  // Run the OFF / cache lookup once on mount. Pre-fill any field the user
+  // hasn't touched yet using a functional setter (so we never clobber input).
+  useEffect(() => {
+    let cancelled = false;
+    const fillIfEmpty = (cur: string, val: string | number | null | undefined): string =>
+      cur || (val == null ? cur : String(val));
+    api.foodByBarcode(barcode).then(food => {
+      if (cancelled) return;
+      setExisting(food);
+      setLookup("hit");
+      setName(prev => fillIfEmpty(prev, food.name));
+      setBrand(prev => fillIfEmpty(prev, food.brand ?? ""));
+      setServing(prev => fillIfEmpty(prev, food.serving_g));
+      setCal(prev => fillIfEmpty(prev, food.per_serving.calories));
+      setP(prev => fillIfEmpty(prev, food.per_serving.protein_g));
+      setC(prev => fillIfEmpty(prev, food.per_serving.carbs_g));
+      setF(prev => fillIfEmpty(prev, food.per_serving.fat_g));
+    }).catch(() => { if (!cancelled) setLookup("miss"); });
+    return () => { cancelled = true; };
+  }, [barcode]);
+
+  const num = (v: string): number | null => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const submit = async () => {
+    if (!name.trim()) { setErr("name is required"); return; }
+    setBusy(true); setErr(null);
+    try {
+      // If lookup found an existing Food row, just hand that back so the
+      // caller can log against it. Otherwise create a new manual food.
+      const food = existing ?? await api.createFood({
+        name: name.trim(),
+        brand: brand.trim() || null,
+        barcode,
+        category: "food",
+        serving_g: num(serving) ?? 100,
+        serving_label: `${num(serving) ?? 100} g`,
+        per_serving: {
+          calories: num(cal),
+          protein_g: num(p),
+          carbs_g: num(c),
+          fat_g: num(f),
+        },
+        source: "manual",
+      });
+      onCreated(food);
+    } catch (e) {
+      setErr((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  const status = lookup === "pending"
+    ? <span className="text-sky-300">looking up {barcode}…</span>
+    : lookup === "hit"
+      ? <span className="text-emerald-300">found in OFF — review and log</span>
+      : <span className="text-amber-300">no match for {barcode} — fill what you know</span>;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-amber-800/40 bg-amber-950/20 p-3">
+      <div className="text-sm">{status}</div>
+      <input
+        value={name} onChange={e => setName(e.target.value)}
+        placeholder="name (required)" autoFocus
+        className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
+      />
+      <input
+        value={brand} onChange={e => setBrand(e.target.value)}
+        placeholder="brand (optional)"
+        className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="serving (g)" v={serving} onV={setServing} placeholder="100" />
+        <Field label="calories" v={cal} onV={setCal} placeholder="per serving" />
+        <Field label="protein (g)" v={p} onV={setP} />
+        <Field label="carbs (g)" v={c} onV={setC} />
+        <Field label="fat (g)" v={f} onV={setF} />
+      </div>
+      {err && <div className="text-xs text-red-400">{err}</div>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => { void submit(); }}
+          disabled={busy}
+          className="flex-1 px-3 py-3 rounded bg-amber-700 active:bg-amber-800 text-white text-base font-medium disabled:opacity-50 min-h-[44px]"
+        >
+          {busy ? "saving..." : "save & log"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-3 rounded bg-neutral-800 active:bg-neutral-600 text-sm min-h-[44px]"
+        >
+          cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, v, onV, placeholder }: {
+  label: string; v: string; onV: (s: string) => void; placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs text-neutral-500">{label}</span>
+      <input
+        type="number" inputMode="decimal" value={v}
+        onChange={e => onV(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
+      />
+    </label>
   );
 }
 

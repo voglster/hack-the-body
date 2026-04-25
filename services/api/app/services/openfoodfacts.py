@@ -61,18 +61,40 @@ def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
     )
 
 
+def _barcode_variants(barcode: str) -> list[str]:
+    """Generate plausible OFF lookup keys for a scanned/typed code.
+
+    OFF stores most US products as EAN-13 (leading 0 prefix on the UPC-A).
+    Some products are stored UPC-A. Some scanners drop leading zeros. So
+    we try the as-given code first, then a stripped version, then 12- and
+    13-digit zero-padded variants. De-duplicated, ordered so most likely
+    hits go first.
+    """
+    raw = barcode.strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    candidates: list[str] = []
+    for v in (raw, digits, digits.lstrip("0"), digits.zfill(12), digits.zfill(13)):
+        if v and v not in candidates:
+            candidates.append(v)
+    return candidates
+
+
 async def fetch_off_product(barcode: str) -> Food | None:
-    url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
     headers = {"User-Agent": UA}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers) as c:
-            r = await c.get(url)
-        if r.status_code != HTTP_OK:
-            return None
-        body = r.json()
-        if body.get("status") != 1:
-            return None
-        return _to_food(body["product"], barcode)
+            for variant in _barcode_variants(barcode):
+                url = f"https://world.openfoodfacts.org/api/v2/product/{variant}.json"
+                r = await c.get(url)
+                if r.status_code != HTTP_OK:
+                    continue
+                body = r.json()
+                if body.get("status") != 1:
+                    continue
+                # Use the original input as the canonical barcode in our DB
+                # so future lookups against the same scanned code hit cache.
+                return _to_food(body["product"], barcode)
+        return None
     except (httpx.HTTPError, ValueError) as e:
         log.warning("OFF fetch failed for %s: %s", barcode, e)
         return None

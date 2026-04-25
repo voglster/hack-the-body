@@ -18,6 +18,15 @@ async def _create_food(client, name="Eggs", per_serving=None, **extra):
     return r.json()
 
 
+async def test_two_foods_without_barcodes_can_coexist(client):
+    # Regression: previously model_dump emitted barcode=null which collided
+    # with the sparse unique index once a second no-barcode food existed
+    # (E11000 dup key barcode_1: null).
+    a = await _create_food(client, name="Water-ish")
+    b = await _create_food(client, name="Vitamins-ish")
+    assert a["id"] != b["id"]
+
+
 async def test_create_food_with_barcode_does_not_path_conflict(client):
     # Regression: previously $set+$setOnInsert both wrote `created_at`,
     # which mongo rejected with "Updating the path 'created_at' would

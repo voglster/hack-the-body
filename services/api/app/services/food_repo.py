@@ -49,6 +49,9 @@ class FoodRepo:
             )
             stored = await self.db["foods"].find_one({"barcode": food.barcode})
         else:
+            # Sparse unique index on barcode skips *absent* fields, not
+            # nulls — so emit no key at all when there's no barcode.
+            doc.pop("barcode", None)
             res = await self.db["foods"].insert_one(doc)
             stored = await self.db["foods"].find_one({"_id": res.inserted_id})
         return _doc_to_dict(stored)  # type: ignore[return-value]

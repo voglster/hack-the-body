@@ -40,7 +40,12 @@ async def ensure_collections(db: AsyncIOMotorDatabase) -> None:
 
 
 def make_client(settings: Settings) -> AsyncIOMotorClient:
-    return AsyncIOMotorClient(settings.mongo_url)
+    # tz_aware=True makes every datetime read from Mongo come back as a
+    # timezone-aware UTC datetime. Without this, FastAPI's default JSON
+    # encoder emits ISO strings without a timezone suffix and the browser
+    # interprets them as local time — see issue with intraday step buckets
+    # being displayed in the wrong hours.
+    return AsyncIOMotorClient(settings.mongo_url, tz_aware=True)
 
 
 def get_db(client: AsyncIOMotorClient, settings: Settings) -> AsyncIOMotorDatabase:

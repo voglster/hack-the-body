@@ -60,7 +60,7 @@ async def _poll_requests(settings, db, interval_s: int = 30) -> None:
 
 async def _run() -> None:
     settings = get_settings()
-    client = AsyncIOMotorClient(settings.mongo_url)
+    client = AsyncIOMotorClient(settings.mongo_url, tz_aware=True)
     db = client[settings.mongo_db]
 
     scheduler = AsyncIOScheduler(timezone="UTC")
@@ -83,7 +83,7 @@ async def _run() -> None:
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "once":
         settings = get_settings()
-        client = AsyncIOMotorClient(settings.mongo_url)
+        client = AsyncIOMotorClient(settings.mongo_url, tz_aware=True)
         db = client[settings.mongo_db]
         asyncio.run(_do_sync(settings, db))
         return

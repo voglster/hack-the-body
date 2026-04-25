@@ -1,62 +1,82 @@
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
-import garth
-from garth.exc import GarthHTTPError
+from garminconnect import Garmin
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import Settings
 
 
 class GarminRateLimitError(RuntimeError):
-    """Raised when Garmin SSO returns 429. Caller should back off for many minutes."""
+    """Garmin SSO returned 429. Caller should back off and try a different IP."""
 
 
 class GarminClient:
+    """Wraps `garminconnect` (which wraps garth + curl-cffi for TLS impersonation).
+
+    Login policy:
+    1. Try to resume a cached session from disk. If valid, never touch SSO.
+    2. Only on first run / expired session, attempt login with credentials.
+    3. On 429, raise GarminRateLimitError so the caller can log it cleanly.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.session_dir = Path(settings.garmin_session_dir)
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        self._g: Garmin | None = None
 
     def login(self) -> None:
-        # Prefer cached session: if it works, never touch SSO.
-        if self._resume_ok():
+        # Build a Garmin instance without credentials so we can try resume first.
+        g = Garmin()
+        try:
+            g.login(str(self.session_dir))  # garminconnect supports passing token dir to skip login
+            self._g = g
             return
+        except Exception:
+            pass
+
+        # No cached session (or expired). Need creds.
         if not self.settings.garmin_email or not self.settings.garmin_password:
             raise RuntimeError(
                 "no cached Garmin session and GARMIN_EMAIL/GARMIN_PASSWORD not set"
             )
+
+        g = Garmin(email=self.settings.garmin_email, password=self.settings.garmin_password)
         try:
-            garth.login(self.settings.garmin_email, self.settings.garmin_password)
-        except GarthHTTPError as e:
-            status = getattr(getattr(e, "error", None), "response", None)
-            if status is not None and status.status_code == 429:
+            g.login()
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg or "rate" in msg.lower():
                 raise GarminRateLimitError(
-                    "Garmin SSO rate-limited (429). Back off >=30min."
+                    "Garmin SSO rate-limited (429). Different egress IP required."
                 ) from e
             raise
-        garth.save(str(self.session_dir))
-
-    def _resume_ok(self) -> bool:
-        try:
-            garth.resume(str(self.session_dir))
-            _ = garth.client.username
-            return True
-        except Exception:
-            return False
+        # Persist tokens for next time.
+        g.garth.dump(str(self.session_dir))
+        self._g = g
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
-    def _get(self, path: str) -> dict | list:
-        return garth.connectapi(path)
+    def _connectapi(self, path: str) -> Any:
+        assert self._g is not None, "login() must be called first"
+        return self._g.connectapi(path)
+
+    @property
+    def _username(self) -> str:
+        assert self._g is not None
+        return self._g.garth.username
 
     def fetch_sleep(self, day: date) -> dict:
-        return self._get(f"/wellness-service/wellness/dailySleepData/{garth.client.username}?date={day.isoformat()}")
+        return self._connectapi(
+            f"/wellness-service/wellness/dailySleepData/{self._username}?date={day.isoformat()}"
+        )
 
     def fetch_hrv(self, day: date) -> dict:
-        return self._get(f"/hrv-service/hrv/{day.isoformat()}")
+        return self._connectapi(f"/hrv-service/hrv/{day.isoformat()}")
 
     def fetch_weight(self, start: date, end: date) -> list[dict]:
-        data = self._get(
+        data = self._connectapi(
             f"/weight-service/weight/range/{start.isoformat()}/{end.isoformat()}?includeAll=true"
         )
         return data.get("dateWeightList", []) if isinstance(data, dict) else data
@@ -65,18 +85,21 @@ class GarminClient:
         return self.fetch_weight(start, end)
 
     def fetch_vo2max(self, day: date) -> dict:
-        return self._get(
-            f"/userstats-service/wellness/daily/{garth.client.username}?fromDate={day.isoformat()}&untilDate={day.isoformat()}"
+        return self._connectapi(
+            f"/userstats-service/wellness/daily/{self._username}"
+            f"?fromDate={day.isoformat()}&untilDate={day.isoformat()}"
         )
 
     def fetch_workouts(self, start: date, end: date) -> list[dict]:
-        return self._get(
-            f"/activitylist-service/activities/search/activities?startDate={start.isoformat()}&endDate={end.isoformat()}&limit=200"
+        return self._connectapi(
+            f"/activitylist-service/activities/search/activities"
+            f"?startDate={start.isoformat()}&endDate={end.isoformat()}&limit=200"
         )
 
     def fetch_rhr_series(self, start: date, end: date) -> list[dict]:
-        return self._get(
-            f"/userstats-service/wellness/daily/summary?fromDate={start.isoformat()}&untilDate={end.isoformat()}"
+        return self._connectapi(
+            f"/userstats-service/wellness/daily/summary"
+            f"?fromDate={start.isoformat()}&untilDate={end.isoformat()}"
         )
 
 

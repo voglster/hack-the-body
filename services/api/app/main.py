@@ -37,11 +37,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    from app.routers import admin, metrics, workouts  # noqa: PLC0415
+    from app.routers import admin, foods, meals, metrics, workouts  # noqa: PLC0415
     app.include_router(health.router)
     app.include_router(metrics.router)
     app.include_router(workouts.router)
     app.include_router(admin.router)
+    app.include_router(foods.router)
+    app.include_router(meals.router)
 
     _mount_frontend(app, settings)
     return app

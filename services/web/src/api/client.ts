@@ -1,5 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals,
 } from "./types";
 
 declare global {
@@ -9,10 +10,25 @@ declare global {
 const BASE = window.__HTB__?.apiUrl ?? import.meta.env.VITE_API_URL ?? "";
 const KEY = window.__HTB__?.apiKey ?? import.meta.env.VITE_API_KEY ?? "";
 
+const headers = { "X-API-Key": KEY, "Content-Type": "application/json" };
+
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`, { headers: { "X-API-Key": KEY } });
   if (!r.ok) throw new Error(`GET ${path} failed: ${r.status}`);
   return (await r.json()) as T;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "POST", headers, body: JSON.stringify(body ?? {}),
+  });
+  if (!r.ok) throw new Error(`POST ${path} failed: ${r.status} ${await r.text().catch(() => "")}`);
+  return (await r.json()) as T;
+}
+
+async function del(path: string): Promise<void> {
+  const r = await fetch(`${BASE}${path}`, { method: "DELETE", headers });
+  if (!r.ok && r.status !== 204) throw new Error(`DELETE ${path} failed: ${r.status}`);
 }
 
 export const api = {
@@ -26,10 +42,30 @@ export const api = {
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
   triggerIngest: async (source: string) => {
     const r = await fetch(`${BASE}/admin/ingest/${source}`, {
-      method: "POST",
-      headers: { "X-API-Key": KEY },
+      method: "POST", headers: { "X-API-Key": KEY },
     });
     if (!r.ok) throw new Error(`trigger failed: ${r.status}`);
     return r.json();
   },
+
+  // foods
+  searchFoods: (q: string, limit = 20) =>
+    get<Food[]>(`/foods/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  foodByBarcode: (barcode: string) =>
+    get<Food>(`/foods/barcode/${encodeURIComponent(barcode)}`),
+  createFood: (food: Partial<Food>) => post<Food>("/foods", food),
+
+  // meal entries
+  todayTotals: () => get<TodayTotals>("/meals/today/totals"),
+  todayEntries: () => get<MealEntry[]>("/meals/entries"),
+  logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
+    post<MealEntry>("/meals/entries", req),
+  deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
+
+  // templates
+  listTemplates: () => get<MealTemplate[]>("/meals/templates"),
+  createTemplate: (t: Partial<MealTemplate>) => post<MealTemplate>("/meals/templates", t),
+  logTemplate: (template_id: string, slot?: MealSlot) =>
+    post<{ template: string; entries: MealEntry[] }>(`/meals/templates/${template_id}/log`, slot ? { slot } : {}),
+  deleteTemplate: (template_id: string) => del(`/meals/templates/${template_id}`),
 };

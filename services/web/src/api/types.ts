@@ -42,3 +42,67 @@ export interface Workout {
   source: string; source_id: string;
 }
 interface Meta { source: string; source_id: string; }
+
+// ---------- food / meals ----------
+
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack" | "supplement";
+export type FoodCategory = "food" | "supplement" | "drink";
+
+export interface Macros {
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
+  sugar_g: number | null;
+  sodium_mg: number | null;
+}
+
+export interface Food {
+  id: string;
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  category: FoodCategory;
+  serving_g: number;
+  serving_label: string | null;
+  per_serving: Partial<Macros>;
+  source: string;
+}
+
+export interface MealEntry {
+  id: string;
+  ts: string;
+  food_id: string;
+  food_name: string;
+  food_category: FoodCategory;
+  quantity_g: number;
+  servings: number | null;
+  slot: MealSlot;
+  template_id: string | null;
+  note: string | null;
+  macros: Partial<Macros>;
+}
+
+export interface MealTemplateItem {
+  food_id: string;
+  quantity_g: number;
+}
+
+export interface MealTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  default_slot: MealSlot;
+  items: MealTemplateItem[];
+}
+
+export interface TodayTotals {
+  totals: {
+    calories: number; protein_g: number; carbs_g: number; fat_g: number;
+    fiber_g: number; sugar_g: number; sodium_mg: number;
+  };
+  by_slot: Record<MealSlot, { calories: number; protein_g: number; carbs_g: number; fat_g: number }>;
+  supplements: Array<{ id: string; name: string; ts: string; quantity_g: number }>;
+  entry_count: number;
+}

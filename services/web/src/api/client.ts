@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, SyncStatus,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 
@@ -84,6 +84,9 @@ export const api = {
 
   // coach
   coachInsight: () => get<CoachInsight>("/coach/insight"),
+
+  // admin
+  syncStatus: () => get<SyncStatus>("/admin/sync-status"),
 
   // templates
   listTemplates: () => get<MealTemplate[]>("/meals/templates"),

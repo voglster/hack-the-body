@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -17,6 +16,6 @@ async def mock_db():
 @pytest.fixture
 def fixture():
     def _load(name: str):
-        with open(FIXTURES / name) as f:
+        with (FIXTURES / name).open() as f:
             return json.load(f)
     return _load

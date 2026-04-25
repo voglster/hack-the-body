@@ -1,4 +1,4 @@
-from app.db import ensure_collections, TIMESERIES_COLLECTIONS
+from app.db import TIMESERIES_COLLECTIONS, ensure_collections
 
 
 async def test_ensure_collections_creates_timeseries(mock_db):

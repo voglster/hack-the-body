@@ -3,7 +3,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.metrics import BodyComp, DailySummary, HRV, RHR, Sleep, VO2Max, Weight
+from app.models.metrics import HRV, RHR, BodyComp, DailySummary, Sleep, VO2Max, Weight
 
 
 class MetricsRepo:

@@ -1,14 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.models import BodyComp, DailySummary, HRV, Sleep, VO2Max, Weight, Workout
+from app.models import HRV, BodyComp, DailySummary, Sleep, VO2Max, Weight, Workout
 
 
 def _utc_from_ms(ms: int) -> datetime:
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(ms / 1000, tz=UTC)
 
 
 def _utc_from_str(s: str) -> datetime:
-    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
 
 def map_sleep(raw: dict) -> Sleep:
@@ -30,7 +30,7 @@ def map_sleep(raw: dict) -> Sleep:
 def map_hrv(raw: dict) -> HRV:
     s = raw["hrvSummary"]
     return HRV(
-        ts=datetime.strptime(s["calendarDate"], "%Y-%m-%d").replace(tzinfo=timezone.utc),
+        ts=datetime.strptime(s["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         rmssd_ms=float(s["lastNightAvg"]),
         source="garmin",
         source_id=f"garmin:hrv:{s['calendarDate']}",
@@ -38,21 +38,20 @@ def map_hrv(raw: dict) -> HRV:
 
 
 def map_weight(raw: list[dict]) -> list[Weight]:
-    out: list[Weight] = []
-    for s in raw:
-        out.append(Weight(
+    return [
+        Weight(
             ts=_utc_from_ms(s["date"]),
             kg=round(float(s["weight"]) / 1000.0, 3),
             source="garmin",
             source_id=f"garmin:weight:{s['samplePk']}",
-        ))
-    return out
+        )
+        for s in raw
+    ]
 
 
 def map_body_comp(raw: list[dict]) -> list[BodyComp]:
-    out: list[BodyComp] = []
-    for s in raw:
-        out.append(BodyComp(
+    return [
+        BodyComp(
             ts=_utc_from_ms(s["date"]),
             weight_kg=round(float(s["weight"]) / 1000.0, 3),
             body_fat_pct=_f(s.get("bodyFat")),
@@ -61,14 +60,15 @@ def map_body_comp(raw: list[dict]) -> list[BodyComp]:
             bone_mass_kg=_g_to_kg(s.get("boneMass")),
             source="garmin-scale",
             source_id=f"garmin:body_comp:{s['samplePk']}",
-        ))
-    return out
+        )
+        for s in raw
+    ]
 
 
 def map_vo2max(raw: dict) -> VO2Max:
     g = raw["generic"]
     return VO2Max(
-        ts=datetime.strptime(g["calendarDate"], "%Y-%m-%d").replace(tzinfo=timezone.utc),
+        ts=datetime.strptime(g["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         value=float(g["vo2MaxPreciseValue"]),
         source="garmin",
         source_id=f"garmin:vo2max:{g['calendarDate']}",
@@ -79,7 +79,7 @@ def map_daily_summary(raw: dict) -> DailySummary:
     """Map Garmin's /usersummary-service/usersummary/daily response."""
     cal = raw.get("calendarDate") or raw["calendar_date"]
     return DailySummary(
-        ts=datetime.strptime(cal, "%Y-%m-%d").replace(tzinfo=timezone.utc),
+        ts=datetime.strptime(cal, "%Y-%m-%d").replace(tzinfo=UTC),
         steps=int(raw.get("totalSteps") or 0),
         step_goal=_i(raw.get("dailyStepGoal")),
         distance_m=_f(raw.get("totalDistanceMeters")),
@@ -101,9 +101,8 @@ def _sum_optional(*vals) -> float | None:
 
 
 def map_workout(raw: list[dict]) -> list[Workout]:
-    out: list[Workout] = []
-    for a in raw:
-        out.append(Workout(
+    return [
+        Workout(
             ts=_utc_from_str(a["startTimeGMT"]),
             activity_type=a["activityType"]["typeKey"],
             duration_s=int(a["duration"]),
@@ -113,8 +112,9 @@ def map_workout(raw: list[dict]) -> list[Workout]:
             calories=_i(a.get("calories")),
             source="garmin",
             source_id=f"garmin:activity:{a['activityId']}",
-        ))
-    return out
+        )
+        for a in raw
+    ]
 
 
 def _f(v) -> float | None:

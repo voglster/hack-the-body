@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,12 +53,14 @@ class GarminClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
     def _connectapi(self, path: str) -> Any:
-        assert self._g is not None, "login() must be called first"
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
         return self._g.connectapi(path)
 
     @property
     def _username(self) -> str:
-        assert self._g is not None
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
         return self._g.display_name
 
     def fetch_sleep(self, day: date) -> dict:
@@ -106,7 +108,7 @@ class GarminClient:
 
 
 def today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 def backfill_window(days: int) -> tuple[date, date]:

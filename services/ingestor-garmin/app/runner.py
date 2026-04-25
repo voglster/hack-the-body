@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import random
-from datetime import date, timedelta
-from typing import Awaitable, Callable, Protocol
+from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime, timedelta
+from typing import Protocol
 
 from app.mappers import (
     map_body_comp,
@@ -21,7 +22,7 @@ JitterFn = Callable[[], Awaitable[None]]
 
 
 async def _default_jitter() -> None:
-    """0.5–3s random pause between API calls so we don't look like a tight loop."""
+    """0.5-3s random pause between API calls so we don't look like a tight loop."""
     await asyncio.sleep(random.uniform(0.5, 3.0))
 
 
@@ -46,8 +47,8 @@ async def _do_weight(client, repo, start, end, counts):
         for w in map_weight(client.fetch_weight(start, end)):
             if await repo.upsert_weight(w):
                 counts["weight"] += 1
-    except Exception as e:
-        log.exception("weight fetch failed: %s", e)
+    except Exception:
+        log.exception("weight fetch failed")
 
 
 async def _do_body_comp(client, repo, start, end, counts):
@@ -55,8 +56,8 @@ async def _do_body_comp(client, repo, start, end, counts):
         for b in map_body_comp(client.fetch_body_comp(start, end)):
             if await repo.upsert_body_comp(b):
                 counts["body_comp"] += 1
-    except Exception as e:
-        log.exception("body_comp fetch failed: %s", e)
+    except Exception:
+        log.exception("body_comp fetch failed")
 
 
 async def _do_workouts(client, repo, start, end, counts):
@@ -64,8 +65,8 @@ async def _do_workouts(client, repo, start, end, counts):
         for wo in map_workout(client.fetch_workouts(start, end)):
             if await repo.upsert_workout(wo):
                 counts["workouts"] += 1
-    except Exception as e:
-        log.exception("workouts fetch failed: %s", e)
+    except Exception:
+        log.exception("workouts fetch failed")
 
 
 async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
@@ -102,7 +103,7 @@ async def run_sync(
     jitter: JitterFn = _default_jitter,
 ) -> dict[str, int]:
     client.login()
-    end = date.today()
+    end = datetime.now(UTC).date()
     start = end - timedelta(days=backfill_days)
     counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0,
               "daily_summary": 0, "workouts": 0}

@@ -1,5 +1,4 @@
 """Foods + meal entries + templates."""
-from datetime import datetime, timezone
 
 
 HEADERS = {"X-API-Key": "test-key"}
@@ -10,7 +9,8 @@ async def _create_food(client, name="Eggs", per_serving=None, **extra):
         "name": name,
         "category": "food",
         "serving_g": 100.0,
-        "per_serving": per_serving or {"calories": 155, "protein_g": 13, "carbs_g": 1.1, "fat_g": 11},
+        "per_serving": per_serving
+            or {"calories": 155, "protein_g": 13, "carbs_g": 1.1, "fat_g": 11},
         **extra,
     }
     r = await client.post("/foods", headers=HEADERS, json=body)

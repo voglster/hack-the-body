@@ -40,12 +40,12 @@ export const api = {
   vo2maxRange: (days = 90) => get<VO2MaxPoint[]>(`/metrics/vo2max/range?days=${days}`),
   stepsRange:  (days = 30) => get<DailySummaryPoint[]>(`/metrics/daily_summary/range?days=${days}`),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
-  triggerIngest: async (source: string) => {
+  triggerIngest: async (source: string): Promise<unknown> => {
     const r = await fetch(`${BASE}/admin/ingest/${source}`, {
       method: "POST", headers: { "X-API-Key": KEY },
     });
     if (!r.ok) throw new Error(`trigger failed: ${r.status}`);
-    return r.json();
+    return (await r.json()) as unknown;
   },
 
   // foods

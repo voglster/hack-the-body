@@ -24,8 +24,8 @@ export function TodayMeals() {
   });
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
-    qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
+    void qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
+    void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
   };
 
   const logTemplate = useMutation({
@@ -173,7 +173,7 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
       <div className="flex flex-col gap-2">
         <input
           value={q}
-          onChange={e => search(e.target.value)}
+          onChange={e => { void search(e.target.value); }}
           placeholder="search food name or paste a barcode"
           className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm"
         />
@@ -214,7 +214,7 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
               {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button
-              onClick={submit}
+              onClick={() => { void submit(); }}
               disabled={busy}
               className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-sm disabled:opacity-50"
             >

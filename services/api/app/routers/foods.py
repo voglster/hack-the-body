@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -15,14 +16,24 @@ def _repo(r: Request) -> FoodRepo:
 
 
 @router.get("/search")
-async def search(request: Request, q: str = Query(..., min_length=1), limit: int = 20):
+async def search(
+    request: Request,
+    q: Annotated[str, Query(min_length=1)],
+    limit: int = 20,
+) -> list[dict]:
     return await _repo(request).search_foods(q, limit=limit)
 
 
 @router.get("/barcode/{barcode}")
-async def by_barcode(barcode: str, request: Request, refresh: bool = False):
+async def by_barcode(
+    barcode: str,
+    request: Request,
+    *,
+    refresh: bool = False,
+) -> dict:
     """Look up a food by barcode. Cache hit returns the stored record;
-    cache miss queries Open Food Facts, stores the result, and returns it."""
+    cache miss queries Open Food Facts, stores the result, and returns it.
+    """
     repo = _repo(request)
     if not refresh:
         cached = await repo.get_food_by_barcode(barcode)
@@ -36,13 +47,13 @@ async def by_barcode(barcode: str, request: Request, refresh: bool = False):
 
 
 @router.post("", status_code=201)
-async def create_food(food: Food, request: Request):
-    food.created_at = datetime.now(timezone.utc)
+async def create_food(food: Food, request: Request) -> dict:
+    food.created_at = datetime.now(UTC)
     return await _repo(request).upsert_food(food)
 
 
 @router.get("/{food_id}")
-async def get_food(food_id: str, request: Request):
+async def get_food(food_id: str, request: Request) -> dict:
     found = await _repo(request).get_food(food_id)
     if not found:
         raise HTTPException(status_code=404, detail="food not found")

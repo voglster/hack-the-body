@@ -1,4 +1,5 @@
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -32,7 +33,7 @@ async def log_entry(req: LogEntryReq, request: Request):
         raise HTTPException(status_code=404, detail="food not found")
     macros = macros_for_quantity(food, req.quantity_g)
     entry = MealEntry(
-        ts=req.ts or datetime.now(timezone.utc),
+        ts=req.ts or datetime.now(UTC),
         food_id=req.food_id,
         food_name=food["name"],
         food_category=food.get("category", "food"),
@@ -48,11 +49,14 @@ async def log_entry(req: LogEntryReq, request: Request):
 @router.get("/entries")
 async def list_entries(
     request: Request,
-    day: str | None = Query(default=None, description="YYYY-MM-DD; defaults to today UTC"),
+    day: Annotated[
+        str | None,
+        Query(description="YYYY-MM-DD; defaults to today UTC"),
+    ] = None,
 ):
     when = (
-        datetime.combine(date.fromisoformat(day), time.min, tzinfo=timezone.utc)
-        if day else datetime.now(timezone.utc)
+        datetime.combine(date.fromisoformat(day), time.min, tzinfo=UTC)
+        if day else datetime.now(UTC)
     )
     return await _repo(request).list_entries_for_day(when)
 
@@ -62,14 +66,13 @@ async def delete_entry(entry_id: str, request: Request):
     ok = await _repo(request).delete_entry(entry_id)
     if not ok:
         raise HTTPException(status_code=404, detail="entry not found")
-    return None
 
 
 @router.get("/today/totals")
 async def today_totals(request: Request):
     """Compute today's running totals across all logged entries."""
     repo = _repo(request)
-    entries = await repo.list_entries_for_day(datetime.now(timezone.utc))
+    entries = await repo.list_entries_for_day(datetime.now(UTC))
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0,
               "fiber_g": 0.0, "sugar_g": 0.0, "sodium_mg": 0.0}
     by_slot: dict[str, dict[str, float]] = {}
@@ -118,7 +121,6 @@ async def delete_template(template_id: str, request: Request):
     ok = await _repo(request).delete_template(template_id)
     if not ok:
         raise HTTPException(status_code=404, detail="template not found")
-    return None
 
 
 class LogTemplateReq(BaseModel):
@@ -133,7 +135,7 @@ async def log_template(template_id: str, req: LogTemplateReq, request: Request):
     if not template:
         raise HTTPException(status_code=404, detail="template not found")
     slot = req.slot or template.get("default_slot", "snack")
-    ts = req.ts or datetime.now(timezone.utc)
+    ts = req.ts or datetime.now(UTC)
     inserted: list[dict] = []
     for item in template.get("items", []):
         food = await repo.get_food(item["food_id"])

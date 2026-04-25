@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 
@@ -81,6 +81,9 @@ export const api = {
   logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
     post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
+
+  // coach
+  coachInsight: () => get<CoachInsight>("/coach/insight"),
 
   // templates
   listTemplates: () => get<MealTemplate[]>("/meals/templates"),

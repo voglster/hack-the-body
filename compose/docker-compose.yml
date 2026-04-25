@@ -37,6 +37,8 @@ services:
       API_KEY: ${API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TZ: ${TZ:-America/Denver}
+      OLLAMA_URL: ${OLLAMA_URL:-http://10.0.6.46:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7-flash:latest}
     ports:
       - "${APP_PORT:-8080}:8000"
     networks:

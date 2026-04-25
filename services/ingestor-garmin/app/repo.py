@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.models import (
     HRV,
@@ -16,7 +16,7 @@ from app.models import (
 
 
 class GarminRepo:
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         self.db = db
 
     async def _ts_upsert(self, coll: str, source_id: str, doc: dict) -> bool:

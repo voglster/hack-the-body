@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
   "garminconnect>=0.2.30",
-  "motor>=3.6",
+  "pymongo>=4.9",
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
   "apscheduler>=3.10",

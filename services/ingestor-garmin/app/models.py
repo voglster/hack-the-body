@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,6 +42,21 @@ class BodyComp(_TSBase):
 
 class VO2Max(_TSBase):
     value: float
+
+
+class DailySummary(_TSBase):
+    steps: int
+    step_goal: int | None = None
+    distance_m: float | None = None
+    active_kcal: int | None = None
+    total_kcal: int | None = None
+    resting_hr: int | None = None
+    intensity_minutes: int | None = None
+    floors_climbed: int | None = None
+    # Full Garmin response so we can surface more fields later without a
+    # full historical re-pull. Schema may evolve; consumers should treat it
+    # as opaque except for the explicit named fields above.
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class Workout(BaseModel):

@@ -9,6 +9,7 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
     "metrics_rhr": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_body_comp": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_vo2max": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
+    "metrics_daily_summary": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
 }
 
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log"]

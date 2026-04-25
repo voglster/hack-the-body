@@ -6,6 +6,7 @@ from typing import Awaitable, Callable, Protocol
 
 from app.mappers import (
     map_body_comp,
+    map_daily_summary,
     map_hrv,
     map_sleep,
     map_vo2max,
@@ -37,6 +38,7 @@ class ClientProto(Protocol):
     def fetch_vo2max(self, d: date) -> dict: ...
     def fetch_workouts(self, s: date, e: date) -> list[dict]: ...
     def fetch_rhr_series(self, s: date, e: date) -> list[dict]: ...
+    def fetch_daily_summary(self, d: date) -> dict: ...
 
 
 async def _do_weight(client, repo, start, end, counts):
@@ -67,15 +69,20 @@ async def _do_workouts(client, repo, start, end, counts):
 
 
 async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
-    """Sleep / HRV / VO2max are per-day endpoints. Iterate days in random order."""
+    """Per-day endpoints (sleep / HRV / VO2max / daily summary). Random order."""
     shuffled_days = list(days)
     random.shuffle(shuffled_days)
     for day in shuffled_days:
-        # Within a day, also shuffle which metric we hit first.
         per_day = [
             ("sleep", lambda d=day: client.fetch_sleep(d), map_sleep, repo.upsert_sleep),
             ("hrv", lambda d=day: client.fetch_hrv(d), map_hrv, repo.upsert_hrv),
             ("vo2max", lambda d=day: client.fetch_vo2max(d), map_vo2max, repo.upsert_vo2max),
+            (
+                "daily_summary",
+                lambda d=day: client.fetch_daily_summary(d),
+                map_daily_summary,
+                repo.upsert_daily_summary,
+            ),
         ]
         random.shuffle(per_day)
         for name, fetch, mapper, upsert in per_day:
@@ -97,7 +104,8 @@ async def run_sync(
     client.login()
     end = date.today()
     start = end - timedelta(days=backfill_days)
-    counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0, "workouts": 0}
+    counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0,
+              "daily_summary": 0, "workouts": 0}
 
     days = [end - timedelta(days=i) for i in range(backfill_days + 1)]
 

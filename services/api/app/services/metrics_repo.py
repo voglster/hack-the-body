@@ -3,7 +3,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.metrics import BodyComp, HRV, RHR, Sleep, VO2Max, Weight
+from app.models.metrics import BodyComp, DailySummary, HRV, RHR, Sleep, VO2Max, Weight
 
 
 class MetricsRepo:
@@ -96,4 +96,33 @@ class MetricsRepo:
 
     async def range_vo2max(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
         cur = self.db["metrics_vo2max"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]
+
+    # ---------- daily summary (steps, active calories, etc.) ----------
+    async def insert_daily_summary(self, s: DailySummary) -> None:
+        await self.db["metrics_daily_summary"].insert_one(
+            {
+                "ts": s.ts,
+                "steps": s.steps,
+                "step_goal": s.step_goal,
+                "distance_m": s.distance_m,
+                "active_kcal": s.active_kcal,
+                "total_kcal": s.total_kcal,
+                "resting_hr": s.resting_hr,
+                "intensity_minutes": s.intensity_minutes,
+                "floors_climbed": s.floors_climbed,
+                "raw": s.raw,
+                "meta": {"source": s.source, "source_id": s.source_id},
+            }
+        )
+
+    async def latest_daily_summary(self) -> dict[str, Any] | None:
+        return await self.db["metrics_daily_summary"].find_one(sort=[("ts", -1)])
+
+    async def range_daily_summary(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = (
+            self.db["metrics_daily_summary"]
+            .find({"ts": {"$gte": start, "$lte": end}})
+            .sort("ts", 1)
+        )
         return [d async for d in cur]

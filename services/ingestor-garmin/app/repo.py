@@ -3,7 +3,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models import BodyComp, HRV, RHR, Sleep, VO2Max, Weight, Workout
+from app.models import BodyComp, DailySummary, HRV, RHR, Sleep, VO2Max, Weight, Workout
 
 
 class GarminRepo:
@@ -77,6 +77,25 @@ class GarminRepo:
             v.source_id,
             {"ts": v.ts, "value": v.value,
              "meta": {"source": v.source, "source_id": v.source_id}},
+        )
+
+    async def upsert_daily_summary(self, s: DailySummary) -> bool:
+        return await self._ts_upsert(
+            "metrics_daily_summary",
+            s.source_id,
+            {
+                "ts": s.ts,
+                "steps": s.steps,
+                "step_goal": s.step_goal,
+                "distance_m": s.distance_m,
+                "active_kcal": s.active_kcal,
+                "total_kcal": s.total_kcal,
+                "resting_hr": s.resting_hr,
+                "intensity_minutes": s.intensity_minutes,
+                "floors_climbed": s.floors_climbed,
+                "raw": s.raw,
+                "meta": {"source": s.source, "source_id": s.source_id},
+            },
         )
 
     async def upsert_workout(self, w: Workout) -> bool:

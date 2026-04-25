@@ -46,16 +46,6 @@ const sleepCard = (s: Summary | undefined): CardData => ({
   sub: s?.sleep?.score != null ? `score ${s.sleep.score}` : undefined,
 });
 
-const hrvCard = (s: Summary | undefined): CardData => ({
-  label: "HRV",
-  value: s?.hrv ? `${s.hrv.rmssd_ms.toFixed(0)} ms` : "—",
-});
-
-const vo2Card = (s: Summary | undefined): CardData => ({
-  label: "VO2 Max",
-  value: s?.vo2max ? s.vo2max.value.toFixed(1) : "—",
-});
-
 const stepsCard = (s: Summary | undefined, todaySteps: number | undefined): CardData => {
   const ds = s?.daily_summary;
   const steps = todaySteps ?? ds?.steps ?? 0;
@@ -79,7 +69,8 @@ const stepsCard = (s: Summary | undefined, todaySteps: number | undefined): Card
 };
 
 function summaryToCards(s: Summary | undefined, todaySteps: number | undefined): CardData[] {
-  return [stepsCard(s, todaySteps), sleepCard(s), weightCard(s), hrvCard(s), vo2Card(s)];
+  // HRV/VO2 live in the collapsed sections below — not interesting day-to-day.
+  return [stepsCard(s, todaySteps), sleepCard(s), weightCard(s)];
 }
 
 function SummaryCards({ summary, todaySteps }: {
@@ -87,9 +78,9 @@ function SummaryCards({ summary, todaySteps }: {
   todaySteps: number | undefined;
 }) {
   return (
-    // 2 cols on phone, 5 cols on desktop. Order matters on mobile —
-    // steps + sleep are what you check most; weight/HRV/VO2 are secondary.
-    <section className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-3">
+    // 3 cards: steps + sleep + weight. The metrics that actually matter
+    // for the goal. HRV/VO2 are still tracked in their own collapsed sections.
+    <section className="grid grid-cols-3 gap-2 sm:gap-3">
       {summaryToCards(summary, todaySteps).map(c => (
         <MetricCard
           key={c.label}

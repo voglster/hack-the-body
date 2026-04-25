@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
+import { StepsChart } from "../components/StepsChart";
 import { WeightChart } from "../components/WeightChart";
 import { WorkoutList } from "../components/WorkoutList";
 import { formatDuration, formatLbs } from "../lib/format";
@@ -34,7 +35,7 @@ export function Dashboard() {
         </button>
       </header>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <MetricCard
           label="Weight"
           value={summary?.weight ? formatLbs(summary.weight.kg) : "—"}
@@ -53,11 +54,25 @@ export function Dashboard() {
           label="VO2 Max"
           value={summary?.vo2max ? summary.vo2max.value.toFixed(1) : "—"}
         />
+        <MetricCard
+          label="Steps"
+          value={summary?.daily_summary ? summary.daily_summary.steps.toLocaleString() : "—"}
+          sub={
+            summary?.daily_summary?.step_goal
+              ? `goal ${summary.daily_summary.step_goal.toLocaleString()}`
+              : undefined
+          }
+        />
       </section>
 
       <section>
         <h2 className="text-sm uppercase tracking-wide text-neutral-400 mb-2">Weight (60d, 7d avg)</h2>
         <WeightChart />
+      </section>
+
+      <section>
+        <h2 className="text-sm uppercase tracking-wide text-neutral-400 mb-2">Steps (30d)</h2>
+        <StepsChart />
       </section>
 
       <section>

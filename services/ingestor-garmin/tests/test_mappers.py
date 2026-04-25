@@ -1,5 +1,6 @@
 from app.mappers import (
     map_body_comp,
+    map_daily_summary,
     map_hrv,
     map_sleep,
     map_vo2max,
@@ -52,6 +53,23 @@ def test_map_vo2max(fixture):
     raw = fixture("vo2max.json")
     v = map_vo2max(raw)
     assert v.value == 42.0
+
+
+def test_map_daily_summary(fixture):
+    raw = fixture("daily_summary.json")
+    s = map_daily_summary(raw)
+    assert s.steps == 8742
+    assert s.step_goal == 10000
+    assert s.distance_m == 6510.4
+    assert s.active_kcal == 480
+    assert s.total_kcal == 2840
+    assert s.resting_hr == 54
+    assert s.intensity_minutes == 35  # 23 moderate + 12 vigorous
+    assert s.floors_climbed == 8
+    assert s.source_id == "garmin:daily_summary:2026-04-23"
+    # Raw blob is preserved for future use.
+    assert s.raw["userProfileId"] == 12345
+    assert s.raw["wellnessKilocalories"] == 2840
 
 
 def test_map_workout(fixture):

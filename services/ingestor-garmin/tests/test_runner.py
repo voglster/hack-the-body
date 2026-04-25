@@ -23,6 +23,7 @@ class FakeClient:
     def fetch_vo2max(self, d: date) -> dict: return _load("vo2max.json")
     def fetch_workouts(self, s: date, e: date) -> list[dict]: return _load("workout.json")
     def fetch_rhr_series(self, s: date, e: date) -> list[dict]: return []
+    def fetch_daily_summary(self, d: date) -> dict: return _load("daily_summary.json")
 
 
 async def test_run_sync_writes_all_metrics(mock_db):
@@ -34,9 +35,11 @@ async def test_run_sync_writes_all_metrics(mock_db):
     assert counts["sleep"] == 1
     assert counts["hrv"] == 1
     assert counts["vo2max"] == 1
+    assert counts["daily_summary"] == 1
     assert counts["workouts"] == 1
 
     assert await mock_db["metrics_weight"].count_documents({}) == 1
+    assert await mock_db["metrics_daily_summary"].count_documents({}) == 1
     assert await mock_db["workouts"].count_documents({}) == 1
 
 

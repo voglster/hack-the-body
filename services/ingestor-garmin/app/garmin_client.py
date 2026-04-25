@@ -96,6 +96,14 @@ class GarminClient:
             f"?fromDate={start.isoformat()}&untilDate={end.isoformat()}"
         )
 
+    def fetch_daily_summary(self, day: date) -> dict:
+        """Garmin's rich per-day wellness summary: steps, distance, calories,
+        resting HR, intensity minutes, floors, etc."""
+        return self._connectapi(
+            f"/usersummary-service/usersummary/daily/{self._username}"
+            f"?calendarDate={day.isoformat()}"
+        )
+
 
 def today_utc() -> date:
     return datetime.now(timezone.utc).date()

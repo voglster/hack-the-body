@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,3 +42,21 @@ class BodyComp(_TimeseriesBase):
 
 class VO2Max(_TimeseriesBase):
     value: float = Field(gt=0)
+
+
+class DailySummary(_TimeseriesBase):
+    """Daily wellness summary from Garmin's /usersummary-service endpoint.
+
+    Surfaces named fields up front so the dashboard / repos can index/sort/
+    chart without parsing JSON. The full Garmin response is also stored in
+    `raw` so we can surface new fields later without a historical re-pull.
+    """
+    steps: int = Field(ge=0)
+    step_goal: int | None = Field(default=None, ge=0)
+    distance_m: float | None = Field(default=None, ge=0)
+    active_kcal: int | None = Field(default=None, ge=0)
+    total_kcal: int | None = Field(default=None, ge=0)
+    resting_hr: int | None = Field(default=None, gt=0, lt=250)
+    intensity_minutes: int | None = Field(default=None, ge=0)
+    floors_climbed: int | None = Field(default=None, ge=0)
+    raw: dict[str, Any] = Field(default_factory=dict)

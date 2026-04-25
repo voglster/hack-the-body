@@ -1,0 +1,17 @@
+{
+  "userProfileId": 12345,
+  "calendarDate": "2026-04-23",
+  "totalKilocalories": 2840,
+  "activeKilocalories": 480,
+  "bmrKilocalories": 2360,
+  "totalSteps": 8742,
+  "dailyStepGoal": 10000,
+  "totalDistanceMeters": 6510.4,
+  "restingHeartRate": 54,
+  "moderateIntensityMinutes": 23,
+  "vigorousIntensityMinutes": 12,
+  "floorsAscended": 8,
+  "floorsClimbed": 8,
+  "lastSyncTimestampGMT": "2026-04-24T03:12:09.0",
+  "wellnessKilocalories": 2840
+}

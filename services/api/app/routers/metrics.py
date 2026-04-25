@@ -29,10 +29,11 @@ async def summary(request: Request):
         "rhr": _strip_id(await repo.latest_rhr()),
         "body_comp": _strip_id(await repo.latest_body_comp()),
         "vo2max": _strip_id(await repo.latest_vo2max()),
+        "daily_summary": _strip_id(await repo.latest_daily_summary()),
     }
 
 
-_KINDS = {"weight", "sleep", "hrv", "rhr", "body_comp", "vo2max"}
+_KINDS = {"weight", "sleep", "hrv", "rhr", "body_comp", "vo2max", "daily_summary"}
 
 
 @router.get("/{kind}/latest")

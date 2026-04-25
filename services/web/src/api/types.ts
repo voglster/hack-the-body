@@ -5,6 +5,20 @@ export interface Summary {
   rhr: RHRPoint | null;
   body_comp: BodyCompPoint | null;
   vo2max: VO2MaxPoint | null;
+  daily_summary: DailySummaryPoint | null;
+}
+
+export interface DailySummaryPoint {
+  ts: string;
+  steps: number;
+  step_goal: number | null;
+  distance_m: number | null;
+  active_kcal: number | null;
+  total_kcal: number | null;
+  resting_hr: number | null;
+  intensity_minutes: number | null;
+  floors_climbed: number | null;
+  meta?: Meta;
 }
 
 export interface WeightPoint { ts: string; kg: number; meta?: Meta; }

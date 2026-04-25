@@ -5,10 +5,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _TimeseriesBase(BaseModel):
+    """Common fields for every Garmin time-series record.
+
+    `raw` is the slice of Garmin's response this record was derived from,
+    preserved verbatim so we can surface new fields later without re-pulling.
+    """
     model_config = ConfigDict(extra="forbid")
     ts: datetime
     source: str
     source_id: str
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class Weight(_TimeseriesBase):
@@ -49,16 +55,10 @@ class StepsBucket(_TimeseriesBase):
     end_ts: datetime
     steps: int = Field(ge=0)
     activity_level: str | None = None  # active, sedentary, sleeping, etc.
-    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class DailySummary(_TimeseriesBase):
-    """Daily wellness summary from Garmin's /usersummary-service endpoint.
-
-    Surfaces named fields up front so the dashboard / repos can index/sort/
-    chart without parsing JSON. The full Garmin response is also stored in
-    `raw` so we can surface new fields later without a historical re-pull.
-    """
+    """Daily wellness summary from Garmin's /usersummary-service endpoint."""
     steps: int = Field(ge=0)
     step_goal: int | None = Field(default=None, ge=0)
     distance_m: float | None = Field(default=None, ge=0)
@@ -67,4 +67,3 @@ class DailySummary(_TimeseriesBase):
     resting_hr: int | None = Field(default=None, gt=0, lt=250)
     intensity_minutes: int | None = Field(default=None, ge=0)
     floors_climbed: int | None = Field(default=None, ge=0)
-    raw: dict[str, Any] = Field(default_factory=dict)

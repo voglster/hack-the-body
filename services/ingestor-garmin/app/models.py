@@ -5,10 +5,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _TSBase(BaseModel):
+    """Common fields for every Garmin time-series record.
+
+    `raw` is the slice of Garmin's response this record was derived from,
+    preserved verbatim so we can surface new fields later without a re-pull.
+    """
     model_config = ConfigDict(extra="forbid")
     ts: datetime
     source: str
     source_id: str
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class Weight(_TSBase):
@@ -48,9 +54,6 @@ class StepsBucket(_TSBase):
     end_ts: datetime
     steps: int
     activity_level: str | None = None
-    # Per-bucket raw slice from Garmin so we can surface other fields later
-    # (active level, primaryActivityLevel, etc.) without re-pulling.
-    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class DailySummary(_TSBase):
@@ -62,10 +65,6 @@ class DailySummary(_TSBase):
     resting_hr: int | None = None
     intensity_minutes: int | None = None
     floors_climbed: int | None = None
-    # Full Garmin response so we can surface more fields later without a
-    # full historical re-pull. Schema may evolve; consumers should treat it
-    # as opaque except for the explicit named fields above.
-    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class Workout(BaseModel):
@@ -80,3 +79,4 @@ class Workout(BaseModel):
     notes: str | None = None
     source: str
     source_id: str
+    raw: dict[str, Any] = Field(default_factory=dict)

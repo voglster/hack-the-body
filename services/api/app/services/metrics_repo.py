@@ -12,7 +12,10 @@ class MetricsRepo:
 
     async def insert_weight(self, w: Weight) -> None:
         await self.db["metrics_weight"].insert_one(
-            {"ts": w.ts, "kg": w.kg, "meta": {"source": w.source, "source_id": w.source_id}}
+            {
+                "ts": w.ts, "kg": w.kg, "raw": w.raw,
+                "meta": {"source": w.source, "source_id": w.source_id},
+            },
         )
 
     async def latest_weight(self) -> dict[str, Any] | None:
@@ -32,8 +35,9 @@ class MetricsRepo:
                 "light_s": s.light_s,
                 "awake_s": s.awake_s,
                 "score": s.score,
+                "raw": s.raw,
                 "meta": {"source": s.source, "source_id": s.source_id},
-            }
+            },
         )
 
     async def latest_sleep(self) -> dict[str, Any] | None:
@@ -45,8 +49,10 @@ class MetricsRepo:
 
     async def insert_hrv(self, h: HRV) -> None:
         await self.db["metrics_hrv"].insert_one(
-            {"ts": h.ts, "rmssd_ms": h.rmssd_ms,
-             "meta": {"source": h.source, "source_id": h.source_id}}
+            {
+                "ts": h.ts, "rmssd_ms": h.rmssd_ms, "raw": h.raw,
+                "meta": {"source": h.source, "source_id": h.source_id},
+            },
         )
 
     async def latest_hrv(self) -> dict[str, Any] | None:
@@ -58,8 +64,10 @@ class MetricsRepo:
 
     async def insert_rhr(self, r: RHR) -> None:
         await self.db["metrics_rhr"].insert_one(
-            {"ts": r.ts, "bpm": r.bpm,
-             "meta": {"source": r.source, "source_id": r.source_id}}
+            {
+                "ts": r.ts, "bpm": r.bpm, "raw": r.raw,
+                "meta": {"source": r.source, "source_id": r.source_id},
+            },
         )
 
     async def latest_rhr(self) -> dict[str, Any] | None:
@@ -78,8 +86,9 @@ class MetricsRepo:
                 "muscle_mass_kg": b.muscle_mass_kg,
                 "body_water_pct": b.body_water_pct,
                 "bone_mass_kg": b.bone_mass_kg,
+                "raw": b.raw,
                 "meta": {"source": b.source, "source_id": b.source_id},
-            }
+            },
         )
 
     async def latest_body_comp(self) -> dict[str, Any] | None:
@@ -87,8 +96,10 @@ class MetricsRepo:
 
     async def insert_vo2max(self, v: VO2Max) -> None:
         await self.db["metrics_vo2max"].insert_one(
-            {"ts": v.ts, "value": v.value,
-             "meta": {"source": v.source, "source_id": v.source_id}}
+            {
+                "ts": v.ts, "value": v.value, "raw": v.raw,
+                "meta": {"source": v.source, "source_id": v.source_id},
+            },
         )
 
     async def latest_vo2max(self) -> dict[str, Any] | None:

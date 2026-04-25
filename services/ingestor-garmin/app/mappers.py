@@ -22,6 +22,7 @@ def map_sleep(raw: dict) -> Sleep:
         light_s=int(d["lightSleepSeconds"]),
         awake_s=int(d["awakeSleepSeconds"]),
         score=int(score) if score is not None else None,
+        raw=raw,
         source="garmin",
         source_id=f"garmin:sleep:{d['calendarDate']}",
     )
@@ -32,6 +33,7 @@ def map_hrv(raw: dict) -> HRV:
     return HRV(
         ts=datetime.strptime(s["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         rmssd_ms=float(s["lastNightAvg"]),
+        raw=raw,
         source="garmin",
         source_id=f"garmin:hrv:{s['calendarDate']}",
     )
@@ -42,6 +44,7 @@ def map_weight(raw: list[dict]) -> list[Weight]:
         Weight(
             ts=_utc_from_ms(s["date"]),
             kg=round(float(s["weight"]) / 1000.0, 3),
+            raw=s,
             source="garmin",
             source_id=f"garmin:weight:{s['samplePk']}",
         )
@@ -58,6 +61,7 @@ def map_body_comp(raw: list[dict]) -> list[BodyComp]:
             muscle_mass_kg=_g_to_kg(s.get("muscleMass")),
             body_water_pct=_f(s.get("bodyWater")),
             bone_mass_kg=_g_to_kg(s.get("boneMass")),
+            raw=s,
             source="garmin-scale",
             source_id=f"garmin:body_comp:{s['samplePk']}",
         )
@@ -70,6 +74,7 @@ def map_vo2max(raw: dict) -> VO2Max:
     return VO2Max(
         ts=datetime.strptime(g["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         value=float(g["vo2MaxPreciseValue"]),
+        raw=raw,
         source="garmin",
         source_id=f"garmin:vo2max:{g['calendarDate']}",
     )
@@ -147,6 +152,7 @@ def map_workout(raw: list[dict]) -> list[Workout]:
             avg_hr=_i(a.get("averageHR")),
             max_hr=_i(a.get("maxHR")),
             calories=_i(a.get("calories")),
+            raw=a,
             source="garmin",
             source_id=f"garmin:activity:{a['activityId']}",
         )

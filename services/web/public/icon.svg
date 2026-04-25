@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="32" fill="#0a0a0a"/>
+  <!-- "HTB" inside an emerald circle -->
+  <circle cx="96" cy="96" r="68" fill="none" stroke="#34d399" stroke-width="6"/>
+  <text x="96" y="112" font-family="system-ui, -apple-system, sans-serif"
+        font-weight="800" font-size="56" text-anchor="middle" fill="#34d399"
+        letter-spacing="-2">HTB</text>
+</svg>

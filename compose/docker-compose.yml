@@ -9,7 +9,7 @@ services:
     container_name: hack-the-body-mongo
     restart: unless-stopped
     volumes:
-      - mongo_data:/data/db
+      - ./data/mongo:/data/db
     networks:
       - htb
     healthcheck:
@@ -53,13 +53,9 @@ services:
       GARMIN_SCHEDULE_CRON: ${GARMIN_SCHEDULE_CRON:-0 4 * * *}
       TZ: ${TZ:-America/Denver}
     volumes:
-      - garmin_session:/data/garmin-session
+      - ./data/garmin-session:/data/garmin-session
     networks:
       - htb
-
-volumes:
-  mongo_data:
-  garmin_session:
 
 networks:
   htb:

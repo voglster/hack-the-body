@@ -37,7 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    from app.routers import admin, auth, foods, meals, metrics, workouts
+    from app.routers import admin, auth, coach, foods, meals, metrics, workouts
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(metrics.router)
@@ -45,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(foods.router)
     app.include_router(meals.router)
+    app.include_router(coach.router)
 
     _mount_frontend(app)
     return app

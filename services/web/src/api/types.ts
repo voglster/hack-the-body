@@ -110,6 +110,15 @@ export interface MealTemplate {
   items: MealTemplateItem[];
 }
 
+export interface CoachInsight {
+  text: string;
+  model: string;
+  eval_ms: number;
+  total_ms: number;
+  generated_at: string;
+  context: Record<string, unknown>;
+}
+
 export interface TodayTotals {
   totals: {
     calories: number; protein_g: number; carbs_g: number; fat_g: number;

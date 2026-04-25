@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
+import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
 import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
@@ -97,11 +99,19 @@ export function Dashboard() {
     queryFn: api.summary,
     refetchInterval: 60_000,
   });
+
+  // Steps card always shows today's local-tz running total.
+  const today = todayLocalISO();
+  const { start, end } = localDayBoundsUTC(today);
   const { data: stepsToday } = useQuery({
-    queryKey: ["stepsToday"],
-    queryFn: api.stepsToday,
+    queryKey: ["stepsDay", today],
+    queryFn: () => api.stepsDay(start, end),
     refetchInterval: 60_000,
   });
+
+  // The intraday chart can be browsed; report the active day so the chart
+  // section title shows it.
+  const [browseDay, setBrowseDay] = useState<string>(today);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -113,9 +123,11 @@ export function Dashboard() {
       <SummaryCards summary={summary} todaySteps={stepsToday?.total} />
 
       <Section title="Today’s food"><TodayMeals /></Section>
-      <Section title="Today’s steps (15min buckets)"><StepsTodayChart /></Section>
+      <Section title={`Steps · ${browseDay === today ? "today" : "browsing"} (15min buckets)`}>
+        <StepsTodayChart onDayChange={setBrowseDay} />
+      </Section>
       <Section title="Weight (60d, 7d avg)"><WeightChart /></Section>
-      <Section title="Steps (30d)"><StepsChart /></Section>
+      <Section title="Steps (30d)"><StepsChart todayLiveTotal={stepsToday?.total} /></Section>
       <Section title="Sleep (30d)"><SleepChart /></Section>
       <Section title="HRV (30d)"><HrvChart /></Section>
       <Section title="Recent workouts"><WorkoutList /></Section>

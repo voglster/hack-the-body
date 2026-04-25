@@ -98,6 +98,34 @@ class FoodRepo:
         res = await self.db["meal_entries"].delete_one({"_id": _oid(entry_id)})
         return res.deleted_count > 0
 
+    async def update_entry_time(
+        self,
+        entry_id: str,
+        new_ts: datetime | None = None,
+        new_slot: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Move an entry to a new timestamp / slot.
+
+        Time-series collections in MongoDB don't allow updating the time
+        field, so we delete the original and reinsert with the new fields.
+        Returns the new doc (with a fresh _id) or None if not found.
+        """
+        existing = await self.db["meal_entries"].find_one({"_id": _oid(entry_id)})
+        if not existing:
+            return None
+        new_doc = {k: v for k, v in existing.items() if k != "_id"}
+        if new_ts is not None:
+            new_doc["ts"] = new_ts
+        if new_slot is not None:
+            new_doc["slot"] = new_slot
+            meta = dict(new_doc.get("meta") or {})
+            meta["slot"] = new_slot
+            new_doc["meta"] = meta
+        await self.db["meal_entries"].delete_one({"_id": _oid(entry_id)})
+        res = await self.db["meal_entries"].insert_one(new_doc)
+        stored = await self.db["meal_entries"].find_one({"_id": res.inserted_id})
+        return _doc_to_dict(stored)
+
     # ---------- templates ----------
     async def upsert_template(self, t: MealTemplate) -> dict[str, Any]:
         doc = t.model_dump(exclude={"id"})

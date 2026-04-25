@@ -129,6 +129,46 @@ async def test_supplement_logging(client):
     assert body["supplements"][0]["name"] == "Centrum Multi"
 
 
+async def test_edit_entry_time_and_slot(client):
+    food = await _create_food(client)
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 100, "slot": "snack"},
+    )
+    entry_id = r.json()["id"]
+
+    new_ts = "2026-04-25T13:30:00+00:00"
+    r = await client.patch(
+        f"/meals/entries/{entry_id}", headers=HEADERS,
+        json={"ts": new_ts, "slot": "lunch"},
+    )
+    assert r.status_code == 200, r.text
+    moved = r.json()
+    assert moved["slot"] == "lunch"
+    assert moved["ts"].startswith("2026-04-25T13:30")
+    # New id (delete+reinsert pattern), original gone.
+    assert moved["id"] != entry_id
+
+
+async def test_edit_entry_404(client):
+    r = await client.patch(
+        "/meals/entries/000000000000000000000000",
+        headers=HEADERS, json={"slot": "lunch"},
+    )
+    assert r.status_code == 404
+
+
+async def test_edit_entry_requires_field(client):
+    food = await _create_food(client)
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 100, "slot": "snack"},
+    )
+    entry_id = r.json()["id"]
+    r = await client.patch(f"/meals/entries/{entry_id}", headers=HEADERS, json={})
+    assert r.status_code == 400
+
+
 async def test_delete_entry(client):
     food = await _create_food(client)
     r = await client.post(

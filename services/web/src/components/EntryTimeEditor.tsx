@@ -1,0 +1,199 @@
+/**
+ * Touch-friendly editor for an entry's time-of-day + slot.
+ *
+ * The day is a single horizontal bar (6am → midnight by default). The
+ * entry being edited is a draggable thumb; the rest of today's entries
+ * are faint dots so you can see "where everything else is" while you
+ * move this one. Snap is 15 minutes — plenty of accuracy for "did I
+ * eat that closer to noon or 1pm?".
+ */
+import { useEffect, useRef, useState } from "react";
+
+import type { MealEntry, MealSlot } from "../api/types";
+
+const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
+
+const START_HOUR = 4;   // earliest scrubbable time (slightly before breakfast)
+const END_HOUR = 24;    // exclusive — midnight
+const SNAP_MIN = 15;
+const TOTAL_MIN = (END_HOUR - START_HOUR) * 60;
+
+function fmtTime(d: Date): string {
+  const h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const ampm = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+function toMinutesFromStart(d: Date): number {
+  return (d.getHours() - START_HOUR) * 60 + d.getMinutes();
+}
+
+function setMinutesFromStart(base: Date, mins: number): Date {
+  const out = new Date(base);
+  const total = Math.max(0, Math.min(TOTAL_MIN - 1, mins));
+  const snapped = Math.round(total / SNAP_MIN) * SNAP_MIN;
+  out.setHours(START_HOUR + Math.floor(snapped / 60), snapped % 60, 0, 0);
+  return out;
+}
+
+export function EntryTimeEditor({
+  entry, dayEntries, onSave, onCancel, busy,
+}: {
+  entry: MealEntry;
+  dayEntries: MealEntry[];
+  onSave: (patch: { ts: string; slot: MealSlot }) => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const initial = new Date(entry.ts);
+  const [t, setT] = useState<Date>(initial);
+  const [slot, setSlot] = useState<MealSlot>(entry.slot);
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const minsNow = toMinutesFromStart(t);
+  const pct = Math.max(0, Math.min(100, (minsNow / TOTAL_MIN) * 100));
+
+  const xToTime = (clientX: number): Date => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect) return t;
+    const ratio = (clientX - rect.left) / rect.width;
+    const mins = ratio * TOTAL_MIN;
+    return setMinutesFromStart(initial, mins);
+  };
+
+  // Pointer events: capture on the track so dragging outside still works.
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (busy) return;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    setT(xToTime(e.clientX));
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (busy || e.buttons === 0) return;
+    setT(xToTime(e.clientX));
+  };
+
+  // Esc to cancel — useful on desktop.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  // Hour ticks (every 4h labelled, every 1h tick).
+  const ticks: { hour: number; pct: number; label: boolean }[] = [];
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    const tickMins = (h - START_HOUR) * 60;
+    ticks.push({ hour: h, pct: (tickMins / TOTAL_MIN) * 100, label: h % 4 === 0 });
+  }
+
+  // Other entries on the same day, plotted as ghost dots so you can see
+  // proximity. Skip the one being edited.
+  const ghosts = dayEntries.filter(d => d.id !== entry.id).map(d => {
+    const dt = new Date(d.ts);
+    return {
+      id: d.id,
+      pct: Math.max(0, Math.min(100, (toMinutesFromStart(dt) / TOTAL_MIN) * 100)),
+      isWater: d.food_name === "Water",
+    };
+  });
+
+  return (
+    <div className="rounded-xl bg-neutral-900 border border-neutral-700 p-4 space-y-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">edit time</div>
+          <div className="font-medium truncate">{entry.food_name}</div>
+        </div>
+        <div className="text-2xl font-semibold tabular-nums text-emerald-300">
+          {fmtTime(t)}
+        </div>
+      </div>
+
+      {/* Slot chips */}
+      <div className="flex flex-wrap gap-2">
+        {SLOTS.map(s => (
+          <button
+            key={s}
+            onClick={() => setSlot(s)}
+            disabled={busy}
+            className={`px-3 py-2 rounded-full text-sm min-h-[44px] capitalize ${
+              slot === s
+                ? "bg-emerald-700 text-white"
+                : "bg-neutral-800 active:bg-neutral-700 text-neutral-300"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {/* Day strip */}
+      <div className="select-none">
+        <div
+          ref={trackRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          className="relative h-16 rounded-lg bg-neutral-800 touch-none cursor-pointer"
+        >
+          {/* hour ticks */}
+          {ticks.map(tk => (
+            <div
+              key={tk.hour}
+              className={`absolute top-0 bottom-0 w-px ${tk.label ? "bg-neutral-600" : "bg-neutral-700"}`}
+              style={{ left: `${tk.pct}%` }}
+            />
+          ))}
+          {/* ghost entries */}
+          {ghosts.map(g => (
+            <div
+              key={g.id}
+              className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${
+                g.isWater ? "bg-sky-700" : "bg-neutral-500"
+              } opacity-60`}
+              style={{ left: `${g.pct}%`, transform: "translate(-50%, -50%)" }}
+            />
+          ))}
+          {/* draggable thumb */}
+          <div
+            className="absolute top-0 bottom-0 w-1 bg-emerald-400"
+            style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
+          />
+          <div
+            className="absolute top-1/2 w-7 h-7 rounded-full bg-emerald-500 border-2 border-emerald-200 shadow-lg"
+            style={{ left: `${pct}%`, transform: "translate(-50%, -50%)" }}
+          />
+        </div>
+        {/* hour labels */}
+        <div className="relative h-4 mt-1 text-[10px] text-neutral-500">
+          {ticks.filter(t => t.label).map(tk => (
+            <div
+              key={tk.hour}
+              className="absolute"
+              style={{ left: `${tk.pct}%`, transform: "translateX(-50%)" }}
+            >
+              {tk.hour === 24 ? "12a" : tk.hour === 12 ? "12p" : tk.hour > 12 ? `${tk.hour - 12}p` : `${tk.hour}a`}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => onSave({ ts: t.toISOString(), slot })}
+          disabled={busy}
+          className="flex-1 px-3 py-3 rounded bg-emerald-700 active:bg-emerald-800 text-white text-base font-medium disabled:opacity-50 min-h-[44px]"
+        >
+          {busy ? "saving..." : "save"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-3 rounded bg-neutral-800 active:bg-neutral-600 text-sm min-h-[44px]"
+        >
+          cancel
+        </button>
+      </div>
+    </div>
+  );
+}

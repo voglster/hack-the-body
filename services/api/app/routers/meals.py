@@ -68,6 +68,24 @@ async def delete_entry(entry_id: str, request: Request):
         raise HTTPException(status_code=404, detail="entry not found")
 
 
+class EditEntryReq(BaseModel):
+    ts: datetime | None = None
+    slot: MealSlot | None = None
+
+
+@router.patch("/entries/{entry_id}")
+async def edit_entry(entry_id: str, req: EditEntryReq, request: Request):
+    """Move an entry to a new time/slot. Time-series collections require
+    a delete+reinsert so the returned id will differ from the original.
+    """
+    if req.ts is None and req.slot is None:
+        raise HTTPException(status_code=400, detail="ts or slot required")
+    out = await _repo(request).update_entry_time(entry_id, new_ts=req.ts, new_slot=req.slot)
+    if out is None:
+        raise HTTPException(status_code=404, detail="entry not found")
+    return out
+
+
 @router.get("/today/totals")
 async def today_totals(request: Request):
     """Compute today's running totals across all logged entries."""

@@ -81,6 +81,17 @@ export const api = {
   logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
     post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
+  editEntry: (entry_id: string, patch: { ts?: string; slot?: MealSlot }) => {
+    return fetch(`${BASE}/meals/entries/${entry_id}`, {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    }).then(async r => {
+      if (r.status === 401) handleUnauthorized();
+      if (!r.ok) throw new Error(`PATCH failed: ${r.status} ${await r.text().catch(() => "")}`);
+      return (await r.json()) as MealEntry;
+    });
+  },
 
   // coach
   coachInsight: () => get<CoachInsight>("/coach/insight"),

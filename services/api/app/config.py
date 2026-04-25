@@ -28,7 +28,6 @@ class Settings(BaseSettings):
 
     # USDA FoodData Central — fallback barcode/food lookup for items not in
     # Open Food Facts (which is EU-leaning). Free key from api.data.gov.
-    # TODO: implement /foods/barcode chain + /foods/search FDC fallback.
     usda_fdc_api_key: str = ""
 
     # Web Push (VAPID). The 'subject' is a contact mailto: per RFC 8292.

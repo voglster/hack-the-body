@@ -7,6 +7,7 @@ from app.auth import require_api_key
 from app.models.food import Food
 from app.services.food_repo import FoodRepo
 from app.services.openfoodfacts import fetch_off_product
+from app.services.usda_fdc import fetch_fdc_by_barcode
 
 router = APIRouter(prefix="/foods", dependencies=[Depends(require_api_key)])
 
@@ -32,7 +33,8 @@ async def by_barcode(
     refresh: bool = False,
 ) -> dict:
     """Look up a food by barcode. Cache hit returns the stored record;
-    cache miss queries Open Food Facts, stores the result, and returns it.
+    cache miss queries Open Food Facts, then USDA FoodData Central as a
+    fallback, stores whichever returned, and returns it.
     """
     repo = _repo(request)
     if not refresh:
@@ -41,6 +43,9 @@ async def by_barcode(
             return cached
 
     food = await fetch_off_product(barcode)
+    if food is None:
+        api_key = request.app.state.settings.usda_fdc_api_key
+        food = await fetch_fdc_by_barcode(barcode, api_key)
     if food is None:
         raise HTTPException(status_code=404, detail=f"barcode {barcode} not found")
     return await repo.upsert_food(food)

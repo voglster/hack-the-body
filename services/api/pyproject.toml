@@ -28,3 +28,36 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  # Style we don't enforce
+  "D",        # pydocstyle (no enforced docstrings)
+  "ANN",      # flake8-annotations (we use modern type hints, not in tests)
+  "FA",       # __future__ annotations (py312)
+  "COM812",   # trailing comma in formatter conflict
+  "ISC001",   # implicit-str-concat formatter conflict
+  # Conventions we accept
+  "EM101", "EM102", "TRY003",  # f-string in raise
+  "G004",     # f-string in logger (we accept it)
+  "BLE001",   # blind except (sometimes deliberate)
+  "PLR0913",  # too many args (FastAPI handlers)
+  "RUF012",   # mutable class default for pydantic Field
+  "S311",     # random for non-crypto
+  "TD", "FIX",        # todo / fix comments
+  "TRY300",   # else after try (subjective)
+  "TC",       # typing-only imports — minor maintenance churn
+  "PGH003",   # blanket type: ignore
+  "ERA001",   # commented-out code (we use comments for context)
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "PT", "INP001", "SLF001"]
+"app/main.py" = ["PLC0415"]  # late imports inside create_app for lifespan timing

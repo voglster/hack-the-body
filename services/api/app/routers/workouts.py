@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -8,8 +9,11 @@ router = APIRouter(prefix="/workouts", dependencies=[Depends(require_api_key)])
 
 
 @router.get("")
-async def list_workouts(request: Request, days: int = Query(default=30, ge=1, le=365)):
-    end = datetime.now(timezone.utc)
+async def list_workouts(
+    request: Request,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+):
+    end = datetime.now(UTC)
     start = end - timedelta(days=days)
     cur = request.app.state.db["workouts"].find(
         {"ts": {"$gte": start, "$lte": end}}

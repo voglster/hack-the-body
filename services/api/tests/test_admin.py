@@ -1,4 +1,3 @@
-import pytest
 
 
 async def test_admin_trigger_requires_auth(client):

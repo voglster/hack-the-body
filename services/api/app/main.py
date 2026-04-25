@@ -2,7 +2,7 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -37,7 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    from app.routers import admin, foods, meals, metrics, workouts  # noqa: PLC0415
+    from app.routers import admin, foods, meals, metrics, workouts
     app.include_router(health.router)
     app.include_router(metrics.router)
     app.include_router(workouts.router)
@@ -63,7 +63,7 @@ def _mount_frontend(app: FastAPI, settings: Settings) -> None:
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa(request: Request, full_path: str) -> Response:
+    async def spa(full_path: str) -> Response:
         candidate = STATIC_DIR / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)

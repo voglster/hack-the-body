@@ -103,6 +103,6 @@ export interface TodayTotals {
     fiber_g: number; sugar_g: number; sodium_mg: number;
   };
   by_slot: Record<MealSlot, { calories: number; protein_g: number; carbs_g: number; fat_g: number }>;
-  supplements: Array<{ id: string; name: string; ts: string; quantity_g: number }>;
+  supplements: { id: string; name: string; ts: string; quantity_g: number }[];
   entry_count: number;
 }

@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from app.models.metrics import Weight, Sleep
+from app.models.metrics import Sleep, Weight
 from app.services.metrics_repo import MetricsRepo
 
 
 async def test_insert_and_latest_weight(mock_db):
     repo = MetricsRepo(mock_db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.insert_weight(
         Weight(ts=now, kg=108.9, source="garmin", source_id="w1")
     )
@@ -17,7 +17,7 @@ async def test_insert_and_latest_weight(mock_db):
 
 async def test_range_weight_returns_ordered(mock_db):
     repo = MetricsRepo(mock_db)
-    base = datetime(2026, 4, 1, 7, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 4, 1, 7, 0, tzinfo=UTC)
     for i in range(5):
         await repo.insert_weight(
             Weight(ts=base + timedelta(days=i), kg=108 + i * 0.1,
@@ -30,7 +30,7 @@ async def test_range_weight_returns_ordered(mock_db):
 
 async def test_insert_sleep_and_latest(mock_db):
     repo = MetricsRepo(mock_db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.insert_sleep(
         Sleep(ts=now, duration_s=27000, deep_s=3600, rem_s=5400,
               light_s=16000, awake_s=2000, score=80,

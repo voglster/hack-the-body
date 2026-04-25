@@ -20,9 +20,16 @@ UA = "hack-the-body/0.1 (https://github.com/voglster/hack-the-body)"
 TIMEOUT = httpx.Timeout(8.0, connect=4.0)
 
 
+HTTP_OK = 200
+
+
 def _g(d: dict[str, Any], key: str) -> float | None:
     v = d.get(key)
     return float(v) if v is not None else None
+
+
+def _g_to_mg(grams: float | None) -> float | None:
+    return grams * 1000.0 if grams is not None else None
 
 
 def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
@@ -35,7 +42,7 @@ def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
         fat_g=_g(n, "fat_100g"),
         fiber_g=_g(n, "fiber_100g"),
         sugar_g=_g(n, "sugars_100g"),
-        sodium_mg=(lambda v: v * 1000.0 if v is not None else None)(_g(n, "sodium_100g")),
+        sodium_mg=_g_to_mg(_g(n, "sodium_100g")),
     )
     return Food(
         name=(
@@ -60,7 +67,7 @@ async def fetch_off_product(barcode: str) -> Food | None:
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers) as c:
             r = await c.get(url)
-        if r.status_code != 200:
+        if r.status_code != HTTP_OK:
             return None
         body = r.json()
         if body.get("status") != 1:

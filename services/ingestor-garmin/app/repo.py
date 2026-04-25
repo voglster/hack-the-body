@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models import BodyComp, DailySummary, HRV, RHR, Sleep, VO2Max, Weight, Workout
+from app.models import HRV, RHR, BodyComp, DailySummary, Sleep, VO2Max, Weight, Workout
 
 
 class GarminRepo:

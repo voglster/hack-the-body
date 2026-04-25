@@ -12,8 +12,8 @@ Design notes:
 - Supplements live in `foods` with `category="supplement"`. Same data model;
   the dashboard groups them separately.
 """
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,7 +46,7 @@ class Food(BaseModel):
     micros: dict[str, float] = Field(default_factory=dict)  # vitamin/mineral name -> amount in unit
     source: str = "manual"  # "off" (open food facts), "manual", "import"
     source_ref: str | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class MealEntry(BaseModel):
@@ -79,4 +79,4 @@ class MealTemplate(BaseModel):
     description: str | None = None
     default_slot: MealSlot = "snack"
     items: list[MealTemplateItem] = Field(default_factory=list, min_length=1)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

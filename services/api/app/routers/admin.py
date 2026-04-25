@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -16,7 +16,7 @@ async def trigger_ingest(source: str, request: Request):
     await request.app.state.db["ingestion_log"].insert_one({
         "source": source,
         "status": "requested",
-        "started_at": datetime.now(timezone.utc),
+        "started_at": datetime.now(UTC),
         "requested_by": "api",
     })
     return {"accepted": True, "source": source}

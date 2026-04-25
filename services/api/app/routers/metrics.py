@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -52,7 +53,7 @@ async def latest(kind: str, request: Request):
 async def range_(
     kind: str,
     request: Request,
-    days: int = Query(default=30, ge=1, le=365),
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
 ):
     if kind not in _KINDS:
         raise HTTPException(status_code=404, detail=f"unknown metric: {kind}")
@@ -60,7 +61,7 @@ async def range_(
     method_name = f"range_{kind}"
     if not hasattr(repo, method_name):
         raise HTTPException(status_code=400, detail=f"{kind} has no range endpoint")
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(days=days)
     rows = await getattr(repo, method_name)(start, end)
     return [_strip_id(r) for r in rows]

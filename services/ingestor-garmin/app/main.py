@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -23,7 +23,7 @@ async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
         delay = random.randint(0, startup_jitter_s)
         log.info("startup jitter: sleeping %ds before sync", delay)
         await asyncio.sleep(delay)
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     try:
         counts = await run_sync(
             client=GarminClient(settings),
@@ -32,7 +32,7 @@ async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
         )
         await repo.write_log(
             source="garmin", status="ok",
-            started_at=started, finished_at=datetime.now(timezone.utc),
+            started_at=started, finished_at=datetime.now(UTC),
             counts=counts,
         )
         log.info("sync ok: %s", counts)
@@ -40,7 +40,7 @@ async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
         log.exception("sync failed")
         await repo.write_log(
             source="garmin", status="error",
-            started_at=started, finished_at=datetime.now(timezone.utc),
+            started_at=started, finished_at=datetime.now(UTC),
             error=str(e),
         )
 

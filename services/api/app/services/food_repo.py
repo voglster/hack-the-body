@@ -3,13 +3,16 @@
 Mongo `_id` is exposed as the model's `id` (string) on read; on write we let
 mongo allocate it.
 """
-from datetime import datetime, time, timezone
+import logging
+from datetime import UTC, datetime, time
 from typing import Any
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.food import Food, Macros, MealEntry, MealTemplate, MealTemplateItem
+from app.models.food import Food, Macros, MealEntry, MealTemplate
+
+logger = logging.getLogger(__name__)
 
 
 def _oid(s: str) -> ObjectId:
@@ -35,7 +38,7 @@ class FoodRepo:
         if food.barcode:
             await self.db["foods"].update_one(
                 {"barcode": food.barcode},
-                {"$set": doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
+                {"$set": doc, "$setOnInsert": {"created_at": datetime.now(UTC)}},
                 upsert=True,
             )
             stored = await self.db["foods"].find_one({"barcode": food.barcode})
@@ -62,8 +65,8 @@ class FoodRepo:
             rows = [_doc_to_dict(d) async for d in cur]
             if rows:
                 return rows  # type: ignore[return-value]
-        except Exception:
-            pass
+        except Exception as exc:  # text index optional (mongomock fallback)
+            logger.debug("text search unavailable, falling back to regex: %s", exc)
         cur = self.db["foods"].find(
             {"$or": [
                 {"name": {"$regex": query, "$options": "i"}},
@@ -84,8 +87,8 @@ class FoodRepo:
 
     async def list_entries_for_day(self, day: datetime) -> list[dict[str, Any]]:
         """day is interpreted as UTC midnight start."""
-        start = datetime.combine(day.date(), time.min, tzinfo=timezone.utc)
-        end = datetime.combine(day.date(), time.max, tzinfo=timezone.utc)
+        start = datetime.combine(day.date(), time.min, tzinfo=UTC)
+        end = datetime.combine(day.date(), time.max, tzinfo=UTC)
         cur = self.db["meal_entries"].find(
             {"ts": {"$gte": start, "$lte": end}}
         ).sort("ts", 1)
@@ -100,7 +103,7 @@ class FoodRepo:
         doc = t.model_dump(exclude={"id"})
         await self.db["meal_templates"].update_one(
             {"name": t.name},
-            {"$set": doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
+            {"$set": doc, "$setOnInsert": {"created_at": datetime.now(UTC)}},
             upsert=True,
         )
         stored = await self.db["meal_templates"].find_one({"name": t.name})

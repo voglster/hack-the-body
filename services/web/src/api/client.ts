@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus, WaterToday,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 
@@ -88,6 +88,10 @@ export const api = {
 
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),
+
+  // water
+  waterToday: () => get<WaterToday>("/water/today"),
+  logWater: (oz: number) => post<MealEntry>("/water/log", { oz }),
 
   // push
   vapidPublicKey: () => get<{ public_key: string }>("/push/vapid-public-key"),

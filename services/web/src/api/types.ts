@@ -56,6 +56,14 @@ export interface Workout {
 }
 interface Meta { source: string; source_id: string; }
 
+export interface WaterToday {
+  oz: number;
+  ml: number;
+  entries: number;
+  start: string;
+  end: string;
+}
+
 // ---------- food / meals ----------
 
 export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack" | "supplement";

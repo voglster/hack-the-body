@@ -1,0 +1,100 @@
+"""Vitamin / supplement tracking — binary 'took today?' marker.
+
+Like the water router, we auto-provision a canonical 'Vitamins' supplement
+food and append a meal entry when the user taps 'took my vitamins'. The
+'today' endpoint returns whether anything supplement-shaped has been logged
+in the current local day, plus the timestamp of the first one.
+
+A daily push reminder fires from the scheduler if today's count is still 0
+by COACH_VITAMIN_REMINDER_LOCAL.
+"""
+from __future__ import annotations
+
+from datetime import UTC, datetime, time, timedelta
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Query, Request
+
+from app.auth import require_api_key
+from app.models.food import Food, Macros, MealEntry
+from app.services.food_repo import FoodRepo
+
+router = APIRouter(prefix="/vitamins", dependencies=[Depends(require_api_key)])
+
+VITAMINS_NAME = "Vitamins"
+
+
+async def _get_or_create_vitamins_food(repo: FoodRepo) -> dict[str, Any]:
+    hits = await repo.search_foods(VITAMINS_NAME, limit=5)
+    for h in hits:
+        if h.get("name") == VITAMINS_NAME and h.get("category") == "supplement":
+            return h
+    food = Food(
+        name=VITAMINS_NAME,
+        category="supplement",
+        serving_g=1.0,
+        serving_label="1 stack",
+        per_serving=Macros(),
+        source="builtin",
+    )
+    return await repo.upsert_food(food)
+
+
+@router.post("/log", status_code=201)
+async def log_vitamins(request: Request) -> dict[str, Any]:
+    repo = FoodRepo(request.app.state.db)
+    food = await _get_or_create_vitamins_food(repo)
+    entry = MealEntry(
+        ts=datetime.now(UTC),
+        food_id=food["id"],
+        food_name=VITAMINS_NAME,
+        food_category="supplement",
+        quantity_g=1.0,
+        servings=1.0,
+        slot="supplement",
+        macros=Macros(),
+    )
+    return await repo.insert_entry(entry)
+
+
+async def count_vitamins_today(
+    repo: FoodRepo,
+    start: datetime,
+    end: datetime,
+) -> tuple[int, datetime | None]:
+    entries = await repo.list_entries_for_day(start)
+    count = 0
+    first: datetime | None = None
+    for e in entries:
+        if e.get("food_name") != VITAMINS_NAME:
+            continue
+        ts = e["ts"]
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        if start <= ts <= end:
+            count += 1
+            if first is None or ts < first:
+                first = ts
+    return count, first
+
+
+@router.get("/today")
+async def today(
+    request: Request,
+    start: Annotated[datetime | None, Query(description="UTC start of day window")] = None,
+    end: Annotated[datetime | None, Query(description="UTC end of day window")] = None,
+) -> dict[str, Any]:
+    repo = FoodRepo(request.app.state.db)
+    if start is None:
+        now = datetime.now(UTC)
+        start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    if end is None:
+        end = start + timedelta(days=1)
+    count, first = await count_vitamins_today(repo, start, end)
+    return {
+        "logged": count > 0,
+        "entries": count,
+        "first_ts": first,
+        "start": start,
+        "end": end,
+    }

@@ -16,6 +16,7 @@ from apscheduler.triggers.cron import CronTrigger
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.routers.vitamins import count_vitamins_today
 from app.services.coach import generate_insight
 from app.services.coach_weekly import generate_weekly_review
 from app.services.food_repo import FoodRepo
@@ -57,6 +58,29 @@ async def _weekly_run(settings: Settings, db: AsyncDatabase) -> None:
         logger.info("weekly coach push: %s", result)
     except Exception:
         logger.exception("weekly coach: push failed")
+
+
+async def _vitamin_reminder_run(settings: Settings, db: AsyncDatabase) -> None:
+    """Push 'did you take your vitamins?' if today's count is still 0."""
+    repo = FoodRepo(db)
+    now = datetime.now(UTC)
+    start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    end = start + timedelta(days=1)
+    try:
+        count, _ = await count_vitamins_today(repo, start, end)
+    except Exception:
+        logger.exception("vitamin reminder: count failed")
+        return
+    if count > 0:
+        return
+    try:
+        result = await send_push(
+            db, settings,
+            {"title": "Vitamins", "body": "Did you take your vitamins yet?", "url": "/"},
+        )
+        logger.info("vitamin reminder push: %s", result)
+    except Exception:
+        logger.exception("vitamin reminder: push failed")
 
 
 async def _today_food_totals(db: AsyncDatabase) -> dict:
@@ -103,4 +127,14 @@ def build_scheduler(
         id=f"coach-weekly-{whh:02d}-{wmm:02d}",
         replace_existing=True,
     )
+    vit = settings.vitamin_reminder_time
+    if vit is not None:
+        vhh, vmm = vit
+        sched.add_job(
+            _vitamin_reminder_run,
+            CronTrigger(hour=vhh, minute=vmm, timezone=timezone),
+            args=[settings, db],
+            id=f"vitamin-reminder-{vhh:02d}-{vmm:02d}",
+            replace_existing=True,
+        )
     return sched

@@ -69,6 +69,14 @@ export interface WaterToday {
 export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack" | "supplement";
 export type FoodCategory = "food" | "supplement" | "drink";
 
+export interface VitaminsToday {
+  logged: boolean;
+  entries: number;
+  first_ts: string | null;
+  start: string;
+  end: string;
+}
+
 export interface Macros {
   calories: number | null;
   protein_g: number | null;

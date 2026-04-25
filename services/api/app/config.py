@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Weekly review — uses a much bigger local model on the framework box
     # (RTX 4090, 128GB) where gpt-oss:120b can fit. Slow, deep, runs once
     # a week. Sunday at 21:00 by default.
+    # Vitamin nag — push fires at this local time if no supplement entry
+    # has been logged yet today. Disabled if blank.
+    vitamin_reminder_local: str = "10:00"
+
     weekly_ollama_url: str = "http://10.0.6.45:11434"
     weekly_ollama_model: str = "gpt-oss:120b"
     weekly_timeout_s: float = 600.0
@@ -36,6 +40,14 @@ class Settings(BaseSettings):
     vapid_subject: str = "mailto:hack-the-body@local"
     vapid_public_key: str = ""
     vapid_private_key: str = ""
+
+    @property
+    def vitamin_reminder_time(self) -> tuple[int, int] | None:
+        s = self.vitamin_reminder_local.strip()
+        if not s:
+            return None
+        hh, mm = s.split(":")
+        return int(hh), int(mm)
 
     @property
     def coach_weekly_time(self) -> tuple[int, int]:

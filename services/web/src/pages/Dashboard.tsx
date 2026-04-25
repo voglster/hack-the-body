@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Summary } from "../api/types";
 import { CoachCard } from "../components/CoachCard";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { VitaminsCard } from "../components/VitaminsCard";
 import { WaterCard } from "../components/WaterCard";
 import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
@@ -171,6 +172,7 @@ export function Dashboard() {
 
       <CoachCard />
       <WaterCard />
+      <VitaminsCard />
       <NotificationsCard />
 
       {/* Food first — it's the primary mobile use-case. */}

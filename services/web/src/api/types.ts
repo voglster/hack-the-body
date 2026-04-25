@@ -110,6 +110,14 @@ export interface MealTemplate {
   items: MealTemplateItem[];
 }
 
+export interface SyncStatusEntry {
+  last_ok: { source: string; status: string; started_at: string; finished_at: string | null;
+             counts: Record<string, number>; error: string | null } | null;
+  last_error: { source: string; status: string; started_at: string; finished_at: string | null;
+                counts: Record<string, number>; error: string | null } | null;
+}
+export type SyncStatus = Record<string, SyncStatusEntry>;
+
 export interface CoachInsight {
   text: string;
   model: string;

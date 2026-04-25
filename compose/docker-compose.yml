@@ -1,7 +1,11 @@
 # Production compose for Hack the Body.
 # Drop this on a host as `~/compose/hack-the-body/docker-compose.yml`,
 # put a `.env` next to it (see compose/.env.example), and `docker compose up -d`.
-# Watchtower (running elsewhere on the host) auto-updates the two app images.
+#
+# Watchtower (running in `~/compose/watchtower/` on the host) auto-updates any
+# container labeled `com.centurylinklabs.watchtower.enable=true`. The `app` and
+# `ingestor-garmin` services below are labeled; `mongo` is not (we never want
+# watchtower restarting the database mid-write).
 
 services:
   mongo:
@@ -22,6 +26,8 @@ services:
     image: ghcr.io/voglster/hack-the-body-app:latest
     container_name: hack-the-body-app
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     depends_on:
       mongo:
         condition: service_healthy
@@ -40,6 +46,8 @@ services:
     image: ghcr.io/voglster/hack-the-body-ingestor-garmin:latest
     container_name: hack-the-body-ingestor
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     depends_on:
       mongo:
         condition: service_healthy

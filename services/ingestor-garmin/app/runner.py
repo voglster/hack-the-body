@@ -1,6 +1,8 @@
+import asyncio
 import logging
+import random
 from datetime import date, timedelta
-from typing import Protocol
+from typing import Awaitable, Callable, Protocol
 
 from app.mappers import (
     map_body_comp,
@@ -14,6 +16,17 @@ from app.repo import GarminRepo
 
 log = logging.getLogger(__name__)
 
+JitterFn = Callable[[], Awaitable[None]]
+
+
+async def _default_jitter() -> None:
+    """0.5–3s random pause between API calls so we don't look like a tight loop."""
+    await asyncio.sleep(random.uniform(0.5, 3.0))
+
+
+async def _no_jitter() -> None:
+    return
+
 
 class ClientProto(Protocol):
     def login(self) -> None: ...
@@ -26,12 +39,7 @@ class ClientProto(Protocol):
     def fetch_rhr_series(self, s: date, e: date) -> list[dict]: ...
 
 
-async def run_sync(*, client: ClientProto, repo: GarminRepo, backfill_days: int) -> dict[str, int]:
-    client.login()
-    end = date.today()
-    start = end - timedelta(days=backfill_days)
-    counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0, "workouts": 0}
-
+async def _do_weight(client, repo, start, end, counts):
     try:
         for w in map_weight(client.fetch_weight(start, end)):
             if await repo.upsert_weight(w):
@@ -39,6 +47,8 @@ async def run_sync(*, client: ClientProto, repo: GarminRepo, backfill_days: int)
     except Exception as e:
         log.exception("weight fetch failed: %s", e)
 
+
+async def _do_body_comp(client, repo, start, end, counts):
     try:
         for b in map_body_comp(client.fetch_body_comp(start, end)):
             if await repo.upsert_body_comp(b):
@@ -46,30 +56,71 @@ async def run_sync(*, client: ClientProto, repo: GarminRepo, backfill_days: int)
     except Exception as e:
         log.exception("body_comp fetch failed: %s", e)
 
-    day = end
-    for _ in range(backfill_days + 1):
-        try:
-            if await repo.upsert_sleep(map_sleep(client.fetch_sleep(day))):
-                counts["sleep"] += 1
-        except Exception as e:
-            log.warning("sleep %s skipped: %s", day, e)
-        try:
-            if await repo.upsert_hrv(map_hrv(client.fetch_hrv(day))):
-                counts["hrv"] += 1
-        except Exception as e:
-            log.warning("hrv %s skipped: %s", day, e)
-        try:
-            if await repo.upsert_vo2max(map_vo2max(client.fetch_vo2max(day))):
-                counts["vo2max"] += 1
-        except Exception as e:
-            log.warning("vo2max %s skipped: %s", day, e)
-        day -= timedelta(days=1)
 
+async def _do_workouts(client, repo, start, end, counts):
     try:
         for wo in map_workout(client.fetch_workouts(start, end)):
             if await repo.upsert_workout(wo):
                 counts["workouts"] += 1
     except Exception as e:
         log.exception("workouts fetch failed: %s", e)
+
+
+async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
+    """Sleep / HRV / VO2max are per-day endpoints. Iterate days in random order."""
+    shuffled_days = list(days)
+    random.shuffle(shuffled_days)
+    for day in shuffled_days:
+        # Within a day, also shuffle which metric we hit first.
+        per_day = [
+            ("sleep", lambda d=day: client.fetch_sleep(d), map_sleep, repo.upsert_sleep),
+            ("hrv", lambda d=day: client.fetch_hrv(d), map_hrv, repo.upsert_hrv),
+            ("vo2max", lambda d=day: client.fetch_vo2max(d), map_vo2max, repo.upsert_vo2max),
+        ]
+        random.shuffle(per_day)
+        for name, fetch, mapper, upsert in per_day:
+            try:
+                if await upsert(mapper(fetch())):
+                    counts[name] += 1
+            except Exception as e:
+                log.warning("%s %s skipped: %s", name, day, e)
+            await jitter()
+
+
+async def run_sync(
+    *,
+    client: ClientProto,
+    repo: GarminRepo,
+    backfill_days: int,
+    jitter: JitterFn = _default_jitter,
+) -> dict[str, int]:
+    client.login()
+    end = date.today()
+    start = end - timedelta(days=backfill_days)
+    counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0, "workouts": 0}
+
+    days = [end - timedelta(days=i) for i in range(backfill_days + 1)]
+
+    # Range-based fetches (one call covers the whole window) — order them randomly.
+    range_steps = [
+        ("weight", _do_weight),
+        ("body_comp", _do_body_comp),
+        ("workouts", _do_workouts),
+    ]
+    random.shuffle(range_steps)
+
+    # Interleave range steps with the per-day chunk; pick where per-day lands randomly.
+    insertion = random.randint(0, len(range_steps))
+    schedule = list(range_steps)
+    schedule.insert(insertion, ("daily", None))
+
+    log.info("sync schedule: %s", [s[0] for s in schedule])
+
+    for name, fn in schedule:
+        if name == "daily":
+            await _do_daily_per_day(client, repo, days, counts, jitter)
+        else:
+            await fn(client, repo, start, end, counts)
+        await jitter()
 
     return counts

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import sys
 from datetime import datetime, timezone
 
@@ -16,8 +17,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("ingestor-garmin")
 
 
-async def _do_sync(settings, db) -> None:
+async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
     repo = GarminRepo(db)
+    if startup_jitter_s > 0:
+        delay = random.randint(0, startup_jitter_s)
+        log.info("startup jitter: sleeping %ds before sync", delay)
+        await asyncio.sleep(delay)
     started = datetime.now(timezone.utc)
     try:
         counts = await run_sync(
@@ -59,8 +64,11 @@ async def _run() -> None:
     db = client[settings.mongo_db]
 
     scheduler = AsyncIOScheduler(timezone="UTC")
+    # Nightly cron fires at the configured minute, but we add up to 15 min
+    # of randomized startup jitter inside _do_sync so we don't ping Garmin at the
+    # exact same instant every night.
     scheduler.add_job(
-        lambda: asyncio.create_task(_do_sync(settings, db)),
+        lambda: asyncio.create_task(_do_sync(settings, db, startup_jitter_s=900)),
         CronTrigger.from_crontab(settings.garmin_schedule_cron),
         id="nightly",
     )

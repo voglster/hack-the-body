@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from app.repo import GarminRepo
-from app.runner import run_sync
+from app.runner import _no_jitter, run_sync
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -28,7 +28,7 @@ class FakeClient:
 async def test_run_sync_writes_all_metrics(mock_db):
     repo = GarminRepo(mock_db)
     client = FakeClient()
-    counts = await run_sync(client=client, repo=repo, backfill_days=1)
+    counts = await run_sync(client=client, repo=repo, backfill_days=1, jitter=_no_jitter)
     assert counts["weight"] == 1
     assert counts["body_comp"] == 1
     assert counts["sleep"] == 1
@@ -43,7 +43,7 @@ async def test_run_sync_writes_all_metrics(mock_db):
 async def test_run_sync_idempotent(mock_db):
     repo = GarminRepo(mock_db)
     client = FakeClient()
-    await run_sync(client=client, repo=repo, backfill_days=1)
-    await run_sync(client=client, repo=repo, backfill_days=1)
+    await run_sync(client=client, repo=repo, backfill_days=1, jitter=_no_jitter)
+    await run_sync(client=client, repo=repo, backfill_days=1, jitter=_no_jitter)
     assert await mock_db["metrics_weight"].count_documents({}) == 1
     assert await mock_db["workouts"].count_documents({}) == 1

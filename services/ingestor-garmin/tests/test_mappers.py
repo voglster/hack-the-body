@@ -2,6 +2,7 @@ from app.mappers import (
     map_body_comp,
     map_daily_summary,
     map_hrv,
+    map_intraday_steps,
     map_sleep,
     map_vo2max,
     map_weight,
@@ -70,6 +71,25 @@ def test_map_daily_summary(fixture):
     # Raw blob is preserved for future use.
     assert s.raw["userProfileId"] == 12345
     assert s.raw["wellnessKilocalories"] == 2840
+
+
+def test_map_intraday_steps(fixture):
+    raw = fixture("intraday_steps.json")
+    buckets = map_intraday_steps(raw)
+    assert len(buckets) == 4
+    assert buckets[0].steps == 0
+    assert buckets[2].steps == 856
+    assert buckets[2].activity_level == "active"
+    assert buckets[3].activity_level == "highlyActive"
+    # Source IDs are unique per bucket-start.
+    assert len({b.source_id for b in buckets}) == 4
+    # Raw is preserved.
+    assert buckets[2].raw["primaryActivityLevel"] == "active"
+
+
+def test_map_intraday_steps_empty():
+    assert map_intraday_steps([]) == []
+    assert map_intraday_steps(None) == []  # type: ignore[arg-type]
 
 
 def test_map_workout(fixture):

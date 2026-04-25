@@ -23,6 +23,7 @@ class FakeClient:
     def fetch_workouts(self, _s, _e) -> list[dict]: return _load("workout.json")
     def fetch_rhr_series(self, _s, _e) -> list[dict]: return []
     def fetch_daily_summary(self, _d) -> dict: return _load("daily_summary.json")
+    def fetch_intraday_steps(self, _d) -> list[dict]: return _load("intraday_steps.json")
 
 
 async def test_run_sync_writes_all_metrics(mock_db):
@@ -38,9 +39,16 @@ async def test_run_sync_writes_all_metrics(mock_db):
     assert counts["vo2max"] == 1
     assert counts["daily_summary"] == 1
     assert counts["workouts"] == 1
+    # 4 fixture buckets per day x (backfill_days+1=2 days) = 8 — but the
+    # second day re-pulls the same fixture, so source_id dedupes both runs
+    # to the same 4 records => count == 4 inserts on first call only,
+    # but with backfill_days=1 the per-day loop runs twice over the same
+    # fixture => 4 unique source_ids total.
+    assert counts["steps_intraday"] == 4
 
     assert await mock_db["metrics_weight"].count_documents({}) == 1
     assert await mock_db["metrics_daily_summary"].count_documents({}) == 1
+    assert await mock_db["metrics_steps_intraday"].count_documents({}) == 4
     assert await mock_db["workouts"].count_documents({}) == 1
 
 

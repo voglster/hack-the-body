@@ -8,6 +8,19 @@ export interface Summary {
   daily_summary: DailySummaryPoint | null;
 }
 
+export interface StepsBucket {
+  ts: string;
+  end_ts: string;
+  steps: number;
+  activity_level: string | null;
+}
+
+export interface StepsToday {
+  total: number;
+  buckets: StepsBucket[];
+  as_of: string;
+}
+
 export interface DailySummaryPoint {
   ts: string;
   steps: number;

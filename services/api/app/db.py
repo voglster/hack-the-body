@@ -10,6 +10,7 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
     "metrics_body_comp": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_vo2max": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_daily_summary": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
+    "metrics_steps_intraday": {"timeField": "ts", "metaField": "meta", "granularity": "minutes"},
     "meal_entries": {"timeField": "ts", "metaField": "meta", "granularity": "minutes"},
 }
 

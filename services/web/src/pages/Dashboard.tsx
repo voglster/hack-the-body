@@ -6,6 +6,7 @@ import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
 import { StepsChart } from "../components/StepsChart";
+import { StepsTodayChart } from "../components/StepsTodayChart";
 import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
 import { WorkoutList } from "../components/WorkoutList";
@@ -35,23 +36,29 @@ const vo2Card = (s: Summary | undefined): CardData => ({
   value: s?.vo2max ? s.vo2max.value.toFixed(1) : "—",
 });
 
-const stepsCard = (s: Summary | undefined): CardData => {
+const stepsCard = (s: Summary | undefined, todaySteps: number | undefined): CardData => {
   const ds = s?.daily_summary;
+  // Prefer live intraday total when available (updates every sync); fall back
+  // to the daily-summary record (only refreshed by Garmin once per day).
+  const value = todaySteps ?? ds?.steps;
   return {
     label: "Steps",
-    value: ds ? ds.steps.toLocaleString() : "—",
+    value: value != null ? value.toLocaleString() : "—",
     sub: ds?.step_goal ? `goal ${ds.step_goal.toLocaleString()}` : undefined,
   };
 };
 
-function summaryToCards(s: Summary | undefined): CardData[] {
-  return [weightCard(s), sleepCard(s), hrvCard(s), vo2Card(s), stepsCard(s)];
+function summaryToCards(s: Summary | undefined, todaySteps: number | undefined): CardData[] {
+  return [weightCard(s), sleepCard(s), hrvCard(s), vo2Card(s), stepsCard(s, todaySteps)];
 }
 
-function SummaryCards({ summary }: { summary: Summary | undefined }) {
+function SummaryCards({ summary, todaySteps }: {
+  summary: Summary | undefined;
+  todaySteps: number | undefined;
+}) {
   return (
     <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
-      {summaryToCards(summary).map(c => (
+      {summaryToCards(summary, todaySteps).map(c => (
         <MetricCard key={c.label} label={c.label} value={c.value} sub={c.sub} />
       ))}
     </section>
@@ -90,6 +97,11 @@ export function Dashboard() {
     queryFn: api.summary,
     refetchInterval: 60_000,
   });
+  const { data: stepsToday } = useQuery({
+    queryKey: ["stepsToday"],
+    queryFn: api.stepsToday,
+    refetchInterval: 60_000,
+  });
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -98,9 +110,10 @@ export function Dashboard() {
         <SyncButton />
       </header>
 
-      <SummaryCards summary={summary} />
+      <SummaryCards summary={summary} todaySteps={stepsToday?.total} />
 
       <Section title="Today’s food"><TodayMeals /></Section>
+      <Section title="Today’s steps (15min buckets)"><StepsTodayChart /></Section>
       <Section title="Weight (60d, 7d avg)"><WeightChart /></Section>
       <Section title="Steps (30d)"><StepsChart /></Section>
       <Section title="Sleep (30d)"><SleepChart /></Section>

@@ -44,6 +44,15 @@ class VO2Max(_TSBase):
     value: float
 
 
+class StepsBucket(_TSBase):
+    end_ts: datetime
+    steps: int
+    activity_level: str | None = None
+    # Per-bucket raw slice from Garmin so we can surface other fields later
+    # (active level, primaryActivityLevel, etc.) without re-pulling.
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class DailySummary(_TSBase):
     steps: int
     step_goal: int | None = None

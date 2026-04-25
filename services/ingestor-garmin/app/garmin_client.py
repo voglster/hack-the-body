@@ -98,6 +98,22 @@ class GarminClient:
             f"?fromDate={start.isoformat()}&untilDate={end.isoformat()}"
         )
 
+    def fetch_intraday_steps(self, day: date) -> list[dict]:
+        """Garmin's 15-minute step buckets for a day.
+
+        Returns a list of `{startGMT, endGMT, steps, primaryActivityLevel}`
+        records spanning the day. Empty list if nothing's been synced yet.
+        """
+        data = self._connectapi(
+            f"/wellness-service/wellness/dailySummaryChart/{self._username}"
+            f"?date={day.isoformat()}",
+        )
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("wellnessSteps") or data.get("steps") or []
+        return []
+
     def fetch_daily_summary(self, day: date) -> dict:
         """Garmin's rich per-day wellness summary: steps, distance, calories,
         resting HR, intensity minutes, floors, etc."""

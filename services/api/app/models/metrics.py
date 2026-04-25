@@ -44,6 +44,14 @@ class VO2Max(_TimeseriesBase):
     value: float = Field(gt=0)
 
 
+class StepsBucket(_TimeseriesBase):
+    """One 15-min step bucket from Garmin's intraday wellness chart."""
+    end_ts: datetime
+    steps: int = Field(ge=0)
+    activity_level: str | None = None  # active, sedentary, sleeping, etc.
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class DailySummary(_TimeseriesBase):
     """Daily wellness summary from Garmin's /usersummary-service endpoint.
 

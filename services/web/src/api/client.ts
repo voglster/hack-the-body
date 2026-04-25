@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday,
 } from "./types";
 
 declare global {
@@ -39,6 +39,7 @@ export const api = {
   rhrRange:    (days = 30) => get<RHRPoint[]>(`/metrics/rhr/range?days=${days}`),
   vo2maxRange: (days = 90) => get<VO2MaxPoint[]>(`/metrics/vo2max/range?days=${days}`),
   stepsRange:  (days = 30) => get<DailySummaryPoint[]>(`/metrics/daily_summary/range?days=${days}`),
+  stepsToday:  () => get<StepsToday>("/metrics/steps/today"),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
   triggerIngest: async (source: string): Promise<unknown> => {
     const r = await fetch(`${BASE}/admin/ingest/${source}`, {

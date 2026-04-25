@@ -2,7 +2,17 @@ from datetime import datetime
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models import HRV, RHR, BodyComp, DailySummary, Sleep, VO2Max, Weight, Workout
+from app.models import (
+    HRV,
+    RHR,
+    BodyComp,
+    DailySummary,
+    Sleep,
+    StepsBucket,
+    VO2Max,
+    Weight,
+    Workout,
+)
 
 
 class GarminRepo:
@@ -94,6 +104,20 @@ class GarminRepo:
                 "floors_climbed": s.floors_climbed,
                 "raw": s.raw,
                 "meta": {"source": s.source, "source_id": s.source_id},
+            },
+        )
+
+    async def upsert_steps_bucket(self, b: StepsBucket) -> bool:
+        return await self._ts_upsert(
+            "metrics_steps_intraday",
+            b.source_id,
+            {
+                "ts": b.ts,
+                "end_ts": b.end_ts,
+                "steps": b.steps,
+                "activity_level": b.activity_level,
+                "raw": b.raw,
+                "meta": {"source": b.source, "source_id": b.source_id},
             },
         )
 

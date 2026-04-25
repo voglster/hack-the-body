@@ -11,6 +11,7 @@ import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
 import { StepsChart } from "../components/StepsChart";
+import { StepsTodayCard } from "../components/StepsTodayCard";
 import { StepsTodayChart } from "../components/StepsTodayChart";
 import { SyncStatusFooter } from "../components/SyncStatusFooter";
 import { TodayMeals } from "../components/TodayMeals";
@@ -25,16 +26,6 @@ interface CardData {
   progress?: number; behindPace?: boolean;
 }
 
-/** Fraction of waking hours that have elapsed (6am to midnight = 18hr).
- *  Returns 0..1, capped. Used to grade "are you on pace for the step goal?". */
-function wakingFractionElapsed(): number {
-  const now = new Date();
-  const hour = now.getHours() + now.getMinutes() / 60;
-  const start = 6;
-  const end = 24;
-  return Math.min(1, Math.max(0, (hour - start) / (end - start)));
-}
-
 const weightCard = (s: Summary | undefined): CardData => ({
   label: "Weight",
   value: s?.weight ? formatLbs(s.weight.kg) : "—",
@@ -47,50 +38,14 @@ const sleepCard = (s: Summary | undefined): CardData => ({
   sub: s?.sleep?.score != null ? `score ${s.sleep.score}` : undefined,
 });
 
-const stepsCard = (s: Summary | undefined, todaySteps: number | undefined): CardData => {
-  const ds = s?.daily_summary;
-  const steps = todaySteps ?? ds?.steps ?? 0;
-  const goal = ds?.step_goal ?? null;
-  if (goal && goal > 0) {
-    const fraction = steps / goal;
-    const expected = wakingFractionElapsed();
-    const behindPace = fraction < expected - 0.05;
-    return {
-      label: "Steps",
-      value: steps.toLocaleString(),
-      sub: `${Math.round(fraction * 100)}% of ${goal.toLocaleString()}`,
-      progress: fraction,
-      behindPace,
-    };
-  }
-  return {
-    label: "Steps",
-    value: steps != null ? steps.toLocaleString() : "—",
-  };
-};
-
-function summaryToCards(s: Summary | undefined, todaySteps: number | undefined): CardData[] {
-  // HRV/VO2 live in the collapsed sections below — not interesting day-to-day.
-  return [stepsCard(s, todaySteps), sleepCard(s), weightCard(s)];
-}
-
-function SummaryCards({ summary, todaySteps }: {
-  summary: Summary | undefined;
-  todaySteps: number | undefined;
-}) {
+function SummaryCards({ summary }: { summary: Summary | undefined }) {
+  // Steps got promoted to a hero card above; Sleep/Weight ride along
+  // here since they're glance-only.
+  const cards = [sleepCard(summary), weightCard(summary)];
   return (
-    // 3 cards: steps + sleep + weight. The metrics that actually matter
-    // for the goal. HRV/VO2 are still tracked in their own collapsed sections.
-    <section className="grid grid-cols-3 gap-2 sm:gap-3">
-      {summaryToCards(summary, todaySteps).map(c => (
-        <MetricCard
-          key={c.label}
-          label={c.label}
-          value={c.value}
-          sub={c.sub}
-          progress={c.progress}
-          behindPace={c.behindPace}
-        />
+    <section className="grid grid-cols-2 gap-2 sm:gap-3">
+      {cards.map(c => (
+        <MetricCard key={c.label} label={c.label} value={c.value} sub={c.sub} />
       ))}
     </section>
   );
@@ -168,7 +123,9 @@ export function Dashboard() {
 
       <SyncStatusFooter />
 
-      <SummaryCards summary={summary} todaySteps={stepsToday?.total} />
+      <StepsTodayCard summary={summary} todaySteps={stepsToday?.total} />
+
+      <SummaryCards summary={summary} />
 
       <CoachCard />
       <WaterCard />

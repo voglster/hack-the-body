@@ -1,5 +1,13 @@
 # Hack the Body — Project Notes for Claude
 
+## Workflow for this repo
+
+This is a personal tool, single committer, non-critical. Skip the
+"don't auto-commit until reviewed" gate from the global CLAUDE.md:
+when tests + lint + typecheck are all green, commit and push to
+master without waiting for explicit approval. Reserve the review
+pause for destructive or hard-to-reverse actions.
+
 ## Repo
 
 - **GitHub:** `voglster/hack-the-body` (public)

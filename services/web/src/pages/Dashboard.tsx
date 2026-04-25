@@ -5,6 +5,7 @@ import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
 import { StepsChart } from "../components/StepsChart";
+import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
 import { WorkoutList } from "../components/WorkoutList";
 import { formatDuration, formatLbs } from "../lib/format";
@@ -63,6 +64,11 @@ export function Dashboard() {
               : undefined
           }
         />
+      </section>
+
+      <section>
+        <h2 className="text-sm uppercase tracking-wide text-neutral-400 mb-2">Today’s food</h2>
+        <TodayMeals />
       </section>
 
       <section>

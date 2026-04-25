@@ -10,9 +10,11 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
     "metrics_body_comp": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_vo2max": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_daily_summary": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
+    "meal_entries": {"timeField": "ts", "metaField": "meta", "granularity": "minutes"},
 }
 
-REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log"]
+REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
+                       "foods", "meal_templates"]
 
 
 async def ensure_collections(db: AsyncIOMotorDatabase) -> None:
@@ -30,6 +32,10 @@ async def ensure_collections(db: AsyncIOMotorDatabase) -> None:
 
     await db["workouts"].create_index("source_id", unique=True, sparse=True)
     await db["ingestion_log"].create_index([("source", 1), ("started_at", -1)])
+    # Foods: barcode-keyed lookups + text search
+    await db["foods"].create_index("barcode", unique=True, sparse=True)
+    await db["foods"].create_index([("name", "text"), ("brand", "text")])
+    await db["meal_templates"].create_index("name", unique=True)
 
 
 def make_client(settings: Settings) -> AsyncIOMotorClient:

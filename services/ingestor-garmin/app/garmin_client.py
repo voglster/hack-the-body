@@ -13,12 +13,18 @@ class GarminRateLimitError(RuntimeError):
 
 
 class GarminClient:
-    """Wraps `garminconnect` (which wraps garth + curl-cffi for TLS impersonation).
+    """Wraps `garminconnect` 0.3.x.
 
-    Login policy:
-    1. Try to resume a cached session from disk. If valid, never touch SSO.
-    2. Only on first run / expired session, attempt login with credentials.
-    3. On 429, raise GarminRateLimitError so the caller can log it cleanly.
+    Auth model:
+    1. `garminconnect` accepts a `tokenstore` directory holding `garmin_tokens.json`.
+    2. If tokens exist, library loads them. If the DI access token is near expiry,
+       it refreshes silently via the DI refresh endpoint (NOT Cloudflare-blocked SSO).
+    3. Only on cold-start with no tokens does it run the 5-strategy SSO chain.
+    4. After any successful login, library writes tokens back to disk for the next run.
+
+    First-run bootstrap: run `garmin-login` from a clean IP once, copy the resulting
+    `garmin_tokens.json` into the configured session dir on the prod host. From then
+    on the ingestor refreshes itself and never touches SSO again.
     """
 
     def __init__(self, settings: Settings):
@@ -28,33 +34,21 @@ class GarminClient:
         self._g: Garmin | None = None
 
     def login(self) -> None:
-        # Build a Garmin instance without credentials so we can try resume first.
-        g = Garmin()
+        # Pass credentials so SSO can run as a fallback. Tokenstore takes priority:
+        # if tokens exist there, library loads + refreshes them and skips SSO.
+        g = Garmin(
+            email=self.settings.garmin_email or None,
+            password=self.settings.garmin_password or None,
+        )
         try:
-            g.login(str(self.session_dir))  # garminconnect supports passing token dir to skip login
-            self._g = g
-            return
-        except Exception:
-            pass
-
-        # No cached session (or expired). Need creds.
-        if not self.settings.garmin_email or not self.settings.garmin_password:
-            raise RuntimeError(
-                "no cached Garmin session and GARMIN_EMAIL/GARMIN_PASSWORD not set"
-            )
-
-        g = Garmin(email=self.settings.garmin_email, password=self.settings.garmin_password)
-        try:
-            g.login()
+            g.login(tokenstore=str(self.session_dir))
         except Exception as e:
             msg = str(e)
             if "429" in msg or "rate" in msg.lower():
                 raise GarminRateLimitError(
-                    "Garmin SSO rate-limited (429). Different egress IP required."
+                    "Garmin SSO rate-limited (429). Bootstrap tokens from a clean IP."
                 ) from e
             raise
-        # Persist tokens for next time.
-        g.garth.dump(str(self.session_dir))
         self._g = g
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
@@ -65,7 +59,7 @@ class GarminClient:
     @property
     def _username(self) -> str:
         assert self._g is not None
-        return self._g.garth.username
+        return self._g.display_name
 
     def fetch_sleep(self, day: date) -> dict:
         return self._connectapi(

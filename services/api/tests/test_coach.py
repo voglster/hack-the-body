@@ -71,6 +71,35 @@ async def test_insight_returns_text_and_metadata(client, mock_db, fake_ollama_re
     assert body["total_ms"] == 4000
     assert body["context"]["sleep"]["duration_s"] == 27000
     assert body["context"]["hrv"]["rmssd_ms"] == 33.0
+    assert body["trigger"] == "manual"
+
+    # The insight should have been persisted to coach_insights.
+    saved = await mock_db["coach_insights"].count_documents({})
+    assert saved == 1
+
+
+async def test_recent_returns_persisted_insights(client, mock_db, fake_ollama_response):
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        # Generate two insights so recent has something to return.
+        await client.get("/coach/insight", headers=HEADERS)
+        await client.get("/coach/insight", headers=HEADERS)
+
+    r = await client.get("/coach/recent?limit=5", headers=HEADERS)
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 2
+    assert all("Sleep solid" in row["text"] for row in rows)
 
 
 async def test_insight_502_on_ollama_failure(client, mock_db):

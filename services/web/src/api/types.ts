@@ -125,6 +125,13 @@ export interface CoachInsight {
   total_ms: number;
   generated_at: string;
   context: Record<string, unknown>;
+  trigger: string;
+}
+
+export interface CoachRecentEntry {
+  text: string;
+  generated_at: string;
+  trigger: string;
 }
 
 export interface TodayTotals {

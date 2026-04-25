@@ -1,0 +1,99 @@
+from datetime import datetime
+from typing import Any
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from app.models.metrics import BodyComp, HRV, RHR, Sleep, VO2Max, Weight
+
+
+class MetricsRepo:
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.db = db
+
+    async def insert_weight(self, w: Weight) -> None:
+        await self.db["metrics_weight"].insert_one(
+            {"ts": w.ts, "kg": w.kg, "meta": {"source": w.source, "source_id": w.source_id}}
+        )
+
+    async def latest_weight(self) -> dict[str, Any] | None:
+        return await self.db["metrics_weight"].find_one(sort=[("ts", -1)])
+
+    async def range_weight(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = self.db["metrics_weight"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]
+
+    async def insert_sleep(self, s: Sleep) -> None:
+        await self.db["metrics_sleep"].insert_one(
+            {
+                "ts": s.ts,
+                "duration_s": s.duration_s,
+                "deep_s": s.deep_s,
+                "rem_s": s.rem_s,
+                "light_s": s.light_s,
+                "awake_s": s.awake_s,
+                "score": s.score,
+                "meta": {"source": s.source, "source_id": s.source_id},
+            }
+        )
+
+    async def latest_sleep(self) -> dict[str, Any] | None:
+        return await self.db["metrics_sleep"].find_one(sort=[("ts", -1)])
+
+    async def range_sleep(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = self.db["metrics_sleep"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]
+
+    async def insert_hrv(self, h: HRV) -> None:
+        await self.db["metrics_hrv"].insert_one(
+            {"ts": h.ts, "rmssd_ms": h.rmssd_ms,
+             "meta": {"source": h.source, "source_id": h.source_id}}
+        )
+
+    async def latest_hrv(self) -> dict[str, Any] | None:
+        return await self.db["metrics_hrv"].find_one(sort=[("ts", -1)])
+
+    async def range_hrv(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = self.db["metrics_hrv"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]
+
+    async def insert_rhr(self, r: RHR) -> None:
+        await self.db["metrics_rhr"].insert_one(
+            {"ts": r.ts, "bpm": r.bpm,
+             "meta": {"source": r.source, "source_id": r.source_id}}
+        )
+
+    async def latest_rhr(self) -> dict[str, Any] | None:
+        return await self.db["metrics_rhr"].find_one(sort=[("ts", -1)])
+
+    async def range_rhr(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = self.db["metrics_rhr"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]
+
+    async def insert_body_comp(self, b: BodyComp) -> None:
+        await self.db["metrics_body_comp"].insert_one(
+            {
+                "ts": b.ts,
+                "weight_kg": b.weight_kg,
+                "body_fat_pct": b.body_fat_pct,
+                "muscle_mass_kg": b.muscle_mass_kg,
+                "body_water_pct": b.body_water_pct,
+                "bone_mass_kg": b.bone_mass_kg,
+                "meta": {"source": b.source, "source_id": b.source_id},
+            }
+        )
+
+    async def latest_body_comp(self) -> dict[str, Any] | None:
+        return await self.db["metrics_body_comp"].find_one(sort=[("ts", -1)])
+
+    async def insert_vo2max(self, v: VO2Max) -> None:
+        await self.db["metrics_vo2max"].insert_one(
+            {"ts": v.ts, "value": v.value,
+             "meta": {"source": v.source, "source_id": v.source_id}}
+        )
+
+    async def latest_vo2max(self) -> dict[str, Any] | None:
+        return await self.db["metrics_vo2max"].find_one(sort=[("ts", -1)])
+
+    async def range_vo2max(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = self.db["metrics_vo2max"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
+        return [d async for d in cur]

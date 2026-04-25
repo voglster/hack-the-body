@@ -1,0 +1,14 @@
+[
+  {
+    "samplePk": 900000001,
+    "date": 1714012800000,
+    "calendarDate": "2026-04-23",
+    "weight": 108900.0,
+    "bmi": null,
+    "bodyFat": null,
+    "bodyWater": null,
+    "boneMass": null,
+    "muscleMass": null,
+    "sourceType": "MANUAL"
+  }
+]

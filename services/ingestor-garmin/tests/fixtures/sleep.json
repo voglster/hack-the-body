@@ -1,0 +1,15 @@
+{
+  "dailySleepDTO": {
+    "id": 1714012345678,
+    "userProfilePK": 12345,
+    "calendarDate": "2026-04-23",
+    "sleepStartTimestampGMT": 1714012800000,
+    "sleepEndTimestampGMT": 1714039200000,
+    "sleepTimeSeconds": 26400,
+    "deepSleepSeconds": 3600,
+    "lightSleepSeconds": 15000,
+    "remSleepSeconds": 5400,
+    "awakeSleepSeconds": 2400,
+    "sleepScores": {"overall": {"value": 78}}
+  }
+}

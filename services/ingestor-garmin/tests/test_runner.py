@@ -1,0 +1,49 @@
+import json
+from datetime import date
+from pathlib import Path
+
+from app.repo import GarminRepo
+from app.runner import run_sync
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _load(name: str):
+    with open(FIXTURES / name) as f:
+        return json.load(f)
+
+
+class FakeClient:
+    def login(self) -> None: ...
+    def fetch_sleep(self, d: date) -> dict: return _load("sleep.json")
+    def fetch_hrv(self, d: date) -> dict: return _load("hrv.json")
+    def fetch_weight(self, s: date, e: date) -> list[dict]: return _load("weight.json")
+    def fetch_body_comp(self, s: date, e: date) -> list[dict]: return _load("body_comp.json")
+    def fetch_vo2max(self, d: date) -> dict: return _load("vo2max.json")
+    def fetch_workouts(self, s: date, e: date) -> list[dict]: return _load("workout.json")
+    def fetch_rhr_series(self, s: date, e: date) -> list[dict]: return []
+
+
+async def test_run_sync_writes_all_metrics(mock_db):
+    repo = GarminRepo(mock_db)
+    client = FakeClient()
+    counts = await run_sync(client=client, repo=repo, backfill_days=1)
+    assert counts["weight"] == 1
+    assert counts["body_comp"] == 1
+    assert counts["sleep"] == 1
+    assert counts["hrv"] == 1
+    assert counts["vo2max"] == 1
+    assert counts["workouts"] == 1
+
+    assert await mock_db["metrics_weight"].count_documents({}) == 1
+    assert await mock_db["workouts"].count_documents({}) == 1
+
+
+async def test_run_sync_idempotent(mock_db):
+    repo = GarminRepo(mock_db)
+    client = FakeClient()
+    await run_sync(client=client, repo=repo, backfill_days=1)
+    await run_sync(client=client, repo=repo, backfill_days=1)
+    assert await mock_db["metrics_weight"].count_documents({}) == 1
+    assert await mock_db["workouts"].count_documents({}) == 1

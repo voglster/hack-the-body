@@ -37,13 +37,19 @@ async def summary(request: Request):
 _KINDS = {"weight", "sleep", "hrv", "rhr", "body_comp", "vo2max", "daily_summary", "steps_intraday"}
 
 
-@router.get("/steps/today")
-async def steps_today(request: Request) -> dict:
-    """15-min intraday step buckets for today (UTC) with running total."""
+@router.get("/steps/day")
+async def steps_day(
+    request: Request,
+    start: Annotated[datetime, Query(description="UTC start of the day window (ISO 8601)")],
+    end: Annotated[datetime, Query(description="UTC end of the day window (ISO 8601)")],
+) -> dict:
+    """15-min intraday step buckets for an arbitrary day window.
+
+    The caller (typically the browser) computes start/end as UTC ISO strings
+    derived from local midnight, so timezone handling lives where it belongs:
+    next to the user.
+    """
     repo = _repo(request)
-    now = datetime.now(UTC)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=1)
     rows = await repo.range_steps_intraday(start, end)
     buckets = [
         {"ts": r["ts"], "end_ts": r["end_ts"], "steps": r["steps"],
@@ -51,7 +57,7 @@ async def steps_today(request: Request) -> dict:
         for r in rows
     ]
     total = sum(b["steps"] for b in buckets)
-    return {"total": total, "buckets": buckets, "as_of": now}
+    return {"total": total, "buckets": buckets, "start": start, "end": end}
 
 
 @router.get("/{kind}/latest")

@@ -26,6 +26,14 @@ function urlBase64ToBuffer(b64: string): ArrayBuffer {
   return buf;
 }
 
+function buffersEqual(a: ArrayBuffer | null, b: ArrayBuffer): boolean {
+  if (a?.byteLength !== b.byteLength) return false;
+  const av = new Uint8Array(a);
+  const bv = new Uint8Array(b);
+  for (let i = 0; i < av.length; i++) if (av[i] !== bv[i]) return false;
+  return true;
+}
+
 export function pushSupported(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -54,16 +62,26 @@ export async function subscribeToPush(): Promise<PushSubscription> {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error(`notifications ${permission}`);
 
+  const { public_key } = await api.vapidPublicKey();
+  const wanted = urlBase64ToBuffer(public_key);
+
+  // If a previous subscription exists for this origin, the browser will
+  // refuse to subscribe again with a different applicationServerKey
+  // ("Registration failed - push service error"). Detect a key mismatch
+  // and unsubscribe first.
   const existing = await reg.pushManager.getSubscription();
   if (existing) {
-    await api.pushSubscribe(existing.toJSON());
-    return existing;
+    const existingKey = existing.options.applicationServerKey ?? null;
+    if (buffersEqual(existingKey, wanted)) {
+      await api.pushSubscribe(existing.toJSON());
+      return existing;
+    }
+    try { await existing.unsubscribe(); } catch { /* best-effort */ }
   }
 
-  const { public_key } = await api.vapidPublicKey();
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToBuffer(public_key),
+    applicationServerKey: wanted,
   });
   await api.pushSubscribe(sub.toJSON());
   return sub;

@@ -18,6 +18,18 @@ async def _create_food(client, name="Eggs", per_serving=None, **extra):
     return r.json()
 
 
+async def test_create_food_with_barcode_does_not_path_conflict(client):
+    # Regression: previously $set+$setOnInsert both wrote `created_at`,
+    # which mongo rejected with "Updating the path 'created_at' would
+    # create a conflict at 'created_at'".
+    body = {
+        "name": "Manual Bar", "barcode": "9999999999", "category": "food",
+        "serving_g": 50.0, "per_serving": {"calories": 200, "protein_g": 20},
+    }
+    r = await client.post("/foods", headers=HEADERS, json=body)
+    assert r.status_code == 201, r.text
+
+
 async def test_create_and_search_food(client):
     food = await _create_food(client, name="Whole Eggs", brand="Vital Farms")
     assert food["id"]

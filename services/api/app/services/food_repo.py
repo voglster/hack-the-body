@@ -33,9 +33,15 @@ class FoodRepo:
 
     # ---------- foods ----------
     async def upsert_food(self, food: Food) -> dict[str, Any]:
-        """Upsert by barcode if present; else insert as new."""
+        """Upsert by barcode if present; else insert as new.
+
+        `created_at` is owned by `$setOnInsert` so it stays stable across
+        re-fetches; we drop it from the `$set` payload to avoid a Mongo
+        path-conflict error.
+        """
         doc = food.model_dump(exclude={"id"})
         if food.barcode:
+            doc.pop("created_at", None)
             await self.db["foods"].update_one(
                 {"barcode": food.barcode},
                 {"$set": doc, "$setOnInsert": {"created_at": datetime.now(UTC)}},

@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings, get_settings
 from app.db import ensure_collections, get_db, make_client
 from app.routers import health
+from app.services.scheduler import build_scheduler
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -20,9 +25,18 @@ async def lifespan(app: FastAPI):
     app.state.mongo_client = make_client(settings)
     app.state.db = get_db(app.state.mongo_client, settings)
     await ensure_collections(app.state.db)
+    tz = os.environ.get("TZ")
+    scheduler = build_scheduler(settings, app.state.db, timezone=tz)
+    scheduler.start()
+    app.state.scheduler = scheduler
+    logger.info(
+        "coach scheduler started: cron times %s (tz=%s)",
+        settings.coach_schedule_local, tz or "system-default",
+    )
     try:
         yield
     finally:
+        scheduler.shutdown(wait=False)
         app.state.mongo_client.close()
 
 
@@ -37,7 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    from app.routers import admin, auth, coach, foods, meals, metrics, workouts
+    from app.routers import admin, auth, coach, foods, meals, metrics, push, workouts
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(metrics.router)
@@ -46,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(foods.router)
     app.include_router(meals.router)
     app.include_router(coach.router)
+    app.include_router(push.router)
 
     _mount_frontend(app)
     return app

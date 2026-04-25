@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
 import { CoachCard } from "../components/CoachCard";
+import { NotificationsCard } from "../components/NotificationsCard";
 import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
 import { SleepChart } from "../components/SleepChart";
@@ -175,6 +176,7 @@ export function Dashboard() {
       <SummaryCards summary={summary} todaySteps={stepsToday?.total} />
 
       <CoachCard />
+      <NotificationsCard />
 
       {/* Food first — it's the primary mobile use-case. */}
       <Section title="Today’s food"><TodayMeals /></Section>

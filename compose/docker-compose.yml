@@ -39,6 +39,10 @@ services:
       TZ: ${TZ:-America/Denver}
       OLLAMA_URL: ${OLLAMA_URL:-http://10.0.6.46:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7-flash:latest}
+      COACH_SCHEDULE_LOCAL: ${COACH_SCHEDULE_LOCAL:-07:00,12:00,17:00}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:hack-the-body@local}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
     ports:
       - "${APP_PORT:-8080}:8000"
     networks:

@@ -174,6 +174,8 @@ export function Dashboard() {
         <HeaderActions />
       </header>
 
+      <SyncStatusFooter />
+
       <SummaryCards summary={summary} todaySteps={stepsToday?.total} />
 
       <CoachCard />
@@ -198,7 +200,6 @@ export function Dashboard() {
       <Section title="HRV (30d)" defaultOpen={false}><HrvChart /></Section>
       <Section title="Weight (60d)" defaultOpen={false}><WeightChart /></Section>
       <Section title="Recent workouts" defaultOpen={false}><WorkoutList /></Section>
-      <SyncStatusFooter />
     </div>
   );
 }

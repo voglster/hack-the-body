@@ -23,7 +23,7 @@ export function SyncStatusFooter() {
   if (!data) return null;
   const sources = Object.entries(data);
   return (
-    <footer className="text-xs text-neutral-500 flex flex-wrap gap-x-4 gap-y-1 pt-4">
+    <div className="text-xs text-neutral-500 flex flex-wrap gap-x-4 gap-y-1 -mt-2">
       {sources.map(([source, s]) => {
         const ok = s.last_ok;
         const err = s.last_error;
@@ -45,6 +45,6 @@ export function SyncStatusFooter() {
         }
         return <span key={source}>{source}: never synced</span>;
       })}
-    </footer>
+    </div>
   );
 }

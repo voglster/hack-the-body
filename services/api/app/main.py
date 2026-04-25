@@ -37,25 +37,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    from app.routers import admin, foods, meals, metrics, workouts
+    from app.routers import admin, auth, foods, meals, metrics, workouts
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(metrics.router)
     app.include_router(workouts.router)
     app.include_router(admin.router)
     app.include_router(foods.router)
     app.include_router(meals.router)
 
-    _mount_frontend(app, settings)
+    _mount_frontend(app)
     return app
 
 
-def _mount_frontend(app: FastAPI, settings: Settings) -> None:
+def _mount_frontend(app: FastAPI) -> None:
     if not STATIC_DIR.is_dir():
         return  # tests / dev without a built bundle
 
     @app.get("/config.js", include_in_schema=False)
     async def config_js() -> Response:
-        body = f"window.__HTB__ = {json.dumps({'apiUrl': '', 'apiKey': settings.api_key})};"
+        # apiKey is intentionally NOT shipped here. The browser learns it by
+        # POSTing a password to /auth/verify (see services/web/src/lib/auth.ts).
+        body = f"window.__HTB__ = {json.dumps({'apiUrl': ''})};"
         return Response(content=body, media_type="application/javascript")
 
     assets_dir = STATIC_DIR / "assets"

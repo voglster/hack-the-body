@@ -34,7 +34,24 @@ async def summary(request: Request):
     }
 
 
-_KINDS = {"weight", "sleep", "hrv", "rhr", "body_comp", "vo2max", "daily_summary"}
+_KINDS = {"weight", "sleep", "hrv", "rhr", "body_comp", "vo2max", "daily_summary", "steps_intraday"}
+
+
+@router.get("/steps/today")
+async def steps_today(request: Request) -> dict:
+    """15-min intraday step buckets for today (UTC) with running total."""
+    repo = _repo(request)
+    now = datetime.now(UTC)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    rows = await repo.range_steps_intraday(start, end)
+    buckets = [
+        {"ts": r["ts"], "end_ts": r["end_ts"], "steps": r["steps"],
+         "activity_level": r.get("activity_level")}
+        for r in rows
+    ]
+    total = sum(b["steps"] for b in buckets)
+    return {"total": total, "buckets": buckets, "as_of": now}
 
 
 @router.get("/{kind}/latest")

@@ -9,6 +9,7 @@ from app.mappers import (
     map_body_comp,
     map_daily_summary,
     map_hrv,
+    map_intraday_steps,
     map_sleep,
     map_vo2max,
     map_weight,
@@ -40,6 +41,7 @@ class ClientProto(Protocol):
     def fetch_workouts(self, s: date, e: date) -> list[dict]: ...
     def fetch_rhr_series(self, s: date, e: date) -> list[dict]: ...
     def fetch_daily_summary(self, d: date) -> dict: ...
+    def fetch_intraday_steps(self, d: date) -> list[dict]: ...
 
 
 async def _do_weight(client, repo, start, end, counts):
@@ -70,11 +72,15 @@ async def _do_workouts(client, repo, start, end, counts):
 
 
 async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
-    """Per-day endpoints (sleep / HRV / VO2max / daily summary). Random order."""
+    """Per-day endpoints (sleep / HRV / VO2max / daily summary / intraday steps).
+
+    Sleep/HRV/VO2max/daily-summary are single-record-per-day. Intraday steps
+    returns a list of 96 buckets per day. Order randomized within each day.
+    """
     shuffled_days = list(days)
     random.shuffle(shuffled_days)
     for day in shuffled_days:
-        per_day = [
+        single = [
             ("sleep", lambda d=day: client.fetch_sleep(d), map_sleep, repo.upsert_sleep),
             ("hrv", lambda d=day: client.fetch_hrv(d), map_hrv, repo.upsert_hrv),
             ("vo2max", lambda d=day: client.fetch_vo2max(d), map_vo2max, repo.upsert_vo2max),
@@ -85,14 +91,24 @@ async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
                 repo.upsert_daily_summary,
             ),
         ]
-        random.shuffle(per_day)
-        for name, fetch, mapper, upsert in per_day:
+        random.shuffle(single)
+        for name, fetch, mapper, upsert in single:
             try:
                 if await upsert(mapper(fetch())):
                     counts[name] += 1
             except Exception as e:
                 log.warning("%s %s skipped: %s", name, day, e)
             await jitter()
+
+        # Intraday steps: list-of-buckets endpoint. Each new bucket = +1 count.
+        try:
+            buckets = map_intraday_steps(client.fetch_intraday_steps(day))
+            for bucket in buckets:
+                if await repo.upsert_steps_bucket(bucket):
+                    counts["steps_intraday"] += 1
+        except Exception as e:
+            log.warning("steps_intraday %s skipped: %s", day, e)
+        await jitter()
 
 
 async def run_sync(
@@ -106,7 +122,7 @@ async def run_sync(
     end = datetime.now(UTC).date()
     start = end - timedelta(days=backfill_days)
     counts = {"weight": 0, "body_comp": 0, "sleep": 0, "hrv": 0, "vo2max": 0,
-              "daily_summary": 0, "workouts": 0}
+              "daily_summary": 0, "steps_intraday": 0, "workouts": 0}
 
     days = [end - timedelta(days=i) for i in range(backfill_days + 1)]
 

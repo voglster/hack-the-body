@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from app.models import HRV, BodyComp, DailySummary, Sleep, VO2Max, Weight, Workout
+from app.models import HRV, BodyComp, DailySummary, Sleep, StepsBucket, VO2Max, Weight, Workout
 
 
 def _utc_from_ms(ms: int) -> datetime:
@@ -73,6 +73,43 @@ def map_vo2max(raw: dict) -> VO2Max:
         source="garmin",
         source_id=f"garmin:vo2max:{g['calendarDate']}",
     )
+
+
+def _utc_from_iso(s: str) -> datetime:
+    """Parse Garmin's '2026-04-25T05:00:00.0' format into a UTC datetime.
+
+    Garmin sometimes appends '.0' fractional seconds. Strip everything from the
+    first dot onwards (we don't need sub-second precision for step buckets).
+    """
+    if "." in s:
+        s = s.split(".", 1)[0]
+    s = s.removesuffix("Z")
+    return datetime.fromisoformat(s).replace(tzinfo=UTC)
+
+
+def map_intraday_steps(raw: list[dict]) -> list[StepsBucket]:
+    """Map Garmin dailySummaryChart wellnessSteps into StepsBucket records.
+
+    Empty input (no data yet for the day) produces an empty list silently.
+    """
+    out: list[StepsBucket] = []
+    for b in raw or []:
+        start_iso = b.get("startGMT") or b.get("startTimeGMT")
+        end_iso = b.get("endGMT") or b.get("endTimeGMT")
+        if not start_iso or not end_iso:
+            continue
+        start = _utc_from_iso(start_iso)
+        end = _utc_from_iso(end_iso)
+        out.append(StepsBucket(
+            ts=start,
+            end_ts=end,
+            steps=int(b.get("steps") or 0),
+            activity_level=b.get("primaryActivityLevel"),
+            raw=b,
+            source="garmin",
+            source_id=f"garmin:steps_intraday:{start.isoformat()}",
+        ))
+    return out
 
 
 def map_daily_summary(raw: dict) -> DailySummary:

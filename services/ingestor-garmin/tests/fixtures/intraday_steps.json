@@ -1,0 +1,10 @@
+[
+  {"startGMT": "2026-04-25T05:00:00.0", "endGMT": "2026-04-25T05:15:00.0",
+   "steps": 0, "primaryActivityLevel": "sleeping", "activityLevelConstant": false},
+  {"startGMT": "2026-04-25T05:15:00.0", "endGMT": "2026-04-25T05:30:00.0",
+   "steps": 12, "primaryActivityLevel": "sedentary", "activityLevelConstant": false},
+  {"startGMT": "2026-04-25T05:30:00.0", "endGMT": "2026-04-25T05:45:00.0",
+   "steps": 856, "primaryActivityLevel": "active", "activityLevelConstant": true},
+  {"startGMT": "2026-04-25T05:45:00.0", "endGMT": "2026-04-25T06:00:00.0",
+   "steps": 1142, "primaryActivityLevel": "highlyActive", "activityLevelConstant": true}
+]

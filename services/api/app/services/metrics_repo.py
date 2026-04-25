@@ -98,6 +98,14 @@ class MetricsRepo:
         cur = self.db["metrics_vo2max"].find({"ts": {"$gte": start, "$lte": end}}).sort("ts", 1)
         return [d async for d in cur]
 
+    async def range_steps_intraday(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        cur = (
+            self.db["metrics_steps_intraday"]
+            .find({"ts": {"$gte": start, "$lte": end}})
+            .sort("ts", 1)
+        )
+        return [d async for d in cur]
+
     # ---------- daily summary (steps, active calories, etc.) ----------
     async def insert_daily_summary(self, s: DailySummary) -> None:
         await self.db["metrics_daily_summary"].insert_one(

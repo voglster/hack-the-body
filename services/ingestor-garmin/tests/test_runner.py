@@ -52,6 +52,30 @@ async def test_run_sync_writes_all_metrics(mock_db):
     assert await mock_db["workouts"].count_documents({}) == 1
 
 
+async def test_raw_blob_persisted_for_every_metric(mock_db):
+    """Every time-series metric should round-trip its raw Garmin slice."""
+    repo = GarminRepo(mock_db)
+    await run_sync(client=FakeClient(), repo=repo, backfill_days=0, jitter=_no_jitter)
+
+    sleep_doc = await mock_db["metrics_sleep"].find_one()
+    assert sleep_doc and sleep_doc["raw"]["dailySleepDTO"]["calendarDate"] == "2026-04-23"
+
+    hrv_doc = await mock_db["metrics_hrv"].find_one()
+    assert hrv_doc and hrv_doc["raw"]["hrvSummary"]["lastNightAvg"] == 58
+
+    weight_doc = await mock_db["metrics_weight"].find_one()
+    assert weight_doc and weight_doc["raw"]["samplePk"] == 900000001
+
+    body_comp_doc = await mock_db["metrics_body_comp"].find_one()
+    assert body_comp_doc and body_comp_doc["raw"]["bodyFat"] == 24.1
+
+    vo2_doc = await mock_db["metrics_vo2max"].find_one()
+    assert vo2_doc and vo2_doc["raw"]["generic"]["calendarDate"] == "2026-04-23"
+
+    workout_doc = await mock_db["workouts"].find_one()
+    assert workout_doc and workout_doc["raw"]["activityId"] == 13000000001
+
+
 async def test_run_sync_idempotent(mock_db):
     repo = GarminRepo(mock_db)
     client = FakeClient()

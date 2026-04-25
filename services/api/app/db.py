@@ -16,7 +16,8 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
 }
 
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
-                       "foods", "meal_templates", "coach_insights"]
+                       "foods", "meal_templates", "coach_insights",
+                       "push_subscriptions"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:
@@ -40,6 +41,8 @@ async def ensure_collections(db: AsyncDatabase) -> None:
     await db["meal_templates"].create_index("name", unique=True)
     # Coach insights are time-stamped; index for fast 'recent' lookups.
     await db["coach_insights"].create_index([("generated_at", -1)])
+    # Push subscriptions: dedupe by endpoint URL.
+    await db["push_subscriptions"].create_index("endpoint", unique=True)
 
 
 def make_client(settings: Settings) -> AsyncMongoClient:

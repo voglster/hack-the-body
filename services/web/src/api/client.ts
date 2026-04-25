@@ -89,6 +89,15 @@ export const api = {
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),
 
+  // push
+  vapidPublicKey: () => get<{ public_key: string }>("/push/vapid-public-key"),
+  pushSubscribe: (sub: PushSubscriptionJSON) => post<unknown>("/push/subscribe", sub),
+  pushUnsubscribe: (endpoint: string) =>
+    del(`/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`),
+  pushTest: () => post<{ sent: number; pruned: number; failed: number; subscriptions: number }>(
+    "/push/test", {},
+  ),
+
   // templates
   listTemplates: () => get<MealTemplate[]>("/meals/templates"),
   createTemplate: (t: Partial<MealTemplate>) => post<MealTemplate>("/meals/templates", t),

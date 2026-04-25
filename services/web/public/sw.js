@@ -7,7 +7,7 @@
  * the first time a new index.html requests new assets.
  */
 
-const CACHE = "htb-shell-v1";
+const CACHE = "htb-shell-v2";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/config.js"];
 
 self.addEventListener("install", (event) => {
@@ -33,7 +33,9 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/meals") ||
     url.pathname.startsWith("/foods") ||
     url.pathname.startsWith("/admin") ||
-    url.pathname.startsWith("/workouts")
+    url.pathname.startsWith("/workouts") ||
+    url.pathname.startsWith("/coach") ||
+    url.pathname.startsWith("/push")
   ) {
     return; // default network behavior
   }
@@ -50,5 +52,38 @@ self.addEventListener("fetch", (event) => {
   // Cache-first for everything else (the bundled JS/CSS, icon, fonts).
   event.respondWith(
     caches.match(event.request).then((hit) => hit || fetch(event.request))
+  );
+});
+
+// ---------- Web Push ----------
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data?.text?.() || "" }; }
+  const title = data.title || "Hack the Body";
+  const body = data.body || "";
+  const url = data.url || "/";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      data: { url },
+      tag: "htb",  // collapse to one notification at a time
+      renotify: true,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((all) => {
+      for (const c of all) {
+        if (c.url.endsWith(target) && "focus" in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
   );
 });

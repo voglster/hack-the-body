@@ -2,32 +2,47 @@ import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday,
 } from "./types";
+import { clearApiKey, getApiKey } from "../lib/auth";
 
 declare global {
-  interface Window { __HTB__?: { apiUrl?: string; apiKey?: string }; }
+  interface Window { __HTB__?: { apiUrl?: string }; }
 }
 
 const BASE = window.__HTB__?.apiUrl ?? import.meta.env.VITE_API_URL ?? "";
-const KEY = window.__HTB__?.apiKey ?? import.meta.env.VITE_API_KEY ?? "";
 
-const headers = { "X-API-Key": KEY, "Content-Type": "application/json" };
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const key = getApiKey();
+  return key ? { "X-API-Key": key, ...extra } : { ...extra };
+}
+
+/** If the server says 401, our cached key is stale (rotated or never valid).
+ *  Clear it so the AuthGate re-prompts. Throw an error so callers know. */
+function handleUnauthorized(): never {
+  clearApiKey();
+  throw new Error("unauthorized");
+}
 
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, { headers: { "X-API-Key": KEY } });
+  const r = await fetch(`${BASE}${path}`, { headers: authHeaders() });
+  if (r.status === 401) handleUnauthorized();
   if (!r.ok) throw new Error(`GET ${path} failed: ${r.status}`);
   return (await r.json()) as T;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
-    method: "POST", headers, body: JSON.stringify(body ?? {}),
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
   });
+  if (r.status === 401) handleUnauthorized();
   if (!r.ok) throw new Error(`POST ${path} failed: ${r.status} ${await r.text().catch(() => "")}`);
   return (await r.json()) as T;
 }
 
 async function del(path: string): Promise<void> {
-  const r = await fetch(`${BASE}${path}`, { method: "DELETE", headers });
+  const r = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
+  if (r.status === 401) handleUnauthorized();
   if (!r.ok && r.status !== 204) throw new Error(`DELETE ${path} failed: ${r.status}`);
 }
 
@@ -46,8 +61,9 @@ export const api = {
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
   triggerIngest: async (source: string): Promise<unknown> => {
     const r = await fetch(`${BASE}/admin/ingest/${source}`, {
-      method: "POST", headers: { "X-API-Key": KEY },
+      method: "POST", headers: authHeaders(),
     });
+    if (r.status === 401) handleUnauthorized();
     if (!r.ok) throw new Error(`trigger failed: ${r.status}`);
     return (await r.json()) as unknown;
   },

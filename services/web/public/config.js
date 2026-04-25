@@ -1,3 +1,5 @@
-// Dev stub. In Docker, this file is overwritten at container startup
-// by docker-entrypoint.sh with values from API_URL and API_KEY env vars.
-window.__HTB__ = { apiUrl: "", apiKey: "" };
+// Dev stub. In production this file is served dynamically by the FastAPI app
+// (services/api/app/main.py) so apiUrl can be configured per-host. The
+// browser-held auth key is no longer baked in here — it's set per-session via
+// the password prompt (see src/lib/auth.ts and POST /auth/verify).
+window.__HTB__ = { apiUrl: "" };

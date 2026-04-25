@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
+import { clearApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
 import { HrvChart } from "../components/HrvChart";
 import { MetricCard } from "../components/MetricCard";
@@ -76,20 +77,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function SyncButton() {
+function HeaderActions() {
   const qc = useQueryClient();
   const sync = useMutation({
     mutationFn: () => api.triggerIngest("garmin"),
     onSuccess: () => qc.invalidateQueries(),
   });
   return (
-    <button
-      onClick={() => sync.mutate()}
-      disabled={sync.isPending}
-      className="text-xs px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-    >
-      {sync.isPending ? "syncing..." : "sync garmin"}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => sync.mutate()}
+        disabled={sync.isPending}
+        className="text-xs px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+      >
+        {sync.isPending ? "syncing..." : "sync garmin"}
+      </button>
+      <button
+        onClick={() => clearApiKey()}
+        className="text-xs px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+        title="lock — clears your saved password"
+      >
+        lock
+      </button>
+    </div>
   );
 }
 
@@ -117,7 +127,7 @@ export function Dashboard() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       <header className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">Hack the Body</h1>
-        <SyncButton />
+        <HeaderActions />
       </header>
 
       <SummaryCards summary={summary} todaySteps={stepsToday?.total} />

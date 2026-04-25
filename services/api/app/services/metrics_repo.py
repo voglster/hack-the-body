@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.models.metrics import HRV, RHR, BodyComp, DailySummary, Sleep, VO2Max, Weight
 
 
 class MetricsRepo:
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         self.db = db
 
     async def insert_weight(self, w: Weight) -> None:

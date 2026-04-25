@@ -8,7 +8,7 @@ from datetime import UTC, datetime, time
 from typing import Any
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.models.food import Food, Macros, MealEntry, MealTemplate
 
@@ -28,7 +28,7 @@ def _doc_to_dict(doc: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class FoodRepo:
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         self.db = db
 
     # ---------- foods ----------

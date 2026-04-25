@@ -1,4 +1,5 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 
@@ -18,7 +19,7 @@ REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates"]
 
 
-async def ensure_collections(db: AsyncIOMotorDatabase) -> None:
+async def ensure_collections(db: AsyncDatabase) -> None:
     existing = set(await db.list_collection_names())
     for name, opts in TIMESERIES_COLLECTIONS.items():
         if name in existing:
@@ -39,14 +40,14 @@ async def ensure_collections(db: AsyncIOMotorDatabase) -> None:
     await db["meal_templates"].create_index("name", unique=True)
 
 
-def make_client(settings: Settings) -> AsyncIOMotorClient:
+def make_client(settings: Settings) -> AsyncMongoClient:
     # tz_aware=True makes every datetime read from Mongo come back as a
     # timezone-aware UTC datetime. Without this, FastAPI's default JSON
     # encoder emits ISO strings without a timezone suffix and the browser
     # interprets them as local time — see issue with intraday step buckets
     # being displayed in the wrong hours.
-    return AsyncIOMotorClient(settings.mongo_url, tz_aware=True)
+    return AsyncMongoClient(settings.mongo_url, tz_aware=True)
 
 
-def get_db(client: AsyncIOMotorClient, settings: Settings) -> AsyncIOMotorDatabase:
+def get_db(client: AsyncMongoClient, settings: Settings) -> AsyncDatabase:
     return client[settings.mongo_db]

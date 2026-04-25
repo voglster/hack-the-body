@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import require_api_key
 from app.services.coach import Insight, generate_insight, recent_insights
+from app.services.coach_weekly import generate_weekly_review
 from app.services.food_repo import FoodRepo
 
 router = APIRouter(prefix="/coach", dependencies=[Depends(require_api_key)])
@@ -63,3 +64,18 @@ async def recent(
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> list[dict[str, Any]]:
     return await recent_insights(request.app.state.db, limit=limit)
+
+
+@router.get("/weekly")
+async def weekly(request: Request) -> dict[str, Any]:
+    """Run the deep weekly review against the big local model. Slow."""
+    settings = request.app.state.settings
+    db = request.app.state.db
+    try:
+        result = await generate_weekly_review(settings, db, trigger="weekly-manual")
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"weekly coach LLM unavailable: {type(e).__name__}: {e}",
+        ) from e
+    return _serialize(result)

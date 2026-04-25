@@ -85,6 +85,7 @@ export const api = {
   // coach
   coachInsight: () => get<CoachInsight>("/coach/insight"),
   coachRecent: (limit = 10) => get<CoachRecentEntry[]>(`/coach/recent?limit=${limit}`),
+  coachWeekly: () => get<CoachInsight>("/coach/weekly"),
 
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),

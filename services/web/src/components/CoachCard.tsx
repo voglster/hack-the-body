@@ -25,6 +25,82 @@ function pickDisplay(
   return null;
 }
 
+function CoachBody({ display, error }: { display: DisplayMsg | null; error: Error | null }) {
+  if (display) {
+    return (
+      <>
+        <div className="text-sm whitespace-pre-wrap leading-relaxed">{display.text}</div>
+        <div className="text-[10px] text-neutral-500">{display.meta}</div>
+      </>
+    );
+  }
+  if (error) {
+    return <div className="text-sm text-red-400">{error.message}</div>;
+  }
+  return (
+    <div className="text-sm text-neutral-500">
+      tap “ask coach” for a quick read on your last 24 hours.
+    </div>
+  );
+}
+
+function HistoryList({ items }: { items: CoachRecentEntry[] }) {
+  if (items.length === 0) return null;
+  return (
+    <ul className="space-y-3 pt-2 border-t border-neutral-800">
+      {items.map((h, i) => (
+        <li key={i} className="text-xs">
+          <div className="text-neutral-500">
+            {h.trigger} · {new Date(h.generated_at).toLocaleString()}
+          </div>
+          <div className="text-neutral-300 whitespace-pre-wrap">{h.text}</div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+interface ActionsProps {
+  hasHistory: boolean;
+  showHistory: boolean;
+  onToggleHistory: () => void;
+  onWeekly: () => void;
+  onAsk: () => void;
+  weeklyPending: boolean;
+  askPending: boolean;
+  hasDisplay: boolean;
+}
+
+function CoachActions(p: ActionsProps) {
+  return (
+    <div className="flex items-center gap-2">
+      {p.hasHistory && (
+        <button
+          onClick={p.onToggleHistory}
+          className="text-xs px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 min-h-[44px]"
+        >
+          {p.showHistory ? "hide" : "history"}
+        </button>
+      )}
+      <button
+        onClick={p.onWeekly}
+        disabled={p.weeklyPending || p.askPending}
+        title="deep weekly review (gpt-oss:120b, slow)"
+        className="text-xs px-3 py-2 rounded bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 min-h-[44px]"
+      >
+        {p.weeklyPending ? "reviewing..." : "weekly"}
+      </button>
+      <button
+        onClick={p.onAsk}
+        disabled={p.askPending || p.weeklyPending}
+        className="text-xs px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 min-h-[44px]"
+      >
+        {p.askPending ? "thinking..." : p.hasDisplay ? "again" : "ask coach"}
+      </button>
+    </div>
+  );
+}
+
 /**
  * Coach panel — generates fresh insights on demand. Persists every insight on
  * the server (see app/services/coach.py); a "history" toggle exposes the
@@ -49,62 +125,36 @@ export function CoachCard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["coach.recent"] }),
   });
 
+  // Weekly review uses the heavy gpt-oss:120b on framework — slow (~5min),
+  // separate button so we don't accidentally fire it.
+  const weekly = useMutation({
+    mutationFn: api.coachWeekly,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["coach.recent"] }),
+  });
+
   // The mutation result is the freshest source of truth (with timing) when
   // available; fall back to the recent-list head otherwise.
-  const display = pickDisplay(ask.data, latest);
+  const display = pickDisplay(weekly.data ?? ask.data, latest);
 
   return (
     <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-wide text-neutral-400">Coach</div>
-        <div className="flex items-center gap-2">
-          {history && history.length > 1 && (
-            <button
-              onClick={() => setShowHistory(s => !s)}
-              className="text-xs px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 min-h-[44px]"
-            >
-              {showHistory ? "hide" : "history"}
-            </button>
-          )}
-          <button
-            onClick={() => ask.mutate()}
-            disabled={ask.isPending}
-            className="text-xs px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 min-h-[44px]"
-          >
-            {ask.isPending ? "thinking..." : display ? "again" : "ask coach"}
-          </button>
-        </div>
+        <CoachActions
+          hasHistory={(history?.length ?? 0) > 1}
+          showHistory={showHistory}
+          onToggleHistory={() => setShowHistory(s => !s)}
+          onWeekly={() => weekly.mutate()}
+          onAsk={() => ask.mutate()}
+          weeklyPending={weekly.isPending}
+          askPending={ask.isPending}
+          hasDisplay={display !== null}
+        />
       </div>
 
-      {ask.error && !display && (
-        <div className="text-sm text-red-400">{ask.error.message}</div>
-      )}
+      <CoachBody display={display} error={weekly.error ?? ask.error} />
 
-      {display && (
-        <>
-          <div className="text-sm whitespace-pre-wrap leading-relaxed">{display.text}</div>
-          <div className="text-[10px] text-neutral-500">{display.meta}</div>
-        </>
-      )}
-
-      {!display && !ask.error && (
-        <div className="text-sm text-neutral-500">
-          tap “ask coach” for a quick read on your last 24 hours.
-        </div>
-      )}
-
-      {showHistory && history && history.length > 1 && (
-        <ul className="space-y-3 pt-2 border-t border-neutral-800">
-          {history.slice(1).map((h, i) => (
-            <li key={i} className="text-xs">
-              <div className="text-neutral-500">
-                {h.trigger} · {new Date(h.generated_at).toLocaleString()}
-              </div>
-              <div className="text-neutral-300 whitespace-pre-wrap">{h.text}</div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {showHistory && <HistoryList items={history?.slice(1) ?? []} />}
     </div>
   );
 }

@@ -2,9 +2,14 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import garth
+from garth.exc import GarthHTTPError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import Settings
+
+
+class GarminRateLimitError(RuntimeError):
+    """Raised when Garmin SSO returns 429. Caller should back off for many minutes."""
 
 
 class GarminClient:
@@ -14,14 +19,31 @@ class GarminClient:
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
     def login(self) -> None:
+        # Prefer cached session: if it works, never touch SSO.
+        if self._resume_ok():
+            return
+        if not self.settings.garmin_email or not self.settings.garmin_password:
+            raise RuntimeError(
+                "no cached Garmin session and GARMIN_EMAIL/GARMIN_PASSWORD not set"
+            )
+        try:
+            garth.login(self.settings.garmin_email, self.settings.garmin_password)
+        except GarthHTTPError as e:
+            status = getattr(getattr(e, "error", None), "response", None)
+            if status is not None and status.status_code == 429:
+                raise GarminRateLimitError(
+                    "Garmin SSO rate-limited (429). Back off >=30min."
+                ) from e
+            raise
+        garth.save(str(self.session_dir))
+
+    def _resume_ok(self) -> bool:
         try:
             garth.resume(str(self.session_dir))
-            garth.client.username  # triggers session check
+            _ = garth.client.username
+            return True
         except Exception:
-            if not self.settings.garmin_email or not self.settings.garmin_password:
-                raise RuntimeError("GARMIN_EMAIL and GARMIN_PASSWORD must be set on first run")
-            garth.login(self.settings.garmin_email, self.settings.garmin_password)
-            garth.save(str(self.session_dir))
+            return False
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
     def _get(self, path: str) -> dict | list:

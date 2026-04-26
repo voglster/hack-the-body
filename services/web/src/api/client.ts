@@ -109,6 +109,14 @@ export const api = {
 
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),
+  clearFoodCache: async (): Promise<{ deleted: number }> => {
+    const r = await fetch(`${BASE}/admin/foods/cache`, {
+      method: "DELETE", headers: authHeaders(),
+    });
+    if (r.status === 401) handleUnauthorized();
+    if (!r.ok) throw new Error(`DELETE failed: ${r.status}`);
+    return (await r.json()) as { deleted: number };
+  },
 
   // water
   waterToday: () => get<WaterToday>(`/water/today?${todayWindowQuery()}`),

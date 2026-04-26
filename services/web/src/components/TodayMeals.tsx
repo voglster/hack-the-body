@@ -53,6 +53,20 @@ export function TodayMeals() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = entries.data?.find(e => e.id === editingId) ?? null;
 
+  const clearCache = useMutation({
+    mutationFn: api.clearFoodCache,
+  });
+  const onClearCache = () => {
+    if (!confirm(
+      "Clear cached food lookups (OFF/USDA)? Manual foods, water, vitamins, and template-referenced foods are kept. Next scan will re-fetch fresh data.",
+    )) return;
+    clearCache.mutate(undefined, {
+      onSuccess: (r) => {
+        alert(`Cleared ${r.deleted} cached foods.`);
+      },
+    });
+  };
+
   const t = totals.data?.totals;
 
   return (
@@ -101,6 +115,15 @@ export function TodayMeals() {
         onDelete={(id) => deleteEntry.mutate(id)}
         onEdit={setEditingId}
       />
+      <div className="pt-2 text-right">
+        <button
+          onClick={onClearCache}
+          disabled={clearCache.isPending}
+          className="text-[11px] text-neutral-500 hover:text-neutral-300 underline underline-offset-2 disabled:opacity-50"
+        >
+          {clearCache.isPending ? "clearing..." : "refresh food cache"}
+        </button>
+      </div>
     </div>
   );
 }

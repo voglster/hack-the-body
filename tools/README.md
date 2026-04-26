@@ -4,6 +4,10 @@ Operator scripts for hack-the-body. They talk to the running API directly
 instead of going through the FE — useful for batch reviews, audits, and
 tuning the coach's prompt over time.
 
+> **For the full coach debugging playbook** (triage → diagnose → edit →
+> deploy → clear feedback), see [`docs/coach-debugging.md`](../docs/coach-debugging.md).
+> This README is the install guide; that doc is the workflow.
+
 ## Setup (once)
 
 ```bash

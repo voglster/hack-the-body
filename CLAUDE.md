@@ -18,6 +18,16 @@ pause for destructive or hard-to-reverse actions.
 
 See `docs/superpowers/specs/2026-04-24-hack-the-body-design.md` (full design) and `docs/superpowers/plans/` (per-phase plans). Phase 0+1 (data spine + Garmin + dashboard + Pi kiosk) is built. Future phases: Telegram coach + voice loop, food/workout tracker, weekly reviewer, treadmill hack.
 
+## Playbooks
+
+- **Coach debugging** — when the coach says something wrong, read
+  `docs/coach-debugging.md`. It documents the closed loop: 👎 in the
+  app → `tools/coach_feedback.py show <id>` → targeted SYSTEM_PROMPT
+  edit → deploy → `tools/coach_feedback.py clear` so the next review
+  starts fresh. Every saved insight carries its full prompt inputs
+  (food_totals, history_snapshot, rendered prompt, active
+  system_prompt) so tuning is never blind.
+
 ## Build & deploy
 
 ### Single-image strategy

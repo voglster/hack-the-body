@@ -2,7 +2,7 @@
 
 We mock the Ollama HTTP call (we don't want CI talking to a real LLM).
 """
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import httpx
@@ -100,6 +100,104 @@ async def test_recent_returns_persisted_insights(client, mock_db, fake_ollama_re
     rows = r.json()
     assert len(rows) == 2
     assert all("Sleep solid" in row["text"] for row in rows)
+
+
+async def test_insight_uses_local_day_window_for_food_and_history(
+    client, mock_db, fake_ollama_response,
+):
+    """Regression: a 9 PM Mountain user pointing the coach at /coach/insight
+    should see *today's* food + steps + recent coach messages, not yesterday's.
+    The browser passes the UTC bounds of its local day; we verify the prompt
+    includes a `local_now` derived from those bounds and that yesterday's
+    coach insight does NOT appear in the prompt history."""
+    await _seed(mock_db)
+
+    # Pretend "today" in the user's tz is 2026-04-26 Mountain (UTC-6).
+    # Local midnight 2026-04-26 → 2026-04-26T06:00:00Z.
+    day_start = datetime(2026, 4, 26, 6, 0, tzinfo=UTC)
+    day_end = day_start + timedelta(days=1)
+
+    # Seed a STALE coach insight from yesterday — this is the "you haven't
+    # eaten" message that was leaking into today's prompts.
+    await mock_db["coach_insights"].insert_one({
+        "text": "You haven't eaten anything today. Eat something.",
+        "trigger": "manual",
+        "generated_at": day_start - timedelta(hours=2),  # 4 AM UTC = 10 PM Mountain yesterday
+        "model": "test", "eval_ms": 0, "total_ms": 0, "context": {},
+    })
+
+    captured: dict = {}
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        captured["payload"] = json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get(
+            "/coach/insight",
+            headers=HEADERS,
+            params={"start": day_start.isoformat(), "end": day_end.isoformat()},
+        )
+
+    assert r.status_code == 200, r.text
+    prompt = captured["payload"]["prompt"]
+    # Yesterday's stale message must NOT have leaked into today's history.
+    assert "You haven't eaten anything today" not in prompt
+    # The new context fields must be present so the LLM has local-time signal.
+    body = r.json()
+    assert "local_now" in body["context"]
+    assert "local_hour" in body["context"]
+    assert "time_of_day" in body["context"]
+
+
+async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_response):
+    """When zero food entries exist, the prompt must mark
+    `food_logged_today: false` and the system prompt must instruct the
+    model not to claim the user fasted."""
+    await _seed(mock_db)
+    captured: dict = {}
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        captured["payload"] = json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+
+    assert r.status_code == 200
+    prompt = captured["payload"]["prompt"]
+    assert '"food_logged_today": false' in prompt
+    assert '"entries": 0' in prompt
+    # System prompt warns the model about this exact failure mode.
+    assert "food_entries_today" in prompt
+    assert "not that the client hasn't eaten" in prompt.lower() or \
+           "NOT that the client hasn't eaten" in prompt
+
+
+async def test_recent_filters_by_since(client, mock_db):
+    """`/coach/recent?since=...` should only return insights at or after the
+    given timestamp — used by the FE to scope to the local day."""
+    base = datetime(2026, 4, 26, 6, 0, tzinfo=UTC)
+    await mock_db["coach_insights"].insert_many([
+        {"text": "yesterday", "generated_at": base - timedelta(hours=5),
+         "trigger": "manual", "model": "t", "eval_ms": 0, "total_ms": 0, "context": {}},
+        {"text": "today-am", "generated_at": base + timedelta(hours=2),
+         "trigger": "manual", "model": "t", "eval_ms": 0, "total_ms": 0, "context": {}},
+        {"text": "today-pm", "generated_at": base + timedelta(hours=14),
+         "trigger": "manual", "model": "t", "eval_ms": 0, "total_ms": 0, "context": {}},
+    ])
+    r = await client.get("/coach/recent", headers=HEADERS, params={"since": base.isoformat()})
+    assert r.status_code == 200
+    rows = r.json()
+    texts = [r["text"] for r in rows]
+    assert "yesterday" not in texts
+    assert "today-am" in texts and "today-pm" in texts
 
 
 async def test_insight_502_on_ollama_failure(client, mock_db):

@@ -117,8 +117,13 @@ export const api = {
   },
 
   // coach
-  coachInsight: () => get<CoachInsight>("/coach/insight"),
-  coachRecent: (limit = 10) => get<CoachRecentEntry[]>(`/coach/recent?limit=${limit}`),
+  coachInsight: () => get<CoachInsight>(`/coach/insight?${todayWindowQuery()}`),
+  coachRecent: (limit = 10) => {
+    const { start } = localDayBoundsUTC(todayLocalISO());
+    return get<CoachRecentEntry[]>(
+      `/coach/recent?limit=${limit}&since=${encodeURIComponent(start)}`,
+    );
+  },
   coachWeekly: () => get<CoachInsight>("/coach/weekly"),
 
   // admin

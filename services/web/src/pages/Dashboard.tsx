@@ -3,8 +3,10 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
+import { BottomNav, useActiveTab } from "../components/BottomNav";
 import { CoachCard } from "../components/CoachCard";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { NotificationsSettings } from "../components/NotificationsSettings";
 import { VitaminsCard } from "../components/VitaminsCard";
 import { WaterCard } from "../components/WaterCard";
 import { HrvChart } from "../components/HrvChart";
@@ -21,10 +23,7 @@ import { clearApiKey } from "../lib/auth";
 import { formatDuration, formatLbs } from "../lib/format";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
 
-interface CardData {
-  label: string; value: string; sub?: string;
-  progress?: number; behindPace?: boolean;
-}
+interface CardData { label: string; value: string; sub?: string }
 
 const weightCard = (s: Summary | undefined): CardData => ({
   label: "Weight",
@@ -39,8 +38,6 @@ const sleepCard = (s: Summary | undefined): CardData => ({
 });
 
 function SummaryCards({ summary }: { summary: Summary | undefined }) {
-  // Steps got promoted to a hero card above; Sleep/Weight ride along
-  // here since they're glance-only.
   const cards = [sleepCard(summary), weightCard(summary)];
   return (
     <section className="grid grid-cols-2 gap-2 sm:gap-3">
@@ -52,13 +49,8 @@ function SummaryCards({ summary }: { summary: Summary | undefined }) {
 }
 
 function Section({ title, children, defaultOpen = true }: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+  title: string; children: React.ReactNode; defaultOpen?: boolean;
 }) {
-  // <details> is the cheapest "collapsible card" we can build: it's a single
-  // native element with no JS, scrolls correctly, and preserves the open
-  // state across re-renders.
   return (
     <details open={defaultOpen} className="group">
       <summary className="cursor-pointer list-none flex items-center justify-between text-sm uppercase tracking-wide text-neutral-400 mb-2 select-none">
@@ -77,33 +69,30 @@ function HeaderActions() {
     onSuccess: () => qc.invalidateQueries(),
   });
   return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => sync.mutate()}
-        disabled={sync.isPending}
-        className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-50 min-h-[44px] sm:min-h-0 sm:py-1.5"
-        aria-label="trigger garmin sync"
-      >
-        {sync.isPending ? "..." : "↻"}
-      </button>
-      <button
-        onClick={() => clearApiKey()}
-        className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 min-h-[44px] sm:min-h-0 sm:py-1.5"
-        aria-label="lock"
-      >
-        🔒
-      </button>
-    </div>
+    <button
+      onClick={() => sync.mutate()}
+      disabled={sync.isPending}
+      className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-50 min-h-[44px] sm:min-h-0 sm:py-1.5"
+      aria-label="trigger garmin sync"
+    >
+      {sync.isPending ? "..." : "↻"}
+    </button>
   );
 }
 
-export function Dashboard() {
-  const { data: summary } = useQuery({
-    queryKey: ["summary"],
-    queryFn: api.summary,
-    refetchInterval: 60_000,
-  });
+function PageHeader() {
+  return (
+    <header className="flex items-center justify-between sticky top-0 z-10 bg-neutral-950/95 backdrop-blur py-2 -mx-3 px-3 sm:mx-0 sm:px-0 sm:static">
+      <h1 className="text-lg sm:text-2xl font-semibold">Hack the Body</h1>
+      <HeaderActions />
+    </header>
+  );
+}
 
+function TodayTab() {
+  const { data: summary } = useQuery({
+    queryKey: ["summary"], queryFn: api.summary, refetchInterval: 60_000,
+  });
   const today = todayLocalISO();
   const { start, end } = localDayBoundsUTC(today);
   const { data: stepsToday } = useQuery({
@@ -112,44 +101,107 @@ export function Dashboard() {
     refetchInterval: 60_000,
   });
 
-  const [browseDay, setBrowseDay] = useState<string>(today);
-
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-6 pb-24">
-      <header className="flex items-center justify-between sticky top-0 z-10 bg-neutral-950/95 backdrop-blur py-2 -mx-3 px-3 sm:mx-0 sm:px-0 sm:static">
-        <h1 className="text-lg sm:text-2xl font-semibold">Hack the Body</h1>
-        <HeaderActions />
-      </header>
-
+    <div className="space-y-4 sm:space-y-6">
       <SyncStatusFooter />
-
       <StepsTodayCard summary={summary} todaySteps={stepsToday?.total} />
-
-      <SummaryCards summary={summary} />
-
       <CoachCard />
       <WaterCard />
       <VitaminsCard />
+      {/* Hides itself once granted; only shows in 'off' or 'denied'. */}
       <NotificationsCard />
+      <SummaryCards summary={summary} />
+    </div>
+  );
+}
 
-      {/* Food first — it's the primary mobile use-case. */}
-      <Section title="Today’s food"><TodayMeals /></Section>
+function FoodTab() {
+  return <TodayMeals />;
+}
 
+function TrendsTab() {
+  const today = todayLocalISO();
+  const { start, end } = localDayBoundsUTC(today);
+  const { data: stepsToday } = useQuery({
+    queryKey: ["stepsDay", today],
+    queryFn: () => api.stepsDay(start, end),
+  });
+  const [browseDay, setBrowseDay] = useState<string>(today);
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
       <Section
         title={`Steps · ${browseDay === today ? "today" : "browsing"}`}
-        defaultOpen={false}
+        defaultOpen
       >
         <StepsTodayChart onDayChange={setBrowseDay} />
       </Section>
-
       <Section title="Steps (30d)" defaultOpen={false}>
         <StepsChart todayLiveTotal={stepsToday?.total} />
       </Section>
-
       <Section title="Sleep (30d)" defaultOpen={false}><SleepChart /></Section>
       <Section title="HRV (30d)" defaultOpen={false}><HrvChart /></Section>
       <Section title="Weight (60d)" defaultOpen={false}><WeightChart /></Section>
       <Section title="Recent workouts" defaultOpen={false}><WorkoutList /></Section>
+    </div>
+  );
+}
+
+function MoreTab() {
+  const qc = useQueryClient();
+  const clearCache = useMutation({
+    mutationFn: api.clearFoodCache,
+  });
+  const onClearCache = () => {
+    if (!confirm(
+      "Clear cached food lookups (OFF/USDA)? Manual foods, water, vitamins, and template-referenced foods are kept.",
+    )) return;
+    clearCache.mutate(undefined, {
+      onSuccess: (r) => {
+        alert(`Cleared ${r.deleted} cached foods.`);
+        void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <NotificationsSettings />
+      <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2">
+        <div className="text-xs uppercase tracking-wide text-neutral-400">Maintenance</div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onClearCache}
+            disabled={clearCache.isPending}
+            className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 text-sm disabled:opacity-50 min-h-[44px]"
+          >
+            {clearCache.isPending ? "clearing..." : "refresh food cache"}
+          </button>
+        </div>
+      </div>
+      <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2">
+        <div className="text-xs uppercase tracking-wide text-neutral-400">Session</div>
+        <button
+          onClick={() => clearApiKey()}
+          className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 text-sm min-h-[44px]"
+        >
+          🔒 lock
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function Dashboard() {
+  const [tab, setTab] = useActiveTab();
+  return (
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-6 pb-24">
+      <PageHeader />
+      {tab === "today"  && <TodayTab />}
+      {tab === "food"   && <FoodTab />}
+      {tab === "trends" && <TrendsTab />}
+      {tab === "more"   && <MoreTab />}
+      <BottomNav active={tab} onChange={setTab} />
     </div>
   );
 }

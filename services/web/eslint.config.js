@@ -27,6 +27,9 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // react-hooks v7 added this; idiomatic one-shot mount-effect setState
+      // patterns trip it. Downgrade to warn until we adopt React Compiler.
+      "react-hooks/set-state-in-effect": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       // Aggressive but reasonable
       "complexity": ["error", { max: 15 }],

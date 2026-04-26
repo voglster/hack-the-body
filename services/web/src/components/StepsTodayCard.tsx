@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
-import type { Summary, SyncStatus } from "../api/types";
+import type { Summary } from "../api/types";
 
 /**
  * Typical cumulative-step curve over the day. Assumes a person who walks
@@ -231,7 +231,7 @@ function useStepsSync() {
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000));
         try {
-          const s = (await api.syncStatus()) as SyncStatus;
+          const s = await api.syncStatus();
           const ok = s.garmin?.last_ok;
           if (ok && new Date(ok.started_at).getTime() >= triggeredAt) return;
         } catch { /* ignore transient */ }

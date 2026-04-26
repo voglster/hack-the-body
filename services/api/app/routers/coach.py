@@ -207,6 +207,12 @@ async def list_feedback(
                 "generated_at": insight.get("generated_at") if insight else None,
                 "context": insight.get("context") if insight else None,
                 "model": insight.get("model") if insight else None,
+                # Full prompt inputs so the review tool can audit what the
+                # model actually saw when it produced the bad output.
+                "food_totals": insight.get("food_totals") if insight else None,
+                "history_snapshot": insight.get("history_snapshot") if insight else None,
+                "prompt": insight.get("prompt") if insight else None,
+                "system_prompt": insight.get("system_prompt") if insight else None,
             } if insight else {"id": str(fb["insight_id"]), "missing": True},
         })
     return out

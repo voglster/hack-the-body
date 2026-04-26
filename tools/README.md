@@ -26,8 +26,16 @@ logged anything), thumbs-down it with a short note. Every few days:
 ```bash
 .venv/bin/python coach_feedback.py count                  # how much piled up?
 .venv/bin/python coach_feedback.py list --since 2026-04-01T00:00:00Z
+.venv/bin/python coach_feedback.py show <feedback_id>     # full prompt + inputs
 .venv/bin/python coach_feedback.py dump > /tmp/fb.json    # for an LLM review
 ```
+
+Each saved insight (since the prompt-capture change) carries its full
+inputs: `food_totals`, the `context` snapshot, the `history_snapshot`
+(other coach messages that fed into this prompt), the literal rendered
+`prompt` sent to Ollama, and the `system_prompt` that was active. So
+when the coach says something nuts, `show <id>` answers "what was it
+looking at, and which guard-rails were live?"
 
 Then hand `/tmp/fb.json` to Claude with a prompt like:
 

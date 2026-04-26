@@ -44,7 +44,18 @@ SYSTEM_PROMPT = (
     "time-of-day reasoning, never UTC. 'local_hour' is the hour 0-23. "
     "If recent_coach_messages references food/sleep facts that contradict "
     "the current snapshot (e.g. it said 'you slept 4h' but current sleep "
-    "shows 7h), trust the current snapshot — the older message is stale."
+    "shows 7h), trust the current snapshot — the older message is stale. "
+    "IMPORTANT — tone: report numbers, do not dramatize them. NEVER use "
+    "clinical or alarmist terms like 'catabolic state', 'starving', "
+    "'metabolic collapse', 'crash', 'in danger', 'risk' (about the "
+    "client's body), or anything implying medical emergency. The client "
+    "is a healthy 240 lb adult; a 1500-calorie afternoon is not a crisis. "
+    "If a number looks low, just state the number and a neutral nudge "
+    "('1,200 cal so far — protein next?'). NEVER scold, lecture, or "
+    "reference 'warnings' you previously gave; do not use phrases like "
+    "'you ignored', 'you didn't listen', 'as I told you'. Each reply "
+    "stands alone. Treat the user as an adult collaborator, not a "
+    "patient who failed to comply."
 )
 
 # How many recent insights to feed into the next prompt. More = better
@@ -62,6 +73,15 @@ class Insight:
     context: dict[str, Any]
     trigger: str = "manual"
     id: str | None = None  # populated after save_insight persists the row
+    # Full inputs to the model — captured so a feedback review can answer
+    # "what numbers + history was the model staring at when it wrote that?"
+    # `prompt` is the literal rendered text sent to the LLM, including the
+    # system prompt of the moment, so we can see which guard-rails were
+    # active when a bad output happened (catalysts for prompt edits).
+    food_totals: dict[str, Any] | None = None
+    history_snapshot: list[dict[str, Any]] | None = None
+    prompt: str | None = None
+    system_prompt: str | None = None
 
 
 def _strip_meta(doc: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -170,7 +190,13 @@ async def recent_insights(
 
 
 async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
-    """Persist an insight; return its id as a string."""
+    """Persist an insight; return its id as a string.
+
+    The prompt inputs (`food_totals`, `history_snapshot`, `prompt`,
+    `system_prompt`) are stored alongside the response so a feedback
+    review can reconstruct exactly what the model saw. Without these,
+    we'd be tuning the prompt blind.
+    """
     doc = {
         "text": insight.text,
         "model": insight.model,
@@ -179,6 +205,10 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
         "generated_at": insight.generated_at,
         "context": insight.context,
         "trigger": insight.trigger,
+        "food_totals": insight.food_totals,
+        "history_snapshot": insight.history_snapshot,
+        "prompt": insight.prompt,
+        "system_prompt": insight.system_prompt,
     }
     res = await db["coach_insights"].insert_one(doc)
     return str(res.inserted_id)
@@ -236,6 +266,10 @@ async def generate_insight(
         generated_at=datetime.now(UTC),
         context=context,
         trigger=trigger,
+        food_totals=food_totals,
+        history_snapshot=history,
+        prompt=prompt,
+        system_prompt=SYSTEM_PROMPT,
     )
     insight.id = await save_insight(db, insight)
     return insight

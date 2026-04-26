@@ -142,6 +142,8 @@ async def generate_weekly_review(
         generated_at=datetime.now(UTC),
         context={"window": "7d", "summary_keys": sorted(context.keys())},
         trigger=trigger,
+        prompt=prompt,
+        system_prompt=WEEKLY_SYSTEM_PROMPT,
     )
     insight.id = await save_insight(db, insight)
     return insight

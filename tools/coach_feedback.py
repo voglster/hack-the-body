@@ -13,7 +13,11 @@ Workflow:
 
 Subcommands:
   list             pretty-print recent feedback
-  dump             stdout JSON, one feedback row per object
+  dump             stdout JSON, one feedback row per object (includes the
+                   full rendered prompt, food_totals, history_snapshot —
+                   everything the model saw when it earned the rating)
+  show <fb_id>     deep-dive a single feedback row: full insight text,
+                   rendered prompt, food_totals, history snapshot
   clear            archive all (or --before <iso>) current feedback
   count            quick tally of up vs. down + total
 
@@ -80,6 +84,56 @@ def cmd_dump(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_show(args: argparse.Namespace) -> int:
+    """Print everything we have on one feedback row, in a layout that
+    makes a prompt-tuning pass straightforward: rating + note → output
+    text → food totals + context → recent history → full rendered prompt
+    → active system prompt. Anything missing prints '(not captured)' so
+    you know if it predates the prompt-input capture work."""
+    with client() as c:
+        r = c.get("/coach/feedback", params={"limit": 500})
+        r.raise_for_status()
+    rows = r.json()
+    fb = next((x for x in rows if x["id"] == args.id), None)
+    if fb is None:
+        sys.stderr.write(f"feedback {args.id} not found in the last 500 rows\n")
+        return 1
+    ins = fb.get("insight") or {}
+    face = "👍" if fb["rating"] == "up" else "👎"
+    print(f"=== feedback {fb['id']}  {face}  {fb['created_at']}")
+    if fb.get("note"):
+        print(f"\nuser note:\n{indent(fb['note'], '  ')}")
+    print(f"\n--- insight {ins.get('id')}  trigger={ins.get('trigger')}")
+    print(f"generated_at: {ins.get('generated_at')}")
+    print(f"model: {ins.get('model')}")
+    print(f"\noutput:\n{indent(ins.get('text') or '(missing)', '  ')}")
+
+    print("\n--- food_totals (input)")
+    ft = ins.get("food_totals")
+    print(json.dumps(ft, indent=2, default=str) if ft else "  (not captured)")
+
+    print("\n--- context (input)")
+    ctx = ins.get("context") or {}
+    print(json.dumps(ctx, indent=2, default=str))
+
+    print("\n--- history_snapshot (input)")
+    hist = ins.get("history_snapshot")
+    if hist:
+        for h in hist:
+            print(f"  - [{h.get('trigger')} @ {h.get('generated_at')}] {h.get('text', '')[:200]}")
+    else:
+        print("  (not captured)")
+
+    print("\n--- system_prompt (active when generated)")
+    sp = ins.get("system_prompt")
+    print(indent(sp, "  ") if sp else "  (not captured)")
+
+    print("\n--- full rendered prompt sent to LLM")
+    pr = ins.get("prompt")
+    print(indent(pr, "  ") if pr else "  (not captured — predates prompt capture)")
+    return 0
+
+
 def cmd_count(_args: argparse.Namespace) -> int:
     with client() as c:
         r = c.get("/coach/feedback", params={"limit": 500})
@@ -121,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--since")
     sp.add_argument("--limit", type=int, default=500)
     sp.set_defaults(func=cmd_dump)
+
+    sp = sub.add_parser("show", help="deep-dive a single feedback row including full prompt inputs")
+    sp.add_argument("id", help="feedback row id (from `list` or `dump`)")
+    sp.set_defaults(func=cmd_show)
 
     sp = sub.add_parser("count", help="quick tally")
     sp.set_defaults(func=cmd_count)

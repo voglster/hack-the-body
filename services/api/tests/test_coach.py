@@ -10,6 +10,7 @@ import pytest
 from bson import ObjectId as ObjectIdFromStr
 
 from app.models.metrics import HRV, Sleep, Weight
+from app.services.coach import SYSTEM_PROMPT
 from app.services.metrics_repo import MetricsRepo
 
 HEADERS = {"X-API-Key": "test-key"}
@@ -221,6 +222,65 @@ async def test_insight_response_includes_id(client, mock_db, fake_ollama_respons
 
     r2 = await client.get("/coach/recent?limit=1", headers=HEADERS)
     assert r2.json()[0]["id"] == insight_id
+
+
+async def test_insight_persists_full_prompt_inputs(
+    client, mock_db, fake_ollama_response,
+):
+    """Regression: when a bad output happens, the review tool needs to
+    answer "what was the model looking at?" — so we persist food_totals,
+    history_snapshot, the rendered prompt, and the active system prompt.
+    Pre-fix, only `context` was saved, leaving food_totals invisible to
+    the review path."""
+    await _seed(mock_db)
+    # Seed a prior insight so history_snapshot is non-empty.
+    await mock_db["coach_insights"].insert_one({
+        "text": "earlier today: HRV low.",
+        "trigger": "manual",
+        "generated_at": datetime.now(UTC) - timedelta(hours=2),
+        "model": "test", "eval_ms": 0, "total_ms": 0, "context": {},
+    })
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    iid = r.json()["id"]
+    saved = await mock_db["coach_insights"].find_one({"_id": ObjectIdFromStr(iid)})
+
+    assert saved.get("food_totals") is not None
+    assert "food_logged_today" in saved["food_totals"]
+    assert isinstance(saved.get("history_snapshot"), list)
+    assert saved.get("prompt") and "Latest data:" in saved["prompt"]
+    assert saved.get("system_prompt") and "no-nonsense" in saved["system_prompt"]
+
+    # And the feedback join surfaces them so tools/coach_feedback.py show works.
+    await client.post(
+        f"/coach/insights/{iid}/feedback", headers=HEADERS,
+        json={"rating": "down", "note": "catabolic talk again"},
+    )
+    rows = (await client.get("/coach/feedback", headers=HEADERS)).json()
+    ins = rows[0]["insight"]
+    assert ins["food_totals"] is not None
+    assert ins["prompt"] is not None
+    assert ins["system_prompt"] is not None
+    assert isinstance(ins["history_snapshot"], list)
+
+
+async def test_system_prompt_forbids_clinical_alarmism():
+    """The string-level guard is the cheapest way to verify the new
+    anti-alarmism guardrails landed in the prompt — if a future edit
+    drops them, this test fails loudly."""
+    lowered = SYSTEM_PROMPT.lower()
+    for forbidden_concept in ("catabolic", "starving", "metabolic collapse"):
+        assert forbidden_concept in lowered, f"missing guard against {forbidden_concept!r}"
+    assert "scold" in lowered or "lecture" in lowered or "do not use phrases" in lowered
 
 
 async def test_feedback_round_trip(client, mock_db, fake_ollama_response):

@@ -10,17 +10,23 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(require_api_key)])
 _KNOWN_SOURCES = {"garmin"}
 
 
+_KNOWN_KINDS = {"full", "steps"}
+
+
 @router.post("/ingest/{source}", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_ingest(source: str, request: Request):
+async def trigger_ingest(source: str, request: Request, kind: str = "full"):
     if source not in _KNOWN_SOURCES:
         raise HTTPException(status_code=404, detail=f"unknown source: {source}")
+    if kind not in _KNOWN_KINDS:
+        raise HTTPException(status_code=400, detail=f"unknown kind: {kind}")
     await request.app.state.db["ingestion_log"].insert_one({
         "source": source,
         "status": "requested",
+        "kind": kind,
         "started_at": datetime.now(UTC),
         "requested_by": "api",
     })
-    return {"accepted": True, "source": source}
+    return {"accepted": True, "source": source, "kind": kind}
 
 
 @router.get("/sync-status")

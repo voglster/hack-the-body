@@ -3,7 +3,7 @@ from datetime import date  # noqa: F401  (Protocol-required arg type)
 from pathlib import Path
 
 from app.repo import GarminRepo
-from app.runner import _no_jitter, run_sync
+from app.runner import _no_jitter, run_steps_sync, run_sync
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -77,6 +77,24 @@ async def test_raw_blob_persisted_for_every_metric(mock_db):
 
     workout_doc = await mock_db["workouts"].find_one()
     assert workout_doc and workout_doc["raw"]["activityId"] == 13000000001
+
+
+async def test_run_steps_sync_only_writes_intraday(mock_db):
+    repo = GarminRepo(mock_db)
+    counts = await run_steps_sync(client=FakeClient(), repo=repo)
+    assert counts == {"steps_intraday": 4}
+    # Focused sync must NOT touch other collections.
+    assert await mock_db["metrics_steps_intraday"].count_documents({}) == 4
+    assert await mock_db["metrics_daily_summary"].count_documents({}) == 0
+    assert await mock_db["metrics_weight"].count_documents({}) == 0
+    assert await mock_db["metrics_sleep"].count_documents({}) == 0
+
+
+async def test_run_steps_sync_idempotent(mock_db):
+    repo = GarminRepo(mock_db)
+    await run_steps_sync(client=FakeClient(), repo=repo)
+    await run_steps_sync(client=FakeClient(), repo=repo)
+    assert await mock_db["metrics_steps_intraday"].count_documents({}) == 4
 
 
 async def test_run_sync_idempotent(mock_db):

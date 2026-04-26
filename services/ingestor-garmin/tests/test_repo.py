@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.models import Weight, Workout
 from app.repo import GarminRepo
@@ -50,8 +50,20 @@ async def test_consume_requests(mock_db):
         "started_at": datetime.now(UTC),
     })
     pending = await repo.consume_requests("garmin")
-    assert pending == 1
+    assert pending == ["full"]  # legacy row without `kind` defaults to full
     still = await mock_db["ingestion_log"].count_documents(
         {"source": "garmin", "status": "requested"},
     )
     assert still == 0
+
+
+async def test_consume_requests_returns_kinds_in_order(mock_db):
+    repo = GarminRepo(mock_db)
+    now = datetime.now(UTC)
+    await mock_db["ingestion_log"].insert_many([
+        {"source": "garmin", "status": "requested", "kind": "steps", "started_at": now},
+        {"source": "garmin", "status": "requested", "kind": "full",
+         "started_at": now + timedelta(seconds=1)},
+    ])
+    pending = await repo.consume_requests("garmin")
+    assert pending == ["steps", "full"]

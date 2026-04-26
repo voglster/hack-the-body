@@ -68,8 +68,8 @@ export const api = {
       `/metrics/steps/day?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
     ),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
-  triggerIngest: async (source: string): Promise<unknown> => {
-    const r = await fetch(`${BASE}/admin/ingest/${source}`, {
+  triggerIngest: async (source: string, kind: "full" | "steps" = "full"): Promise<unknown> => {
+    const r = await fetch(`${BASE}/admin/ingest/${source}?kind=${kind}`, {
       method: "POST", headers: authHeaders(),
     });
     if (r.status === 401) handleUnauthorized();

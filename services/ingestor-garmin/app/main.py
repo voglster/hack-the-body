@@ -11,13 +11,13 @@ from pymongo import AsyncMongoClient
 from app.config import get_settings
 from app.garmin_client import GarminClient
 from app.repo import GarminRepo
-from app.runner import run_sync
+from app.runner import run_steps_sync, run_sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("ingestor-garmin")
 
 
-async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
+async def _do_sync(settings, db, *, kind: str = "full", startup_jitter_s: int = 0) -> None:
     repo = GarminRepo(db)
     if startup_jitter_s > 0:
         delay = random.randint(0, startup_jitter_s)
@@ -25,21 +25,27 @@ async def _do_sync(settings, db, *, startup_jitter_s: int = 0) -> None:
         await asyncio.sleep(delay)
     started = datetime.now(UTC)
     try:
-        counts = await run_sync(
-            client=GarminClient(settings),
-            repo=repo,
-            backfill_days=settings.garmin_backfill_days,
-        )
+        if kind == "steps":
+            counts = await run_steps_sync(
+                client=GarminClient(settings),
+                repo=repo,
+            )
+        else:
+            counts = await run_sync(
+                client=GarminClient(settings),
+                repo=repo,
+                backfill_days=settings.garmin_backfill_days,
+            )
         await repo.write_log(
-            source="garmin", status="ok",
+            source="garmin", status="ok", kind=kind,
             started_at=started, finished_at=datetime.now(UTC),
             counts=counts,
         )
-        log.info("sync ok: %s", counts)
+        log.info("sync ok (%s): %s", kind, counts)
     except Exception as e:
-        log.exception("sync failed")
+        log.exception("sync failed (%s)", kind)
         await repo.write_log(
-            source="garmin", status="error",
+            source="garmin", status="error", kind=kind,
             started_at=started, finished_at=datetime.now(UTC),
             error=str(e),
         )
@@ -49,10 +55,13 @@ async def _poll_requests(settings, db, interval_s: int = 30) -> None:
     repo = GarminRepo(db)
     while True:
         try:
-            n = await repo.consume_requests("garmin")
-            if n > 0:
-                log.info("on-demand trigger consumed (%d)", n)
-                await _do_sync(settings, db)
+            kinds = await repo.consume_requests("garmin")
+            # Collapse: any "full" subsumes "steps" in the same batch.
+            if kinds:
+                effective = "full" if "full" in kinds else "steps"
+                log.info("on-demand trigger consumed (%d, kinds=%s, running=%s)",
+                         len(kinds), kinds, effective)
+                await _do_sync(settings, db, kind=effective)
         except Exception:
             log.exception("poll loop error")
         await asyncio.sleep(interval_s)

@@ -155,19 +155,31 @@ class GarminRepo:
     async def write_log(
         self, *, source: str, status: str, started_at: datetime,
         finished_at: datetime | None = None, counts: dict[str, int] | None = None,
-        error: str | None = None,
+        error: str | None = None, kind: str = "full",
     ) -> None:
         await self.db["ingestion_log"].insert_one({
             "source": source,
             "status": status,
+            "kind": kind,
             "started_at": started_at,
             "finished_at": finished_at,
             "counts": counts or {},
             "error": error,
         })
 
-    async def consume_requests(self, source: str) -> int:
-        result = await self.db["ingestion_log"].delete_many(
-            {"source": source, "status": "requested"}
-        )
-        return result.deleted_count
+    async def consume_requests(self, source: str) -> list[str]:
+        """Atomically claim all pending requests for a source. Returns the
+        `kind` of each consumed request (defaults to "full" for legacy rows
+        without the field). Order is insertion-order within the batch."""
+        kinds: list[str] = [
+            doc.get("kind") or "full"
+            async for doc in self.db["ingestion_log"].find(
+                {"source": source, "status": "requested"},
+                sort=[("started_at", 1)],
+            )
+        ]
+        if kinds:
+            await self.db["ingestion_log"].delete_many(
+                {"source": source, "status": "requested"}
+            )
+        return kinds

@@ -111,6 +111,27 @@ async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
         await jitter()
 
 
+async def run_steps_sync(
+    *,
+    client: ClientProto,
+    repo: GarminRepo,
+) -> dict[str, int]:
+    """Focused sync: just today's intraday_steps. Used for the 'sync my steps'
+    button. Live total = sum(intraday buckets); the step_goal lives on
+    daily_summary which the nightly full sync already keeps fresh, so we
+    skip it here for speed (one Garmin call instead of two)."""
+    client.login()
+    today = datetime.now(UTC).date()
+    counts = {"steps_intraday": 0}
+    try:
+        for bucket in map_intraday_steps(client.fetch_intraday_steps(today)):
+            if await repo.upsert_steps_bucket(bucket):
+                counts["steps_intraday"] += 1
+    except Exception as e:
+        log.warning("steps_intraday %s skipped: %s", today, e)
+    return counts
+
+
 async def run_sync(
     *,
     client: ClientProto,

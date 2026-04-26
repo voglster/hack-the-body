@@ -7,7 +7,11 @@
  * midnight walking window — anything before 6am counts as on-pace by
  * default since most people aren't out walking yet.
  */
-import type { Summary } from "../api/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+
+import { api } from "../api/client";
+import type { Summary, SyncStatus } from "../api/types";
 
 /**
  * Typical cumulative-step curve over the day. Assumes a person who walks
@@ -139,6 +143,8 @@ export function StepsTodayCard({ summary, todaySteps }: {
   const f = forecast(steps, goal, new Date());
   const tone = STATUS_TONE[f.status];
 
+  const sync = useStepsSync();
+
   // Position of the "expected pace" marker on the bar.
   const expectedPct = goal ? Math.min(100, f.expectedFraction * 100) : 0;
   const donePct = goal ? Math.min(100, f.fractionDone * 100) : 0;
@@ -183,7 +189,74 @@ export function StepsTodayCard({ summary, todaySteps }: {
         </div>
       )}
 
-      <div className={`text-sm font-medium ${tone.pill}`}>{f.message}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className={`text-sm font-medium ${tone.pill}`}>{f.message}</div>
+        <button
+          type="button"
+          onClick={() => sync.start()}
+          disabled={sync.busy}
+          className="shrink-0 text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200"
+          aria-label="sync steps from Garmin"
+        >
+          {sync.busy ? "syncing…" : sync.justOk ? "synced ✓" : "sync steps"}
+        </button>
+      </div>
     </section>
   );
+}
+
+/**
+ * Trigger a focused steps-only ingest, then wait for the ingestor's poll loop
+ * (≤30s) to pick it up and write a new ok-log entry. We watch the sync-status
+ * endpoint's last_ok timestamp; when it advances past our trigger time, we
+ * invalidate the steps + summary queries so the user sees fresh data.
+ */
+function useStepsSync() {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [justOk, setJustOk] = useState(false);
+  const okTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (okTimeoutRef.current) window.clearTimeout(okTimeoutRef.current);
+  }, []);
+
+  const m = useMutation({
+    mutationFn: async () => {
+      const triggeredAt = Date.now();
+      await api.triggerIngest("garmin", "steps");
+      // Poll sync-status until last_ok moves forward, max ~70s
+      // (poll cadence is 30s + sync ~3s + slack).
+      const deadline = triggeredAt + 70_000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const s = (await api.syncStatus()) as SyncStatus;
+          const ok = s.garmin?.last_ok;
+          if (ok && new Date(ok.started_at).getTime() >= triggeredAt) return;
+        } catch { /* ignore transient */ }
+      }
+      throw new Error("sync did not complete in time");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["stepsDay"] });
+      void qc.invalidateQueries({ queryKey: ["summary"] });
+      void qc.invalidateQueries({ queryKey: ["syncStatus"] });
+      setJustOk(true);
+      if (okTimeoutRef.current) window.clearTimeout(okTimeoutRef.current);
+      okTimeoutRef.current = window.setTimeout(() => setJustOk(false), 3000);
+    },
+    onSettled: () => setBusy(false),
+  });
+
+  return {
+    busy,
+    justOk,
+    start: () => {
+      if (busy) return;
+      setBusy(true);
+      setJustOk(false);
+      m.mutate();
+    },
+  };
 }

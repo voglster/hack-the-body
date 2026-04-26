@@ -17,6 +17,29 @@ async def test_admin_trigger_unknown_source(client):
     assert r.status_code == 404
 
 
+async def test_admin_trigger_default_kind_is_full(client, mock_db):
+    await client.post("/admin/ingest/garmin", headers={"X-API-Key": "test-key"})
+    doc = await mock_db["ingestion_log"].find_one({"source": "garmin", "status": "requested"})
+    assert doc["kind"] == "full"
+
+
+async def test_admin_trigger_steps_kind(client, mock_db):
+    r = await client.post(
+        "/admin/ingest/garmin?kind=steps", headers={"X-API-Key": "test-key"},
+    )
+    assert r.status_code == 202
+    assert r.json()["kind"] == "steps"
+    doc = await mock_db["ingestion_log"].find_one({"source": "garmin", "kind": "steps"})
+    assert doc is not None
+
+
+async def test_admin_trigger_unknown_kind_rejected(client):
+    r = await client.post(
+        "/admin/ingest/garmin?kind=bogus", headers={"X-API-Key": "test-key"},
+    )
+    assert r.status_code == 400
+
+
 async def test_clear_food_cache_drops_external_only(client, mock_db):
     h = {"X-API-Key": "test-key"}
     # Seed: an OFF-cached food, a manual food, and a builtin (Water).

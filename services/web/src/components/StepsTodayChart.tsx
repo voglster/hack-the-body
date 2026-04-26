@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { api } from "../api/client";
@@ -64,9 +64,42 @@ export function StepsTodayChart({ onDayChange }: DayChartProps) {
           {data ? `${data.total.toLocaleString()} steps` : ""}
         </div>
       </div>
-      <DayBars data={data} loading={isLoading} day={day} />
+      <DayBars data={data} loading={isLoading} day={day} isToday={isToday} />
     </div>
   );
+}
+
+/** Find the slot index in the 24h grid for the given timestamp (ms or Date).
+ *  Returns -1 if outside the day window. */
+function slotIndex(rows: { sortKey: number }[], at: number): number {
+  if (rows.length === 0) return -1;
+  const slotStart = at - (at % (15 * 60_000));
+  // sortKey of grid row N is local-midnight + N*15min, but since the grid is
+  // built in local tz with Date(y,m,d,0,i*15) we can match exactly.
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].sortKey === slotStart) return i;
+  }
+  // Fall back: clamp to last index if `at` is past end-of-day.
+  if (at >= rows[rows.length - 1].sortKey + 15 * 60_000) return rows.length - 1;
+  return -1;
+}
+
+function lastSyncedTs(buckets: { ts: string; steps: number }[]): number | null {
+  if (!buckets || buckets.length === 0) return null;
+  let latest = 0;
+  for (const b of buckets) {
+    const t = new Date(b.ts).getTime();
+    if (t > latest) latest = t;
+  }
+  return latest || null;
+}
+
+function formatLagMin(min: number): string {
+  if (min < 1) return "live";
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
 }
 
 /** Build an empty 24-hour grid in 15-min buckets for the given local day,
@@ -95,28 +128,113 @@ function buildDayGrid(
   return grid;
 }
 
+interface Markers {
+  rows: ReturnType<typeof buildDayGrid>;
+  nowIdx: number;
+  lastIdx: number;
+  showLastSync: boolean;
+  lagMin: number | null;
+}
+
+function computeMarkers(
+  rows: ReturnType<typeof buildDayGrid>,
+  buckets: { ts: string; steps: number }[],
+  now: number,
+  isToday: boolean,
+): Markers {
+  const nowIdx = isToday ? slotIndex(rows, now) : -1;
+  const lastTs = isToday ? lastSyncedTs(buckets) : null;
+  const lastIdx = lastTs != null ? slotIndex(rows, lastTs) : -1;
+  const showLastSync = lastIdx >= 0 && (nowIdx < 0 || lastIdx < nowIdx);
+  const lagMin = lastTs != null && isToday
+    ? Math.max(0, Math.round((now - lastTs) / 60_000))
+    : null;
+  return { rows, nowIdx, lastIdx, showLastSync, lagMin };
+}
+
 function DayBars({
-  data, loading, day,
+  data, loading, day, isToday,
 }: {
   data: { buckets: { ts: string; steps: number }[]; total: number } | undefined;
   loading: boolean;
   day: string;
+  isToday: boolean;
 }) {
+  // `now` ticks every 30s so the "now" reference line marches in real time.
+  const now = useNow(30_000);
   if (loading) return <div className="h-48 text-neutral-500 text-sm">loading...</div>;
-  // Even with no data yet, render the empty 24h grid so the user sees the
-  // shape they're filling in.
   const rows = buildDayGrid(day, data?.buckets ?? []);
+  const m = computeMarkers(rows, data?.buckets ?? [], now, isToday);
+
   return (
-    <div className="h-48">
-      <ResponsiveContainer>
-        <BarChart data={rows}>
-          <CartesianGrid stroke="#262626" />
-          <XAxis dataKey="hh" stroke="#737373" fontSize={10} interval={15} />
-          <YAxis stroke="#737373" fontSize={11} />
-          <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626" }} />
-          <Bar dataKey="steps" fill="#34d399" />
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="space-y-1">
+      <div className="h-48">
+        <ResponsiveContainer>
+          <BarChart data={rows}>
+            <CartesianGrid stroke="#262626" />
+            <XAxis dataKey="hh" stroke="#737373" fontSize={10} interval={15} />
+            <YAxis stroke="#737373" fontSize={11} />
+            <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626" }} />
+            <Bar dataKey="steps" fill="#34d399" />
+            {m.showLastSync && (
+              <ReferenceLine
+                x={rows[m.lastIdx].hh}
+                stroke="#fbbf24"
+                strokeDasharray="3 3"
+                strokeWidth={1.5}
+                label={{ value: "synced", position: "top", fill: "#fbbf24", fontSize: 10 }}
+              />
+            )}
+            {m.nowIdx >= 0 && (
+              <ReferenceLine
+                x={rows[m.nowIdx].hh}
+                stroke="#e5e5e5"
+                strokeWidth={1.5}
+                label={{ value: "now", position: "top", fill: "#e5e5e5", fontSize: 10 }}
+              />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {isToday && <SyncLegend showLastSync={m.showLastSync} lagMin={m.lagMin} />}
     </div>
+  );
+}
+
+function SyncLegend({ showLastSync, lagMin }: { showLastSync: boolean; lagMin: number | null }) {
+  return (
+    <div className="flex items-center justify-end gap-3 text-[10px] text-neutral-500 px-1">
+      {showLastSync && lagMin != null ? (
+        <>
+          <LegendDot color="#fbbf24" dashed /> last sync · {formatLagMin(lagMin)} ago
+          <LegendDot color="#e5e5e5" /> now
+        </>
+      ) : (
+        <><LegendDot color="#e5e5e5" /> now {lagMin === 0 && "· live"}</>
+      )}
+    </div>
+  );
+}
+
+/** Re-renders the caller every `intervalMs` so time-based UI (e.g. a "now"
+ *  reference line) advances without being marked impure by lint rules. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function LegendDot({ color, dashed }: { color: string; dashed?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="inline-block w-3 h-0 align-middle mr-0.5"
+      style={{
+        borderTop: `1.5px ${dashed ? "dashed" : "solid"} ${color}`,
+      }}
+    />
   );
 }

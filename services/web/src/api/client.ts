@@ -104,7 +104,7 @@ export const api = {
   logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
     post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
-  editEntry: (entry_id: string, patch: { ts?: string; slot?: MealSlot }) => {
+  editEntry: (entry_id: string, patch: { ts?: string; slot?: MealSlot; quantity_g?: number }) => {
     return fetch(`${BASE}/meals/entries/${entry_id}`, {
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),

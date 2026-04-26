@@ -190,6 +190,44 @@ async def test_edit_entry_requires_field(client):
     assert r.status_code == 400
 
 
+async def test_edit_entry_quantity_recomputes_macros(client):
+    food = await _create_food(
+        client, name="Vanilla Shake", serving_g=325.0,
+        per_serving={"calories": 150, "protein_g": 30, "carbs_g": 2, "fat_g": 2.5},
+    )
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        # Simulates the "325 servings" bug: 105625 g logged for one shake.
+        json={"food_id": food["id"], "quantity_g": 105625, "slot": "lunch"},
+    )
+    entry_id = r.json()["id"]
+    assert r.json()["macros"]["protein_g"] > 9000  # the broken state
+
+    # Correct it: 1 shake = 325 g.
+    r = await client.patch(
+        f"/meals/entries/{entry_id}", headers=HEADERS, json={"quantity_g": 325},
+    )
+    assert r.status_code == 200, r.text
+    fixed = r.json()
+    assert fixed["quantity_g"] == 325
+    assert fixed["servings"] == 1.0
+    assert fixed["macros"]["calories"] == 150
+    assert fixed["macros"]["protein_g"] == 30
+
+
+async def test_edit_entry_quantity_rejects_zero(client):
+    food = await _create_food(client)
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 100, "slot": "snack"},
+    )
+    entry_id = r.json()["id"]
+    r = await client.patch(
+        f"/meals/entries/{entry_id}", headers=HEADERS, json={"quantity_g": 0},
+    )
+    assert r.status_code == 422  # pydantic gt=0 validation
+
+
 async def test_delete_entry(client):
     food = await _create_food(client)
     r = await client.post(

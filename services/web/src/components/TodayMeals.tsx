@@ -208,7 +208,9 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
     if (/^\d{8,}$/.test(val)) {
       try {
         const food = await api.foodByBarcode(val);
-        update({ hits: [food], picked: food, qty: String(food.serving_g) });
+        // qty here is *servings*, not grams — default to 1 serving so we
+        // don't accidentally log "325 servings" for a 325 g shake.
+        update({ hits: [food], picked: food, qty: "1" });
         return;
       } catch { /* fall through to text search */ }
     }

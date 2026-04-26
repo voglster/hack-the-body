@@ -18,6 +18,103 @@ const END_HOUR = 24;    // exclusive — midnight
 const SNAP_MIN = 15;
 const TOTAL_MIN = (END_HOUR - START_HOUR) * 60;
 
+function isValidServings(s: string): boolean {
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0;
+}
+
+function buildPatch(
+  entry: MealEntry, t: Date, slot: MealSlot, servingsStr: string,
+): { ts: string; slot: MealSlot; quantity_g?: number } {
+  const patch: { ts: string; slot: MealSlot; quantity_g?: number } = {
+    ts: t.toISOString(),
+    slot,
+  };
+  const n = parseFloat(servingsStr);
+  if (Number.isFinite(n) && n > 0) {
+    const sg = impliedServingG(entry);
+    if (sg != null) {
+      const newGrams = round2(n * sg);
+      // Only include quantity_g when the user actually changed it.
+      if (Math.abs(newGrams - entry.quantity_g) > 0.5) {
+        patch.quantity_g = newGrams;
+      }
+    } else {
+      // Fallback: treat the field as raw grams (when servings is unknown).
+      if (Math.abs(n - entry.quantity_g) > 0.5) {
+        patch.quantity_g = round2(n);
+      }
+    }
+  }
+  return patch;
+}
+
+function QuantityField({
+  entry, servingsStr, onServingsStr, busy,
+}: {
+  entry: MealEntry;
+  servingsStr: string;
+  onServingsStr: (s: string) => void;
+  busy: boolean;
+}) {
+  const sg = impliedServingG(entry);
+  const n = parseFloat(servingsStr);
+  const grams = sg != null && Number.isFinite(n) && n > 0 ? round2(n * sg) : null;
+  const label = sg != null ? "servings" : "grams";
+  const hint = sg != null
+    ? `1 serving ≈ ${round2(sg)} g${grams != null ? ` · ${grams} g total` : ""}`
+    : "raw grams (entry's serving size unknown)";
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-neutral-400">{label}</span>
+        <span className="text-[11px] text-neutral-500">{hint}</span>
+      </div>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="0.25"
+        value={servingsStr}
+        disabled={busy}
+        onChange={e => onServingsStr(e.target.value)}
+        className="w-full px-3 py-3 rounded bg-neutral-800 border border-neutral-700 text-base tabular-nums"
+        aria-label={label}
+      />
+      {sg != null && (
+        <div className="flex flex-wrap gap-2">
+          {SERVINGS_PRESETS.map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onServingsStr(String(p))}
+              disabled={busy}
+              className="px-3 py-1.5 rounded-full text-sm bg-neutral-800 active:bg-neutral-700 text-neutral-300"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Per-serving grams, derived from the entry. Returns null if we can't trust
+ *  the math (e.g. servings was logged as 0 or null) — caller should fall back
+ *  to direct-grams editing. */
+function impliedServingG(entry: MealEntry): number | null {
+  if (!entry.servings || entry.servings <= 0) return null;
+  const v = entry.quantity_g / entry.servings;
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return v;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+const SERVINGS_PRESETS = [0.5, 1, 1.5, 2];
+
 function fmtTime(d: Date): string {
   const h = d.getHours();
   const m = d.getMinutes().toString().padStart(2, "0");
@@ -43,13 +140,19 @@ export function EntryTimeEditor({
 }: {
   entry: MealEntry;
   dayEntries: MealEntry[];
-  onSave: (patch: { ts: string; slot: MealSlot }) => void;
+  onSave: (patch: { ts: string; slot: MealSlot; quantity_g?: number }) => void;
   onCancel: () => void;
   busy: boolean;
 }) {
   const initial = new Date(entry.ts);
   const [t, setT] = useState<Date>(initial);
   const [slot, setSlot] = useState<MealSlot>(entry.slot);
+  // Servings as a string so the user can clear/retype freely. Defaults to
+  // the current entry's `servings` (e.g. 325 for a buggy entry — they'll
+  // immediately see "this is wildly wrong").
+  const [servingsStr, setServingsStr] = useState<string>(
+    () => String(round2(entry.servings ?? entry.quantity_g / 100)),
+  );
   const trackRef = useRef<HTMLDivElement>(null);
 
   const minsNow = toMinutesFromStart(t);
@@ -110,6 +213,14 @@ export function EntryTimeEditor({
           {fmtTime(t)}
         </div>
       </div>
+
+      {/* Quantity */}
+      <QuantityField
+        entry={entry}
+        servingsStr={servingsStr}
+        onServingsStr={setServingsStr}
+        busy={busy}
+      />
 
       {/* Slot chips */}
       <div className="flex flex-wrap gap-2">
@@ -181,8 +292,8 @@ export function EntryTimeEditor({
 
       <div className="flex gap-2">
         <button
-          onClick={() => onSave({ ts: t.toISOString(), slot })}
-          disabled={busy}
+          onClick={() => onSave(buildPatch(entry, t, slot, servingsStr))}
+          disabled={busy || !isValidServings(servingsStr)}
           className="flex-1 px-3 py-3 rounded bg-emerald-700 active:bg-emerald-800 text-white text-base font-medium disabled:opacity-50 min-h-[44px]"
         >
           {busy ? "saving..." : "save"}

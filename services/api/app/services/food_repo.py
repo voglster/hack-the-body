@@ -122,8 +122,10 @@ class FoodRepo:
         entry_id: str,
         new_ts: datetime | None = None,
         new_slot: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        """Move an entry to a new timestamp / slot.
+        """Move an entry to a new timestamp / slot, and/or replace fields
+        like `quantity_g` and `macros` via `extra_fields`.
 
         Time-series collections in MongoDB don't allow updating the time
         field, so we delete the original and reinsert with the new fields.
@@ -140,10 +142,15 @@ class FoodRepo:
             meta = dict(new_doc.get("meta") or {})
             meta["slot"] = new_slot
             new_doc["meta"] = meta
+        if extra_fields:
+            new_doc.update(extra_fields)
         await self.db["meal_entries"].delete_one({"_id": _oid(entry_id)})
         res = await self.db["meal_entries"].insert_one(new_doc)
         stored = await self.db["meal_entries"].find_one({"_id": res.inserted_id})
         return _doc_to_dict(stored)
+
+    async def get_entry(self, entry_id: str) -> dict[str, Any] | None:
+        return _doc_to_dict(await self.db["meal_entries"].find_one({"_id": _oid(entry_id)}))
 
     # ---------- templates ----------
     async def upsert_template(self, t: MealTemplate) -> dict[str, Any]:

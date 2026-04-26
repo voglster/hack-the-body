@@ -15,7 +15,7 @@ import { SleepChart } from "../components/SleepChart";
 import { StepsChart } from "../components/StepsChart";
 import { StepsTodayCard } from "../components/StepsTodayCard";
 import { StepsTodayChart } from "../components/StepsTodayChart";
-import { SyncStatusFooter } from "../components/SyncStatusFooter";
+import { SyncDot } from "../components/SyncDot";
 import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
 import { WorkoutList } from "../components/WorkoutList";
@@ -69,14 +69,17 @@ function HeaderActions() {
     onSuccess: () => qc.invalidateQueries(),
   });
   return (
-    <button
-      onClick={() => sync.mutate()}
-      disabled={sync.isPending}
-      className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-50 min-h-[44px] sm:min-h-0 sm:py-1.5"
-      aria-label="trigger garmin sync"
-    >
-      {sync.isPending ? "..." : "↻"}
-    </button>
+    <div className="flex items-center gap-1">
+      <SyncDot />
+      <button
+        onClick={() => sync.mutate()}
+        disabled={sync.isPending}
+        className="text-xs px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-50 min-h-[44px] sm:min-h-0 sm:py-1.5"
+        aria-label="trigger garmin sync"
+      >
+        {sync.isPending ? "..." : "↻"}
+      </button>
+    </div>
   );
 }
 
@@ -103,7 +106,6 @@ function TodayTab() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <SyncStatusFooter />
       <StepsTodayCard summary={summary} todaySteps={stepsToday?.total} />
       <CoachCard />
       <WaterCard />

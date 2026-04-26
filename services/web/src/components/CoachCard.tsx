@@ -101,19 +101,48 @@ function CoachActions(p: ActionsProps) {
   );
 }
 
+function renderCollapsed(
+  display: DisplayMsg | null,
+  expanded: boolean,
+  askPending: boolean,
+  weeklyPending: boolean,
+  onExpand: () => void,
+): React.ReactElement | null {
+  if (expanded || askPending || weeklyPending) return null;
+  if (!display) {
+    return (
+      <button
+        onClick={onExpand}
+        className="w-full text-left text-sm text-neutral-400 hover:text-neutral-200 px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800"
+      >
+        coach is quiet — tap to ask
+      </button>
+    );
+  }
+  const firstLine = display.text.split("\n").find(l => l.trim()) ?? display.text;
+  return (
+    <button
+      onClick={onExpand}
+      className="w-full text-left rounded-xl bg-neutral-900 border border-neutral-800 px-4 py-3"
+    >
+      <div className="text-xs uppercase tracking-wide text-neutral-400 mb-0.5">Coach</div>
+      <div className="text-sm text-neutral-200 line-clamp-2">{firstLine}</div>
+    </button>
+  );
+}
+
 /**
- * Coach panel — generates fresh insights on demand. Persists every insight on
- * the server (see app/services/coach.py); a "history" toggle exposes the
- * last few so we can see whether the coach is keeping continuity.
+ * Coach panel — when it has a message it collapses to a 1-line preview;
+ * tap to expand for full text + action buttons + history. When empty,
+ * shows a small CTA to ask for a fresh insight.
  *
  * No auto-refresh: LLM calls cost CPU/GPU on the LAN box.
  */
 export function CoachCard() {
   const qc = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  // The latest insight is always the head of /coach/recent. We fetch that on
-  // mount so the dashboard shows continuity even without clicking 'ask coach'.
   const { data: history } = useQuery({
     queryKey: ["coach.recent"],
     queryFn: () => api.coachRecent(10),
@@ -122,24 +151,37 @@ export function CoachCard() {
 
   const ask = useMutation({
     mutationFn: api.coachInsight,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["coach.recent"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["coach.recent"] });
+      setExpanded(true);
+    },
   });
-
-  // Weekly review uses the heavy gpt-oss:120b on framework — slow (~5min),
-  // separate button so we don't accidentally fire it.
   const weekly = useMutation({
     mutationFn: api.coachWeekly,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["coach.recent"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["coach.recent"] });
+      setExpanded(true);
+    },
   });
 
-  // The mutation result is the freshest source of truth (with timing) when
-  // available; fall back to the recent-list head otherwise.
   const display = pickDisplay(weekly.data ?? ask.data, latest);
+
+  const collapsedView = renderCollapsed(
+    display, expanded, ask.isPending, weekly.isPending,
+    () => setExpanded(true),
+  );
+  if (collapsedView) return collapsedView;
 
   return (
     <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="text-xs uppercase tracking-wide text-neutral-400">Coach</div>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={() => setExpanded(false)}
+          className="text-xs uppercase tracking-wide text-neutral-400 active:text-neutral-200"
+          aria-label="collapse coach"
+        >
+          Coach ▾
+        </button>
         <CoachActions
           hasHistory={(history?.length ?? 0) > 1}
           showHistory={showHistory}

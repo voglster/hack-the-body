@@ -66,9 +66,14 @@ async def _run() -> None:
     scheduler = AsyncIOScheduler(timezone="UTC")
     # Nightly cron fires at the configured minute, but we add up to 15 min
     # of randomized startup jitter inside _do_sync so we don't ping Garmin at the
-    # exact same instant every night.
+    # exact same instant every night. Register an async coroutine fn (not a
+    # lambda) so AsyncIOScheduler routes the job to its AsyncIOExecutor.
+
+    async def _scheduled_sync() -> None:
+        await _do_sync(settings, db, startup_jitter_s=900)
+
     scheduler.add_job(
-        lambda: asyncio.create_task(_do_sync(settings, db, startup_jitter_s=900)),
+        _scheduled_sync,
         CronTrigger.from_crontab(settings.garmin_schedule_cron),
         id="nightly",
     )

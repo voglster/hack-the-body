@@ -64,31 +64,54 @@ export function StepsTodayChart({ onDayChange }: DayChartProps) {
           {data ? `${data.total.toLocaleString()} steps` : ""}
         </div>
       </div>
-      <DayBars data={data} loading={isLoading} />
+      <DayBars data={data} loading={isLoading} day={day} />
     </div>
   );
 }
 
+/** Build an empty 24-hour grid in 15-min buckets for the given local day,
+ *  then overlay the actual step buckets onto it. Returns 96 rows starting
+ *  at local midnight, so the chart x-axis is always 0..24h regardless of
+ *  whether the day has finished. */
+function buildDayGrid(
+  localDayISO: string,
+  buckets: { ts: string; steps: number }[],
+): { hh: string; steps: number; sortKey: number }[] {
+  const [y, m, d] = localDayISO.split("-").map(Number);
+  const grid: { hh: string; steps: number; sortKey: number }[] = [];
+  for (let i = 0; i < 96; i++) {
+    const dt = new Date(y, m - 1, d, 0, i * 15);
+    const label = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    grid.push({ hh: label, steps: 0, sortKey: dt.getTime() });
+  }
+  // Merge actual buckets by nearest 15-min slot start (local).
+  for (const b of buckets) {
+    const t = new Date(b.ts);
+    const slotStart = new Date(t);
+    slotStart.setMinutes(Math.floor(slotStart.getMinutes() / 15) * 15, 0, 0);
+    const idx = grid.findIndex(g => g.sortKey === slotStart.getTime());
+    if (idx >= 0) grid[idx].steps += b.steps;
+  }
+  return grid;
+}
+
 function DayBars({
-  data, loading,
+  data, loading, day,
 }: {
   data: { buckets: { ts: string; steps: number }[]; total: number } | undefined;
   loading: boolean;
+  day: string;
 }) {
   if (loading) return <div className="h-48 text-neutral-500 text-sm">loading...</div>;
-  if (!data?.buckets.length) {
-    return <div className="h-48 text-neutral-500 text-sm">no intraday step data for this day</div>;
-  }
-  const rows = data.buckets.map(b => ({
-    hh: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    steps: b.steps,
-  }));
+  // Even with no data yet, render the empty 24h grid so the user sees the
+  // shape they're filling in.
+  const rows = buildDayGrid(day, data?.buckets ?? []);
   return (
     <div className="h-48">
       <ResponsiveContainer>
         <BarChart data={rows}>
           <CartesianGrid stroke="#262626" />
-          <XAxis dataKey="hh" stroke="#737373" fontSize={10} interval={3} />
+          <XAxis dataKey="hh" stroke="#737373" fontSize={10} interval={15} />
           <YAxis stroke="#737373" fontSize={11} />
           <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626" }} />
           <Bar dataKey="steps" fill="#34d399" />

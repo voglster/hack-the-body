@@ -37,7 +37,10 @@ async def test_run_sync_writes_all_metrics(mock_db):
     assert counts["sleep"] == 1
     assert counts["hrv"] == 1
     assert counts["vo2max"] == 1
-    assert counts["daily_summary"] == 1
+    # daily_summary uses replace-on-resync since today's row keeps mutating;
+    # backfill_days=1 = 2 days fetched, each is a "successful replace", so
+    # count == 2 even though one fixture is reused. Collection is still 1.
+    assert counts["daily_summary"] == 2
     assert counts["workouts"] == 1
     # 4 fixture buckets per day x (backfill_days+1=2 days) = 8 — but the
     # second day re-pulls the same fixture, so source_id dedupes both runs

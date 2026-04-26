@@ -26,6 +26,15 @@ class GarminRepo:
         await self.db[coll].insert_one(doc)
         return True
 
+    async def _ts_replace(self, coll: str, source_id: str, doc: dict) -> bool:
+        """Insert-or-replace by source_id. Time-series collections don't
+        support direct updates to the time field, so we delete-then-insert.
+        Used for daily_summary — today's row is a moving target since
+        steps + goal change throughout the day."""
+        await self.db[coll].delete_many({"meta.source_id": source_id})
+        await self.db[coll].insert_one(doc)
+        return True
+
     async def upsert_weight(self, w: Weight) -> bool:
         return await self._ts_upsert(
             "metrics_weight",
@@ -100,7 +109,11 @@ class GarminRepo:
         )
 
     async def upsert_daily_summary(self, s: DailySummary) -> bool:
-        return await self._ts_upsert(
+        # Replace, don't skip-if-exists. The per-day row keeps mutating as
+        # the user walks; if we keep the first morning sync forever, today's
+        # row says steps=0 and goal=null because Garmin hadn't published
+        # them yet at sync time.
+        return await self._ts_replace(
             "metrics_daily_summary",
             s.source_id,
             {

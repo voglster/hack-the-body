@@ -1,0 +1,100 @@
+[
+  {
+    "id": "crepe_breakdown",
+    "description": "Structured breakdown from another AI — explicit calorie totals per line.",
+    "input": "Crepe Shell: 250\n2 Scrambled Eggs: 150\nSmoked Salmon (approx. 2oz): 80\nDill Sour Cream (light smear): 60\nOnions/Capers/Lemon: 20\nAlmond Milk Latte: 110",
+    "expected": [
+      {"name_contains": "crepe", "calories": 250},
+      {"name_contains": "egg", "calories": 150, "servings": 2},
+      {"name_contains": "salmon", "calories": 80},
+      {"name_contains": "sour cream", "calories": 60},
+      {"name_contains": "onion", "calories": 20},
+      {"name_contains": "latte", "calories": 110}
+    ],
+    "expected_total_calories": 670
+  },
+  {
+    "id": "freeform_no_macros",
+    "description": "User describes a meal without numbers — model can leave macros null or estimate.",
+    "input": "I had a turkey sandwich on whole wheat with mayo and a small bag of chips for lunch",
+    "expected": [
+      {"name_contains": "sandwich"},
+      {"name_contains": "chip"}
+    ]
+  },
+  {
+    "id": "ai_response_with_prose",
+    "description": "Pasted output from a chat AI — includes greetings and tips that should be ignored.",
+    "input": "Sure! Here's your breakdown:\n\n- Oatmeal: 150 cal\n- Banana: 105 cal\n- Coffee: 5 cal\n\nGreat start to the day! Are you tracking macros?",
+    "expected": [
+      {"name_contains": "oatmeal", "calories": 150},
+      {"name_contains": "banana", "calories": 105},
+      {"name_contains": "coffee", "calories": 5}
+    ]
+  },
+  {
+    "id": "mixed_units",
+    "description": "Quantities given in oz / cups — model should keep weight in name, set servings=1.",
+    "input": "2 oz smoked salmon (80 cal)\n1/2 cup white rice (105 cal)\n4 oz grilled chicken (190 cal)",
+    "expected": [
+      {"name_contains": "salmon", "calories": 80, "servings": 1},
+      {"name_contains": "rice", "calories": 105, "servings": 1},
+      {"name_contains": "chicken", "calories": 190, "servings": 1}
+    ]
+  },
+  {
+    "id": "macros_provided",
+    "description": "Full macro breakdown.",
+    "input": "Greek yogurt: 100 cal, 18g protein, 6g carbs, 0g fat\nGranola: 225 cal, 5g protein, 35g carbs, 7g fat\nBlueberries: 40 cal, 1g protein, 10g carbs, 0g fat",
+    "expected": [
+      {"name_contains": "yogurt", "calories": 100, "protein_g": 18, "carbs_g": 6, "fat_g": 0},
+      {"name_contains": "granola", "calories": 225, "protein_g": 5, "carbs_g": 35, "fat_g": 7},
+      {"name_contains": "blueberr", "calories": 40, "protein_g": 1, "carbs_g": 10, "fat_g": 0}
+    ]
+  },
+  {
+    "id": "single_drink",
+    "description": "Just a coffee shop drink.",
+    "input": "Grande oat milk latte from Starbucks - 190 calories",
+    "expected": [
+      {"name_contains": "latte", "calories": 190}
+    ]
+  },
+  {
+    "id": "non_food",
+    "description": "Should return an empty list — nothing food-like.",
+    "input": "Good morning! Just woke up, feeling tired. Will go to the gym later.",
+    "expected": []
+  },
+  {
+    "id": "multi_meal_one_paste",
+    "description": "User dumps a whole day at once.",
+    "input": "Breakfast: oatmeal (150) and a banana (100)\nLunch: chicken caesar wrap (550)\nSnack: protein bar (190)\nDinner: salmon, rice, broccoli (about 600 total)",
+    "expected": [
+      {"name_contains": "oatmeal"},
+      {"name_contains": "banana"},
+      {"name_contains": "wrap"},
+      {"name_contains": "protein bar"},
+      {"name_contains": "salmon"}
+    ],
+    "min_items": 5
+  },
+  {
+    "id": "ambiguous_quantity",
+    "description": "'Two eggs' could be 'servings: 2' or 'name: 2 eggs'. Either is fine if calories are right.",
+    "input": "Two eggs: 140 cal\nA slice of toast: 80 cal",
+    "expected": [
+      {"name_contains": "egg", "calories": 140},
+      {"name_contains": "toast", "calories": 80}
+    ]
+  },
+  {
+    "id": "decimals_and_grams",
+    "description": "Specific gram amounts.",
+    "input": "150g chicken breast - 250 cal, 47g protein\n100g rice - 130 cal, 28g carbs",
+    "expected": [
+      {"name_contains": "chicken", "calories": 250, "protein_g": 47},
+      {"name_contains": "rice", "calories": 130, "carbs_g": 28}
+    ]
+  }
+]

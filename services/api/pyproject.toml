@@ -64,3 +64,5 @@ max-args = 8
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "PT", "INP001", "SLF001"]
 "app/main.py" = ["PLC0415"]  # late imports inside create_app for lifespan timing
+# Evals are CLI scripts — print, sys.path tweaks, magic numbers, etc are fine.
+"evals/**" = ["T201", "INP001", "PLR2004", "S101", "PLR0915", "PLR0912", "C901", "E402", "PLR0911", "PLC0415"]

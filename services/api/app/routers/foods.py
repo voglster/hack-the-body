@@ -105,6 +105,34 @@ class LogParsedReq(BaseModel):
     ts: datetime | None = None
 
 
+class ParseFeedbackReq(BaseModel):
+    text: str
+    parsed: list[LogParsedItem]
+    corrected: list[LogParsedItem] | None = None
+    note: str | None = None
+
+
+@router.post("/parse/feedback", status_code=201)
+async def parse_feedback(req: ParseFeedbackReq, request: Request) -> dict:
+    """Capture a 'this went wrong' report. Stores the original input,
+    what the parser returned, and the user's correction (if any) so we
+    can review failures later and promote them into eval cases.
+    """
+    db = request.app.state.db
+    doc = {
+        "ts": datetime.now(UTC),
+        "text": req.text,
+        "parsed": [i.model_dump() for i in req.parsed],
+        "corrected": (
+            [i.model_dump() for i in req.corrected]
+            if req.corrected is not None else None
+        ),
+        "note": req.note,
+    }
+    res = await db["parse_feedback"].insert_one(doc)
+    return {"id": str(res.inserted_id), "stored": True}
+
+
 @router.post("/parse/log", status_code=201)
 async def log_parsed_items(req: LogParsedReq, request: Request) -> dict:
     """Bulk-create Food + MealEntry per parsed item. Each item becomes a

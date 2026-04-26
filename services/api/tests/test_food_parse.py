@@ -113,3 +113,35 @@ async def test_parse_requires_auth(client):
     assert r.status_code == 401
     r = await client.post("/foods/parse/log", json={"items": []})
     assert r.status_code == 401
+    r = await client.post(
+        "/foods/parse/feedback",
+        json={"text": "x", "parsed": []},
+    )
+    assert r.status_code == 401
+
+
+async def test_parse_feedback_stores_report(client, mock_db):
+    body = {
+        "text": "Crepe Shell: 250\nRandom Latte: 110",
+        "parsed": [
+            {"name": "Crepe Shell", "calories": 250},
+            {"name": "Random Latte", "calories": 110},
+        ],
+        "corrected": [
+            {"name": "Crepe Shell", "calories": 250},
+            {"name": "Almond Milk Latte", "calories": 110},
+        ],
+        "note": "got the latte name wrong — should know almond milk lattes",
+    }
+    r = await client.post("/foods/parse/feedback", headers=H, json=body)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["stored"] is True
+    assert out["id"]
+
+    saved = await mock_db["parse_feedback"].find_one({})
+    assert saved is not None
+    assert saved["text"].startswith("Crepe Shell")
+    assert saved["note"].startswith("got the latte")
+    assert len(saved["parsed"]) == 2
+    assert len(saved["corrected"]) == 2

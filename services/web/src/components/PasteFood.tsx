@@ -22,15 +22,21 @@ function defaultSlot(): MealSlot {
 export function PasteFood({ onLogged }: { onLogged: () => void }) {
   const [text, setText] = useState("");
   const [items, setItems] = useState<ParsedFoodItem[] | null>(null);
+  // Snapshot of what the parser returned before the user edited anything,
+  // so the "this went wrong" report can include both the raw output and
+  // the user's corrections.
+  const [originalItems, setOriginalItems] = useState<ParsedFoodItem[]>([]);
   const [slot, setSlot] = useState<MealSlot>(defaultSlot());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reported, setReported] = useState(false);
 
   const onParse = async () => {
     if (!text.trim()) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setReported(false);
     try {
       const res = await api.parseFoodText(text);
+      setOriginalItems(res.items);
       if (res.items.length === 0) {
         setError("nothing food-like was found");
         setItems(null);
@@ -44,12 +50,31 @@ export function PasteFood({ onLogged }: { onLogged: () => void }) {
     }
   };
 
+  const onReport = async () => {
+    const note = window.prompt(
+      "What went wrong? (optional — describe what should have happened)",
+      "",
+    );
+    if (note === null) return;  // user hit cancel
+    try {
+      await api.reportParseFailure(
+        text,
+        originalItems,
+        items ?? null,
+        note.trim() || null,
+      );
+      setReported(true);
+    } catch (e) {
+      setError(`couldn't save report: ${(e as Error).message}`);
+    }
+  };
+
   const onLogAll = async () => {
     if (!items?.length) return;
     setBusy(true); setError(null);
     try {
       await api.logParsedFoods(items, slot);
-      setText(""); setItems(null);
+      setText(""); setItems(null); setOriginalItems([]); setReported(false);
       onLogged();
     } catch (e) {
       setError((e as Error).message);
@@ -109,6 +134,22 @@ export function PasteFood({ onLogged }: { onLogged: () => void }) {
         />
       )}
       {error && <div className="text-xs text-red-400">{error}</div>}
+      {/* Flag a bad parse — visible whenever we have something to report
+          (parser returned items, OR returned nothing on a non-empty paste). */}
+      {(originalItems.length > 0 || (text.trim() && error)) && (
+        <div className="text-right">
+          {reported ? (
+            <span className="text-[11px] text-emerald-400">thanks — saved for review</span>
+          ) : (
+            <button
+              onClick={() => { void onReport(); }}
+              className="text-[11px] text-neutral-500 hover:text-amber-300 underline underline-offset-2"
+            >
+              this went wrong
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

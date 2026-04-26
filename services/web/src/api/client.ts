@@ -89,6 +89,14 @@ export const api = {
     post<{ count: number; entries: MealEntry[] }>(
       "/foods/parse/log", { items, slot },
     ),
+  reportParseFailure: (
+    text: string,
+    parsed: ParsedFoodItem[],
+    corrected: ParsedFoodItem[] | null,
+    note: string | null,
+  ) => post<{ id: string; stored: boolean }>(
+    "/foods/parse/feedback", { text, parsed, corrected, note },
+  ),
 
   // meal entries
   todayTotals: () => get<TodayTotals>(`/meals/today/totals?${todayWindowQuery()}`),

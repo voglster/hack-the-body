@@ -223,8 +223,9 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
   };
 
   const onCustomCreated = (food: Food) => {
+    // After creating a manual food, default to logging 1 serving of it.
     update({
-      unknownBarcode: null, picked: food, qty: String(food.serving_g),
+      unknownBarcode: null, picked: food, qty: "1",
       hits: [food], q: food.name, error: null,
     });
   };
@@ -233,8 +234,10 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
     if (!s.picked || !s.qty) return;
     update({ busy: true, error: null });
     try {
+      const servings = parseFloat(s.qty);
+      const grams = servings * (s.picked.serving_g || 100);
       await api.logEntry({
-        food_id: s.picked.id, quantity_g: parseFloat(s.qty), slot: s.slot,
+        food_id: s.picked.id, quantity_g: grams, slot: s.slot,
       });
       setS({ q: "", hits: [], picked: null, qty: "",
              slot: s.slot, scanning: false, busy: false, error: null,
@@ -260,12 +263,12 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
         onScan={() => update({ scanning: true })}
       />
       {s.hits.length > 0 && !s.picked && (
-        <FoodPickerList hits={s.hits} onPick={(f) => update({ picked: f, qty: String(f.serving_g) })} />
+        <FoodPickerList hits={s.hits} onPick={(f) => update({ picked: f, qty: "1" })} />
       )}
       {s.picked && (
         <PickedRow
-          food={s.picked} qty={s.qty} slot={s.slot} busy={s.busy}
-          onQty={(qty) => update({ qty })}
+          food={s.picked} servings={s.qty} slot={s.slot} busy={s.busy}
+          onServings={(qty) => update({ qty })}
           onSlot={(slot) => update({ slot })}
           onSubmit={() => { void submit(); }}
           onCancel={() => update({ picked: null, qty: "" })}
@@ -470,36 +473,73 @@ function Field({ label, v, onV, placeholder }: {
   );
 }
 
-function PickedRow({ food, qty, slot, busy, onQty, onSlot, onSubmit, onCancel }: {
-  food: Food; qty: string; slot: MealSlot; busy: boolean;
-  onQty: (v: string) => void; onSlot: (s: MealSlot) => void;
+const SERVING_PRESETS = [0.5, 1, 1.5, 2];
+
+function buildPreview(food: Food, n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const grams = n * food.serving_g;
+  const parts: string[] = [`≈ ${grams.toFixed(0)} g`];
+  if (food.category === "drink") {
+    parts.push(`${(grams / 29.5735).toFixed(1)} fl oz`);
+  }
+  const cal = food.per_serving.calories;
+  const protein = food.per_serving.protein_g;
+  if (cal != null) parts.push(`${Math.round(cal * n)} cal`);
+  if (protein != null) parts.push(`${Math.round(protein * n)}g protein`);
+  return parts.join(" · ");
+}
+
+function PickedRow({ food, servings, slot, busy, onServings, onSlot, onSubmit, onCancel }: {
+  food: Food; servings: string; slot: MealSlot; busy: boolean;
+  onServings: (v: string) => void; onSlot: (s: MealSlot) => void;
   onSubmit: () => void; onCancel: () => void;
 }) {
+  const n = parseFloat(servings);
+  const sublabel = food.serving_label ?? `${food.serving_g.toFixed(0)} g`;
+  const preview = buildPreview(food, n);
   return (
-    <div className="space-y-2 rounded-lg border border-emerald-800/40 bg-emerald-950/20 p-3">
-      <div className="text-sm font-medium">{food.name}</div>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block">
-          <span className="text-xs text-neutral-500">grams</span>
-          <input
-            type="number" inputMode="decimal" value={qty}
-            onChange={e => onQty(e.target.value)}
-            className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs text-neutral-500">meal</span>
-          <select
-            value={slot} onChange={e => onSlot(e.target.value as MealSlot)}
-            className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
-          >
-            {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
+    <div className="space-y-3 rounded-lg border border-emerald-800/40 bg-emerald-950/20 p-3">
+      <div>
+        <div className="text-sm font-medium">{food.name}</div>
+        <div className="text-xs text-neutral-500">1 serving = {sublabel}</div>
       </div>
+      <div className="space-y-2">
+        <div className="text-xs text-neutral-500">servings</div>
+        <div className="flex flex-wrap gap-2">
+          {SERVING_PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => onServings(String(p))}
+              className={`px-3 py-2 rounded-full text-sm min-h-[44px] tabular-nums ${
+                Math.abs(n - p) < 0.001
+                  ? "bg-emerald-700 text-white"
+                  : "bg-neutral-800 active:bg-neutral-700 text-neutral-300"
+              }`}
+            >
+              {p === 0.5 ? "½" : p}
+            </button>
+          ))}
+          <input
+            type="number" inputMode="decimal" step="0.25" value={servings}
+            onChange={e => onServings(e.target.value)}
+            className="w-20 px-3 py-2 rounded bg-neutral-900 border border-neutral-800 text-base tabular-nums"
+            aria-label="servings"
+          />
+        </div>
+        <div className="text-xs text-neutral-500 tabular-nums">{preview}</div>
+      </div>
+      <label className="block">
+        <span className="text-xs text-neutral-500">meal</span>
+        <select
+          value={slot} onChange={e => onSlot(e.target.value as MealSlot)}
+          className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
+        >
+          {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </label>
       <div className="flex gap-2">
         <button
-          onClick={onSubmit} disabled={busy}
+          onClick={onSubmit} disabled={busy || !Number.isFinite(n) || n <= 0}
           className="flex-1 px-3 py-3 rounded bg-emerald-700 active:bg-emerald-800 text-white text-base font-medium disabled:opacity-50 min-h-[44px]"
         >
           {busy ? "logging..." : "log it"}

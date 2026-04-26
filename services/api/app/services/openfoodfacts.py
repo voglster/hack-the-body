@@ -33,9 +33,12 @@ def _g_to_mg(grams: float | None) -> float | None:
 
 
 def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
-    """Map an OFF product dict to our Food. OFF stores nutrients per 100g."""
+    """Map an OFF product dict to our Food. Prefer the product's published
+    serving size (e.g. "1 BOTTLE (507 ml)" → serving_g=507) when present
+    so quantity inputs can be expressed in real-world servings instead
+    of arbitrary 100g units."""
     n = off_product.get("nutriments") or {}
-    macros = Macros(
+    per_100g = Macros(
         calories=_g(n, "energy-kcal_100g") or _g(n, "energy-kcal"),
         protein_g=_g(n, "proteins_100g"),
         carbs_g=_g(n, "carbohydrates_100g"),
@@ -44,6 +47,34 @@ def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
         sugar_g=_g(n, "sugars_100g"),
         sodium_mg=_g_to_mg(_g(n, "sodium_100g")),
     )
+
+    # Resolve serving from OFF if it published one. serving_quantity is in
+    # grams (or ml — we treat as g for calorie scaling, fluid weights ~1g/ml).
+    serving_q_raw = off_product.get("serving_quantity")
+    serving_size_str = off_product.get("serving_size")
+    serving_g = 100.0
+    serving_label = "100 g"
+    per_serving = per_100g
+    try:
+        sq = float(serving_q_raw) if serving_q_raw else 0.0
+    except (TypeError, ValueError):
+        sq = 0.0
+    if sq > 0:
+        serving_g = sq
+        serving_label = serving_size_str or f"{sq:.0f} g"
+        factor = sq / 100.0
+        def _s(v: float | None) -> float | None:
+            return round(v * factor, 2) if v is not None else None
+        per_serving = Macros(
+            calories=_s(per_100g.calories),
+            protein_g=_s(per_100g.protein_g),
+            carbs_g=_s(per_100g.carbs_g),
+            fat_g=_s(per_100g.fat_g),
+            fiber_g=_s(per_100g.fiber_g),
+            sugar_g=_s(per_100g.sugar_g),
+            sodium_mg=_s(per_100g.sodium_mg),
+        )
+
     return Food(
         name=(
             off_product.get("product_name")
@@ -53,9 +84,9 @@ def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
         brand=(off_product.get("brands") or "").split(",")[0].strip() or None,
         barcode=barcode,
         category="food",
-        serving_g=100.0,
-        serving_label="100 g",
-        per_serving=macros,
+        serving_g=serving_g,
+        serving_label=serving_label,
+        per_serving=per_serving,
         source="off",
         source_ref=str(off_product.get("code") or barcode),
     )

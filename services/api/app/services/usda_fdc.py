@@ -44,7 +44,7 @@ def _nutrient(food_nutrients: list[dict[str, Any]], nutrient_id: int) -> float |
 
 def _to_food(fdc: dict[str, Any], barcode: str) -> Food:
     nutrients = fdc.get("foodNutrients") or []
-    macros = Macros(
+    per_100g = Macros(
         calories=_nutrient(nutrients, N_ENERGY_KCAL),
         protein_g=_nutrient(nutrients, N_PROTEIN),
         carbs_g=_nutrient(nutrients, N_CARBS),
@@ -59,17 +59,49 @@ def _to_food(fdc: dict[str, Any], barcode: str) -> Food:
         or "Unknown product"
     ).title()
     brand = (fdc.get("brandName") or fdc.get("brandOwner") or "").strip() or None
+
+    # FDC publishes `servingSize` (number) and `servingSizeUnit` ("GRM",
+    # "MLT"). When present, use that as the canonical serving so the
+    # quantity input can speak the user's language ("1 bar = 50g").
+    serving_g = 100.0
+    serving_label = "100 g"
+    per_serving = per_100g
+    try:
+        ss = float(fdc.get("servingSize") or 0)
+    except (TypeError, ValueError):
+        ss = 0.0
+    if ss > 0:
+        unit = (fdc.get("servingSizeUnit") or "").upper()
+        # FDC nutrient values are per-100g (GRM) or per-100ml (MLT). Treat
+        # both as the per-unit denominator; we store the numeric value and
+        # let serving_label carry the human unit ("11 fl oz").
+        serving_g = ss
+        household = fdc.get("householdServingFullText")
+        unit_label = "ml" if unit in {"MLT", "ML"} else "g"
+        serving_label = (
+            f"{household} ({serving_g:.0f} {unit_label})" if household
+            else f"{serving_g:.0f} {unit_label}"
+        )
+        factor = serving_g / 100.0
+        def _s(v: float | None) -> float | None:
+            return round(v * factor, 2) if v is not None else None
+        per_serving = Macros(
+            calories=_s(per_100g.calories),
+            protein_g=_s(per_100g.protein_g),
+            carbs_g=_s(per_100g.carbs_g),
+            fat_g=_s(per_100g.fat_g),
+            fiber_g=_s(per_100g.fiber_g),
+            sugar_g=_s(per_100g.sugar_g),
+            sodium_mg=_s(per_100g.sodium_mg),
+        )
     return Food(
         name=name,
         brand=brand,
         barcode=barcode,
         category="food",
-        # FDC has servingSize but it's per-product; nutrient values are per
-        # 100g. Mirror our OFF behavior: store per-100g macros with a 100g
-        # serving so quantity scaling is uniform across sources.
-        serving_g=100.0,
-        serving_label="100 g",
-        per_serving=macros,
+        serving_g=serving_g,
+        serving_label=serving_label,
+        per_serving=per_serving,
         source="usda_fdc",
         source_ref=str(fdc.get("fdcId") or barcode),
     )

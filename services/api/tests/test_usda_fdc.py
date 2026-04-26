@@ -58,8 +58,10 @@ async def test_fdc_maps_a_branded_food():
     assert food is not None
     assert food.barcode == "749826126487"
     assert food.source == "usda_fdc"
-    assert food.per_serving.calories == 380.0
-    assert food.per_serving.protein_g == 40.0
+    # per_serving is scaled to the published servingSize (50g), not per-100g.
+    assert food.serving_g == 50.0
+    assert food.per_serving.calories == 190.0  # 380 * 0.5
+    assert food.per_serving.protein_g == 20.0  # 40 * 0.5
 
 
 async def test_fdc_skips_non_matching_upc():

@@ -116,26 +116,95 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Display order for slot groupings — chronological-by-meal, not insertion.
+const SLOT_ORDER: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
+const SLOT_LABEL: Record<MealSlot, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+  snack: "Snacks",
+  supplement: "Supplements",
+};
+
+function groupBySlot(entries: MealEntry[]): Map<MealSlot, MealEntry[]> {
+  const out = new Map<MealSlot, MealEntry[]>();
+  for (const slot of SLOT_ORDER) out.set(slot, []);
+  for (const e of entries) {
+    (out.get(e.slot) ?? out.set(e.slot, []).get(e.slot))!.push(e);
+  }
+  // Sort each bucket chronologically so a snack added before a snack still
+  // shows in the order it was eaten.
+  for (const [, list] of out) list.sort((a, b) => a.ts.localeCompare(b.ts));
+  return out;
+}
+
+function slotTotals(list: MealEntry[]): { cal: number; protein: number } {
+  let cal = 0, protein = 0;
+  for (const e of list) {
+    cal += e.macros.calories ?? 0;
+    protein += e.macros.protein_g ?? 0;
+  }
+  return { cal, protein };
+}
+
 function EntryList({ entries, onDelete, onEdit }: {
   entries: MealEntry[] | undefined;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
 }) {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">
-        Today’s log {entries ? `(${entries.length})` : ""}
-      </div>
-      {!entries?.length ? (
+  if (!entries?.length) {
+    return (
+      <div>
+        <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Today’s log</div>
         <div className="text-sm text-neutral-500">nothing logged yet</div>
-      ) : (
-        <ul className="divide-y divide-neutral-800 text-sm">
-          {entries.map(e => (
-            <EntryRow key={e.id} entry={e} onDelete={onDelete} onEdit={onEdit} />
-          ))}
-        </ul>
-      )}
+      </div>
+    );
+  }
+  const grouped = groupBySlot(entries);
+  const visibleSlots = SLOT_ORDER.filter(s => (grouped.get(s)?.length ?? 0) > 0);
+  return (
+    <div className="space-y-4">
+      <div className="text-xs uppercase tracking-wide text-neutral-500">
+        Today’s log ({entries.length})
+      </div>
+      {visibleSlots.map(slot => (
+        <SlotSection
+          key={slot}
+          slot={slot}
+          list={grouped.get(slot) ?? []}
+          onDelete={onDelete}
+          onEdit={onEdit}
+        />
+      ))}
     </div>
+  );
+}
+
+function SlotSection({ slot, list, onDelete, onEdit }: {
+  slot: MealSlot;
+  list: MealEntry[];
+  onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
+}) {
+  const { cal, protein } = slotTotals(list);
+  const summaryParts = [
+    cal > 0 ? `${Math.round(cal)} cal` : "",
+    protein > 0 ? `${Math.round(protein)} p` : "",
+  ].filter(Boolean);
+  return (
+    <section>
+      <div className="flex items-baseline justify-between gap-3 mb-1">
+        <h3 className="text-sm font-medium text-neutral-300">{SLOT_LABEL[slot]}</h3>
+        <span className="text-[11px] text-neutral-500 tabular-nums">
+          {summaryParts.join(" · ")}
+        </span>
+      </div>
+      <ul className="divide-y divide-neutral-800 text-sm">
+        {list.map(e => (
+          <EntryRow key={e.id} entry={e} onDelete={onDelete} onEdit={onEdit} />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -154,8 +223,9 @@ function EntryRow({ entry: e, onDelete, onEdit }: {
 }) {
   const cal = e.macros.calories ? `${Math.round(e.macros.calories)} cal` : "";
   const protein = e.macros.protein_g ? `${Math.round(e.macros.protein_g)} p` : "";
+  // slot is implicit from the section header now, so leave it out here.
   const detailParts = [
-    fmtClock(e.ts), e.slot, `${Math.round(e.quantity_g)}g`, cal, protein,
+    fmtClock(e.ts), `${Math.round(e.quantity_g)}g`, cal, protein,
   ].filter(Boolean);
   return (
     <li className="py-3 flex justify-between gap-3 items-center">

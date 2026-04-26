@@ -3,6 +3,15 @@ import type {
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus, WaterToday, VitaminsToday,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
+import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
+
+/** UTC bounds of today's local-tz day, encoded as query string. The
+ *  backend takes these as `start` and `end` query params and treats
+ *  them as the source of truth for the "today" window. */
+function todayWindowQuery(): string {
+  const { start, end } = localDayBoundsUTC(todayLocalISO());
+  return `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+}
 
 declare global {
   interface Window { __HTB__?: { apiUrl?: string }; }
@@ -76,8 +85,8 @@ export const api = {
   createFood: (food: Partial<Food>) => post<Food>("/foods", food),
 
   // meal entries
-  todayTotals: () => get<TodayTotals>("/meals/today/totals"),
-  todayEntries: () => get<MealEntry[]>("/meals/entries"),
+  todayTotals: () => get<TodayTotals>(`/meals/today/totals?${todayWindowQuery()}`),
+  todayEntries: () => get<MealEntry[]>(`/meals/entries?${todayWindowQuery()}`),
   logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
     post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
@@ -102,11 +111,11 @@ export const api = {
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),
 
   // water
-  waterToday: () => get<WaterToday>("/water/today"),
+  waterToday: () => get<WaterToday>(`/water/today?${todayWindowQuery()}`),
   logWater: (oz: number) => post<MealEntry>("/water/log", { oz }),
 
   // vitamins
-  vitaminsToday: () => get<VitaminsToday>("/vitamins/today"),
+  vitaminsToday: () => get<VitaminsToday>(`/vitamins/today?${todayWindowQuery()}`),
   logVitamins: () => post<MealEntry>("/vitamins/log", {}),
 
   // push

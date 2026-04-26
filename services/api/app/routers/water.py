@@ -75,19 +75,14 @@ async def today(
         start = datetime.combine(now.date(), time.min, tzinfo=UTC)
     if end is None:
         end = start + timedelta(days=1)
-    entries = await repo.list_entries_for_day(start)
+    entries = await repo.list_entries_in_range(start, end)
     grams = 0.0
     count = 0
     for e in entries:
         if e.get("food_name") != WATER_NAME:
             continue
-        ts = e["ts"]
-        # mongomock-motor doesn't honor tz_aware, so coerce naive UTC to aware.
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=UTC)
-        if start <= ts <= end:
-            grams += float(e.get("quantity_g") or 0)
-            count += 1
+        grams += float(e.get("quantity_g") or 0)
+        count += 1
     return {
         "oz": round(grams / OZ_TO_G, 1),
         "ml": round(grams, 0),

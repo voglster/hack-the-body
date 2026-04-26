@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -7,6 +7,33 @@ from pydantic import BaseModel, Field
 from app.auth import require_api_key
 from app.models.food import MealEntry, MealSlot, MealTemplate
 from app.services.food_repo import FoodRepo, macros_for_quantity
+
+
+def _resolve_window(
+    start: datetime | None,
+    end: datetime | None,
+    day: str | None,
+) -> tuple[datetime, datetime]:
+    """Resolve (start, end) UTC bounds with the most-specific source winning.
+
+    Browser callers pass explicit start/end UTC timestamps for the local
+    day. Older callers may pass `day=YYYY-MM-DD` (treated as UTC). Default
+    is the UTC day containing 'now'.
+    """
+    if start is not None:
+        return start, end if end is not None else start + timedelta(days=1)
+    if day is not None:
+        s = datetime.combine(date.fromisoformat(day), time.min, tzinfo=UTC)
+        return s, s + timedelta(days=1)
+    now = datetime.now(UTC)
+    s = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    return s, s + timedelta(days=1)
+
+
+async def _entries_in_window(
+    repo: FoodRepo, start: datetime, end: datetime,
+) -> list[dict]:
+    return await repo.list_entries_in_range(start, end)
 
 router = APIRouter(prefix="/meals", dependencies=[Depends(require_api_key)])
 
@@ -51,14 +78,16 @@ async def list_entries(
     request: Request,
     day: Annotated[
         str | None,
-        Query(description="YYYY-MM-DD; defaults to today UTC"),
+        Query(description="YYYY-MM-DD; ignored if start is provided"),
     ] = None,
+    start: Annotated[
+        datetime | None,
+        Query(description="UTC start; preferred (browser passes local-day bounds)"),
+    ] = None,
+    end: Annotated[datetime | None, Query(description="UTC end")] = None,
 ):
-    when = (
-        datetime.combine(date.fromisoformat(day), time.min, tzinfo=UTC)
-        if day else datetime.now(UTC)
-    )
-    return await _repo(request).list_entries_for_day(when)
+    s, e = _resolve_window(start, end, day)
+    return await _entries_in_window(_repo(request), s, e)
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
@@ -87,10 +116,18 @@ async def edit_entry(entry_id: str, req: EditEntryReq, request: Request):
 
 
 @router.get("/today/totals")
-async def today_totals(request: Request):
-    """Compute today's running totals across all logged entries."""
+async def today_totals(
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+):
+    """Compute today's running totals across all logged entries.
+
+    The browser passes local-day UTC bounds via start/end. When omitted,
+    falls back to UTC-day for legacy callers."""
     repo = _repo(request)
-    entries = await repo.list_entries_for_day(datetime.now(UTC))
+    s, e = _resolve_window(start, end, None)
+    entries = await _entries_in_window(repo, s, e)
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0,
               "fiber_g": 0.0, "sugar_g": 0.0, "sodium_mg": 0.0}
     by_slot: dict[str, dict[str, float]] = {}

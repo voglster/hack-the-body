@@ -62,7 +62,7 @@ async def count_vitamins_today(
     start: datetime,
     end: datetime,
 ) -> tuple[int, datetime | None]:
-    entries = await repo.list_entries_for_day(start)
+    entries = await repo.list_entries_in_range(start, end)
     count = 0
     first: datetime | None = None
     for e in entries:
@@ -71,10 +71,9 @@ async def count_vitamins_today(
         ts = e["ts"]
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
-        if start <= ts <= end:
-            count += 1
-            if first is None or ts < first:
-                first = ts
+        count += 1
+        if first is None or ts < first:
+            first = ts
     return count, first
 
 

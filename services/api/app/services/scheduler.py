@@ -9,7 +9,9 @@ on; the next firing tries again.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -61,10 +63,20 @@ async def _weekly_run(settings: Settings, db: AsyncDatabase) -> None:
 
 
 async def _vitamin_reminder_run(settings: Settings, db: AsyncDatabase) -> None:
-    """Push 'did you take your vitamins?' if today's count is still 0."""
+    """Push 'did you take your vitamins?' if today's count is still 0.
+
+    Day window is the LOCAL day (TZ env var) so 'today' lines up with
+    when the user thinks of it as today.
+    """
     repo = FoodRepo(db)
-    now = datetime.now(UTC)
-    start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = UTC
+    local_now = datetime.now(tz)
+    local_start = datetime.combine(local_now.date(), time.min, tzinfo=tz)
+    start = local_start.astimezone(UTC)
     end = start + timedelta(days=1)
     try:
         count, _ = await count_vitamins_today(repo, start, end)

@@ -103,6 +103,16 @@ class FoodRepo:
         ).sort("ts", 1)
         return [_doc_to_dict(d) async for d in cur]  # type: ignore[return-value]
 
+    async def list_entries_in_range(
+        self, start: datetime, end: datetime,
+    ) -> list[dict[str, Any]]:
+        """Range query — used by 'today' endpoints with local-tz windows
+        that may span two UTC calendar days."""
+        cur = self.db["meal_entries"].find(
+            {"ts": {"$gte": start, "$lte": end}},
+        ).sort("ts", 1)
+        return [_doc_to_dict(d) async for d in cur]  # type: ignore[return-value]
+
     async def delete_entry(self, entry_id: str) -> bool:
         res = await self.db["meal_entries"].delete_one({"_id": _oid(entry_id)})
         return res.deleted_count > 0

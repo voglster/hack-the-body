@@ -36,7 +36,7 @@ services:
       MONGO_DB: hackthebody
       API_KEY: ${API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-      TZ: ${TZ:-America/Denver}
+      TZ: ${TZ:-America/Chicago}
       OLLAMA_URL: ${OLLAMA_URL:-http://10.0.6.46:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7-flash:latest}
       COACH_SCHEDULE_LOCAL: ${COACH_SCHEDULE_LOCAL:-07:00,12:00,17:00}
@@ -71,7 +71,7 @@ services:
       GARMIN_SESSION_DIR: /data/garmin-session
       GARMIN_BACKFILL_DAYS: ${GARMIN_BACKFILL_DAYS:-90}
       GARMIN_SCHEDULE_CRON: ${GARMIN_SCHEDULE_CRON:-0 4 * * *}
-      TZ: ${TZ:-America/Denver}
+      TZ: ${TZ:-America/Chicago}
     volumes:
       - ./data/garmin-session:/data/garmin-session
     networks:

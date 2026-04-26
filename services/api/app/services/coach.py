@@ -61,6 +61,7 @@ class Insight:
     generated_at: datetime
     context: dict[str, Any]
     trigger: str = "manual"
+    id: str | None = None  # populated after save_insight persists the row
 
 
 def _strip_meta(doc: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -159,6 +160,7 @@ async def recent_insights(
     cur = db["coach_insights"].find(query).sort("generated_at", -1).limit(limit)
     return [
         {
+            "id": str(doc["_id"]),
             "generated_at": doc.get("generated_at"),
             "text": doc.get("text"),
             "trigger": doc.get("trigger", "manual"),
@@ -235,5 +237,5 @@ async def generate_insight(
         context=context,
         trigger=trigger,
     )
-    await save_insight(db, insight)
+    insight.id = await save_insight(db, insight)
     return insight

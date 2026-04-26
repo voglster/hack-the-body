@@ -143,5 +143,5 @@ async def generate_weekly_review(
         context={"window": "7d", "summary_keys": sorted(context.keys())},
         trigger=trigger,
     )
-    await save_insight(db, insight)
+    insight.id = await save_insight(db, insight)
     return insight

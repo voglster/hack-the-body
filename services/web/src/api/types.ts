@@ -144,6 +144,7 @@ export interface SyncStatusEntry {
 export type SyncStatus = Record<string, SyncStatusEntry>;
 
 export interface CoachInsight {
+  id: string | null;
   text: string;
   model: string;
   eval_ms: number;
@@ -154,9 +155,20 @@ export interface CoachInsight {
 }
 
 export interface CoachRecentEntry {
+  id: string;
   text: string;
   generated_at: string;
   trigger: string;
+}
+
+export type CoachFeedbackRating = "up" | "down";
+
+export interface CoachFeedback {
+  id: string;
+  insight_id: string;
+  rating: CoachFeedbackRating;
+  note: string | null;
+  created_at: string;
 }
 
 export interface TodayTotals {

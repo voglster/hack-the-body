@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from bson import ObjectId as ObjectIdFromStr
 
 from app.models.metrics import HRV, Sleep, Weight
 from app.services.metrics_repo import MetricsRepo
@@ -198,6 +199,146 @@ async def test_recent_filters_by_since(client, mock_db):
     texts = [r["text"] for r in rows]
     assert "yesterday" not in texts
     assert "today-am" in texts and "today-pm" in texts
+
+
+async def test_insight_response_includes_id(client, mock_db, fake_ollama_response):
+    """Feedback needs to attach to a specific insight, so the response —
+    and history rows — must carry the mongo id."""
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    insight_id = r.json()["id"]
+    assert insight_id
+
+    r2 = await client.get("/coach/recent?limit=1", headers=HEADERS)
+    assert r2.json()[0]["id"] == insight_id
+
+
+async def test_feedback_round_trip(client, mock_db, fake_ollama_response):
+    """Submit thumbs-down with a note, then read it back via /coach/feedback
+    and confirm the joined insight text comes along (so the skill can read
+    the prompt that earned the feedback)."""
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    insight_id = r.json()["id"]
+
+    r = await client.post(
+        f"/coach/insights/{insight_id}/feedback",
+        headers=HEADERS,
+        json={"rating": "down", "note": "told me I fasted but I just hadn't logged"},
+    )
+    assert r.status_code == 201, r.text
+    fb = r.json()
+    assert fb["rating"] == "down"
+    assert "fasted" in fb["note"]
+
+    r = await client.get("/coach/feedback", headers=HEADERS)
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["rating"] == "down"
+    assert rows[0]["insight"]["id"] == insight_id
+    assert rows[0]["insight"]["text"]  # joined prompt text is present
+
+
+async def test_feedback_replaces_prior_and_archives_to_history(
+    client, mock_db, fake_ollama_response,
+):
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    insight_id = r.json()["id"]
+
+    await client.post(
+        f"/coach/insights/{insight_id}/feedback",
+        headers=HEADERS, json={"rating": "down", "note": "first take"},
+    )
+    await client.post(
+        f"/coach/insights/{insight_id}/feedback",
+        headers=HEADERS, json={"rating": "up", "note": "actually decent"},
+    )
+    # Only one current feedback per insight.
+    assert await mock_db["coach_feedback"].count_documents(
+        {"insight_id": ObjectIdFromStr(insight_id)},
+    ) == 1
+    # The earlier feedback is preserved as audit history.
+    assert await mock_db["coach_feedback_history"].count_documents({}) == 1
+
+
+async def test_feedback_clear_archives_then_empties(client, mock_db, fake_ollama_response):
+    """`DELETE /coach/feedback` archives rows to coach_feedback_archive
+    rather than hard-deleting, so the audit trail survives prompt-tuning."""
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    iid = r.json()["id"]
+    await client.post(
+        f"/coach/insights/{iid}/feedback", headers=HEADERS,
+        json={"rating": "down", "note": "bad take"},
+    )
+    assert await mock_db["coach_feedback"].count_documents({}) == 1
+
+    r = await client.delete("/coach/feedback", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.json()["archived"] == 1
+    assert await mock_db["coach_feedback"].count_documents({}) == 0
+    assert await mock_db["coach_feedback_archive"].count_documents({}) == 1
+    archived = await mock_db["coach_feedback_archive"].find_one()
+    assert archived["rating"] == "down"
+    assert archived.get("cleared_at") is not None
+
+
+async def test_feedback_404_on_unknown_insight(client):
+    r = await client.post(
+        "/coach/insights/000000000000000000000000/feedback",
+        headers=HEADERS, json={"rating": "up"},
+    )
+    assert r.status_code == 404
+
+
+async def test_feedback_400_on_bad_id(client):
+    r = await client.post(
+        "/coach/insights/not-an-oid/feedback",
+        headers=HEADERS, json={"rating": "up"},
+    )
+    assert r.status_code == 400
 
 
 async def test_insight_502_on_ollama_failure(client, mock_db):

@@ -1,6 +1,7 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus, WaterToday, VitaminsToday, ParsedFoodItem,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
+  CoachFeedback, CoachFeedbackRating, SyncStatus, WaterToday, VitaminsToday, ParsedFoodItem,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -125,6 +126,8 @@ export const api = {
     );
   },
   coachWeekly: () => get<CoachInsight>("/coach/weekly"),
+  coachFeedback: (insight_id: string, rating: CoachFeedbackRating, note?: string) =>
+    post<CoachFeedback>(`/coach/insights/${insight_id}/feedback`, { rating, note: note ?? null }),
 
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),

@@ -75,7 +75,25 @@ class GarminClient:
         data = self._connectapi(
             f"/weight-service/weight/range/{start.isoformat()}/{end.isoformat()}?includeAll=true"
         )
-        return data.get("dateWeightList", []) if isinstance(data, dict) else data
+        if isinstance(data, list):
+            return data
+        if not isinstance(data, dict):
+            return []
+        # Current schema: { dailyWeightSummaries: [ { allWeightMetrics: [...] } ] }
+        # Legacy schema: { dateWeightList: [...] }
+        if "dailyWeightSummaries" in data:
+            out: list[dict] = []
+            seen: set = set()
+            for day in data.get("dailyWeightSummaries") or []:
+                for m in day.get("allWeightMetrics") or []:
+                    pk = m.get("samplePk")
+                    if pk in seen:
+                        continue
+                    if pk is not None:
+                        seen.add(pk)
+                    out.append(m)
+            return out
+        return data.get("dateWeightList", [])
 
     def fetch_body_comp(self, start: date, end: date) -> list[dict]:
         return self.fetch_weight(start, end)

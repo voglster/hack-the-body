@@ -69,6 +69,15 @@ export interface WaterToday {
 export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack" | "supplement";
 export type FoodCategory = "food" | "supplement" | "drink";
 
+export interface ParsedFoodItem {
+  name: string;
+  servings: number;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+}
+
 export interface VitaminsToday {
   logged: boolean;
   entries: number;

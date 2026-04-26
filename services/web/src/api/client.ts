@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus, WaterToday, VitaminsToday,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry, SyncStatus, WaterToday, VitaminsToday, ParsedFoodItem,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -83,6 +83,12 @@ export const api = {
   foodByBarcode: (barcode: string) =>
     get<Food>(`/foods/barcode/${encodeURIComponent(barcode)}`),
   createFood: (food: Partial<Food>) => post<Food>("/foods", food),
+  parseFoodText: (text: string) =>
+    post<{ items: ParsedFoodItem[] }>("/foods/parse", { text }),
+  logParsedFoods: (items: ParsedFoodItem[], slot: MealSlot) =>
+    post<{ count: number; entries: MealEntry[] }>(
+      "/foods/parse/log", { items, slot },
+    ),
 
   // meal entries
   todayTotals: () => get<TodayTotals>(`/meals/today/totals?${todayWindowQuery()}`),

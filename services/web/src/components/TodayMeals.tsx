@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Food, MealEntry, MealSlot } from "../api/types";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { EntryTimeEditor } from "./EntryTimeEditor";
+import { PasteFood } from "./PasteFood";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
 
@@ -96,6 +97,7 @@ export function TodayMeals() {
         </div>
       )}
 
+      <PasteFood onLogged={refresh} />
       <QuickLog onLogged={refresh} />
       {editing && (
         <EntryTimeEditor

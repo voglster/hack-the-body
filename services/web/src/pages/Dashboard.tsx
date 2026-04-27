@@ -16,6 +16,7 @@ import { StepsChart } from "../components/StepsChart";
 import { StepsTodayCard } from "../components/StepsTodayCard";
 import { StepsTodayChart } from "../components/StepsTodayChart";
 import { SyncDot } from "../components/SyncDot";
+import { TargetsCard } from "../components/TargetsCard";
 import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
 import { WorkoutList } from "../components/WorkoutList";
@@ -168,6 +169,7 @@ function MoreTab() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <TargetsCard />
       <NotificationsSettings />
       <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2">
         <div className="text-xs uppercase tracking-wide text-neutral-400">Maintenance</div>

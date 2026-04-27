@@ -1,7 +1,8 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
-  CoachFeedback, CoachFeedbackRating, SyncStatus, WaterToday, VitaminsToday, ParsedFoodItem,
+  CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
+  WaterToday, VitaminsToday, ParsedFoodItem,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -76,6 +77,20 @@ export const api = {
     if (r.status === 401) handleUnauthorized();
     if (!r.ok) throw new Error(`trigger failed: ${r.status}`);
     return (await r.json()) as unknown;
+  },
+
+  // profile / targets
+  getTargets: () => get<UserTargets>("/profile/targets"),
+  putTargets: (t: Partial<UserTargets>) => {
+    return fetch(`${BASE}/profile/targets`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(t),
+    }).then(async r => {
+      if (r.status === 401) handleUnauthorized();
+      if (!r.ok) throw new Error(`PUT failed: ${r.status} ${await r.text().catch(() => "")}`);
+      return (await r.json()) as UserTargets;
+    });
   },
 
   // foods

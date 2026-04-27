@@ -79,6 +79,29 @@ async def test_raw_blob_persisted_for_every_metric(mock_db):
     assert workout_doc and workout_doc["raw"]["activityId"] == 13000000001
 
 
+async def test_run_sync_skips_empty_daily_summary_stub(mock_db):
+    """Regression: Garmin returns a stub daily_summary (steps=0,
+    step_goal=null, no kcal) for 'tomorrow UTC' when the local TZ is
+    well ahead of UTC. We must not persist these — they corrupt the
+    'latest daily summary' read path and make the dashboard lose its
+    step goal."""
+    repo = GarminRepo(mock_db)
+
+    class StubClient(FakeClient):
+        def fetch_daily_summary(self, _d):
+            return {
+                "calendarDate": "2026-04-27",
+                "totalSteps": 0,
+                "dailyStepGoal": None,
+                "totalKilocalories": 0,
+                "activeKilocalories": 0,
+            }
+
+    counts = await run_sync(client=StubClient(), repo=repo, backfill_days=0, jitter=_no_jitter)
+    assert counts["daily_summary"] == 0
+    assert await mock_db["metrics_daily_summary"].count_documents({}) == 0
+
+
 async def test_run_steps_sync_only_writes_intraday(mock_db):
     repo = GarminRepo(mock_db)
     counts = await run_steps_sync(client=FakeClient(), repo=repo)

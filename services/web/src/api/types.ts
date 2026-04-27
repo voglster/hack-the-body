@@ -161,6 +161,13 @@ export interface CoachRecentEntry {
   trigger: string;
 }
 
+export interface UserTargets {
+  daily_calories: number | null;
+  daily_protein_g: number | null;
+  step_goal_override: number | null;
+  updated_at?: string;
+}
+
 export type CoachFeedbackRating = "up" | "down";
 
 export interface CoachFeedback {

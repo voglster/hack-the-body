@@ -166,6 +166,13 @@ needs more force, vs. a genuinely new pattern.
 - **Stale snapshots in history** (older message claims data that the
   current snapshot contradicts). Rule: trust current snapshot over
   older coach text.
+- **Inventing baselines** ("TDEE = 3000", "you should be eating
+  X cal"). Rule: only judge against `targets` if present; null target
+  means "don't judge that metric." Set targets in the More tab →
+  Daily targets card; they flow into the coach prompt automatically.
+- **Mandatory action items** ("Action: walk 20 minutes"). Rule: end
+  with an action ONLY if something is meaningfully off-track relative
+  to a target; otherwise close with "on track" and stop.
 
 ## Architecture notes (for new sessions)
 

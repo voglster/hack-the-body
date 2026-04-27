@@ -136,6 +136,21 @@ class MetricsRepo:
         )
 
     async def latest_daily_summary(self) -> dict[str, Any] | None:
+        """Most recent daily summary that's actually filled in.
+
+        Garmin returns stub rows for "tomorrow" when the local TZ is well
+        ahead of UTC (a 7 PM Mountain query lands on the next UTC date,
+        which Garmin answers with steps=0 / step_goal=null). Without this
+        guard, those stubs win latest-by-ts and the dashboard "loses" its
+        step goal. Prefer a row that has step_goal set; fall back to the
+        absolute latest only if no such row exists.
+        """
+        doc = await self.db["metrics_daily_summary"].find_one(
+            {"step_goal": {"$ne": None}},
+            sort=[("ts", -1)],
+        )
+        if doc is not None:
+            return doc
         return await self.db["metrics_daily_summary"].find_one(sort=[("ts", -1)])
 
     async def range_daily_summary(self, start: datetime, end: datetime) -> list[dict[str, Any]]:

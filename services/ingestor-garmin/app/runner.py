@@ -44,6 +44,17 @@ class ClientProto(Protocol):
     def fetch_intraday_steps(self, d: date) -> list[dict]: ...
 
 
+def _is_empty_daily_summary(ds) -> bool:
+    """A 'tomorrow stub' has no real data. Match: zero steps AND no goal
+    AND no calories. Real days always have at least one of these set."""
+    return (
+        (ds.steps == 0)
+        and ds.step_goal is None
+        and ds.total_kcal in (None, 0)
+        and ds.active_kcal in (None, 0)
+    )
+
+
 async def _do_weight(client, repo, start, end, counts):
     try:
         for w in map_weight(client.fetch_weight(start, end)):
@@ -94,7 +105,15 @@ async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
         random.shuffle(single)
         for name, fetch, mapper, upsert in single:
             try:
-                if await upsert(mapper(fetch())):
+                mapped = mapper(fetch())
+                # Garmin returns stub daily_summary rows for "tomorrow"
+                # when the user's local TZ is past midnight UTC. They
+                # have steps=0 and step_goal=None; persisting them makes
+                # latest_daily_summary() return a useless row and the
+                # dashboard "loses" its step goal. Skip them.
+                if name == "daily_summary" and _is_empty_daily_summary(mapped):
+                    continue
+                if await upsert(mapped):
                     counts[name] += 1
             except Exception as e:
                 log.warning("%s %s skipped: %s", name, day, e)

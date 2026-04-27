@@ -7,7 +7,7 @@
  * midnight walking window — anything before 6am counts as on-pace by
  * default since most people aren't out walking yet.
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
@@ -133,13 +133,23 @@ const STATUS_TONE: Record<Forecast["status"], { bar: string; pill: string }> = {
   "no-goal": { bar: "bg-neutral-500", pill: "text-neutral-400" },
 };
 
+function useStepGoal(summary: Summary | undefined): number | null {
+  // User-set step_goal_override wins over Garmin's auto-tuned step_goal.
+  // Both are optional: if neither is set, callers hide goal-relative UI.
+  const { data: targets } = useQuery({
+    queryKey: ["profile.targets"],
+    queryFn: api.getTargets,
+  });
+  return targets?.step_goal_override ?? summary?.daily_summary?.step_goal ?? null;
+}
+
 export function StepsTodayCard({ summary, todaySteps }: {
   summary: Summary | undefined;
   todaySteps: number | undefined;
 }) {
   const ds = summary?.daily_summary;
   const steps = todaySteps ?? ds?.steps ?? 0;
-  const goal = ds?.step_goal ?? null;
+  const goal = useStepGoal(summary);
   const f = forecast(steps, goal, new Date());
   const tone = STATUS_TONE[f.status];
 

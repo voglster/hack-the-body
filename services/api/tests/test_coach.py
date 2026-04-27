@@ -224,6 +224,46 @@ async def test_insight_response_includes_id(client, mock_db, fake_ollama_respons
     assert r2.json()[0]["id"] == insight_id
 
 
+async def test_insight_includes_targets_in_prompt(client, mock_db, fake_ollama_response):
+    """If the user has set targets, they show up in the prompt as the
+    `targets` block of context. This is what lets the model say
+    '1,500 / 2,200 cal' instead of inventing a baseline."""
+    await _seed(mock_db)
+    await client.put(
+        "/profile/targets", headers=HEADERS,
+        json={"daily_calories": 2200, "daily_protein_g": 180},
+    )
+
+    captured: dict = {}
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        captured["payload"] = json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+
+    assert r.status_code == 200
+    prompt = captured["payload"]["prompt"]
+    assert '"targets":' in prompt
+    assert '"daily_calories": 2200' in prompt
+    assert '"daily_protein_g": 180' in prompt
+    # And `step_goal_override` is there as null since it wasn't set.
+    assert '"step_goal_override": null' in prompt
+
+
+async def test_system_prompt_allows_action_optional():
+    """User feedback: not every reply needs an action. SYSTEM_PROMPT
+    must let the model skip the action when nothing's off-track."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "only if" in lowered
+    assert "off-track" in lowered or "off track" in lowered
+    assert "do not invent action" in lowered
+
+
 async def test_insight_persists_full_prompt_inputs(
     client, mock_db, fake_ollama_response,
 ):

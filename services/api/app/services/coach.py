@@ -32,8 +32,11 @@ USER_PROFILE = (
 SYSTEM_PROMPT = (
     "You are a no-nonsense health coach speaking directly to your client. "
     "Use short sentences. Skip pleasantries. Reference actual numbers. "
-    "Give exactly one observation per metric, then ONE concrete action for "
-    "the next 4 hours. Keep total reply under 120 words. "
+    "Give one observation per metric. End with ONE concrete action for the "
+    "next 4 hours ONLY if something is meaningfully off-track relative to "
+    "the client's stated targets; otherwise close with a brief 'on track' "
+    "and stop. Do not invent action items when the day is going fine. "
+    "Keep total reply under 120 words. "
     "If 'recent_coach_messages' is provided, briefly note continuity from "
     "the last message (e.g. did they actually do what you suggested?). "
     "IMPORTANT — food: when 'food_entries_today' is 0 it means nothing has "
@@ -45,6 +48,11 @@ SYSTEM_PROMPT = (
     "If recent_coach_messages references food/sleep facts that contradict "
     "the current snapshot (e.g. it said 'you slept 4h' but current sleep "
     "shows 7h), trust the current snapshot — the older message is stale. "
+    "IMPORTANT — targets: when `targets` is present, judge progress against "
+    "those numbers ONLY. Do not invent baselines (no 'TDEE = 3000', no "
+    "guessed step goals). If a target field is null, do not judge that "
+    "metric — just report it. Pacing is fine: 1,400 cal at 5 PM with a "
+    "2,200 target is on track for a typical eater, not a problem. "
     "IMPORTANT — tone: report numbers, do not dramatize them. NEVER use "
     "clinical or alarmist terms like 'catabolic state', 'starving', "
     "'metabolic collapse', 'crash', 'in danger', 'risk' (about the "
@@ -117,6 +125,7 @@ async def gather_context(
     *,
     day_start: datetime | None = None,
     day_end: datetime | None = None,
+    targets: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Snapshot the latest data for the coach prompt.
 
@@ -146,7 +155,7 @@ async def gather_context(
     local_minute = int((local_seconds % 3600) // 60)
     local_now = f"{local_hour:02d}:{local_minute:02d}"
 
-    return {
+    out: dict[str, Any] = {
         "now_utc": now_utc.isoformat(timespec="minutes"),
         "local_now": local_now,
         "local_hour": local_hour,
@@ -158,6 +167,14 @@ async def gather_context(
         "daily_summary": daily,
         "steps_today": today_steps,
     }
+    if targets is not None:
+        # Strip fields the model doesn't need (the timestamp); keep only
+        # the actual target values. None = don't judge that metric.
+        out["targets"] = {
+            k: targets.get(k)
+            for k in ("daily_calories", "daily_protein_g", "step_goal_override")
+        }
+    return out
 
 
 async def recent_insights(
@@ -242,9 +259,12 @@ async def generate_insight(
     trigger: str = "manual",
     day_start: datetime | None = None,
     day_end: datetime | None = None,
+    targets: dict[str, Any] | None = None,
 ) -> Insight:
     repo = MetricsRepo(db)
-    context = await gather_context(repo, day_start=day_start, day_end=day_end)
+    context = await gather_context(
+        repo, day_start=day_start, day_end=day_end, targets=targets,
+    )
     history = await recent_insights(db, since=day_start)
     prompt = _format_prompt(context, food_totals, history)
     payload = {

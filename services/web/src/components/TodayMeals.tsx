@@ -130,7 +130,12 @@ function groupBySlot(entries: MealEntry[]): Map<MealSlot, MealEntry[]> {
   const out = new Map<MealSlot, MealEntry[]>();
   for (const slot of SLOT_ORDER) out.set(slot, []);
   for (const e of entries) {
-    (out.get(e.slot) ?? out.set(e.slot, []).get(e.slot))!.push(e);
+    let bucket = out.get(e.slot);
+    if (!bucket) {
+      bucket = [];
+      out.set(e.slot, bucket);
+    }
+    bucket.push(e);
   }
   // Sort each bucket chronologically so a snack added before a snack still
   // shows in the order it was eaten.

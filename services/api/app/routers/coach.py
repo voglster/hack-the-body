@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
+from app.routers.profile import get_user_targets
 from app.services.coach import Insight, generate_insight, recent_insights
 from app.services.coach_weekly import generate_weekly_review
 from app.services.food_repo import FoodRepo
@@ -82,9 +83,10 @@ async def insight(
     day_start, day_end = _resolve_day_window(start, end)
     try:
         food_totals = await _today_food_totals(foods, day_start, day_end)
+        targets = await get_user_targets(db)
         result = await generate_insight(
             settings, db, food_totals=food_totals, trigger="manual",
-            day_start=day_start, day_end=day_end,
+            day_start=day_start, day_end=day_end, targets=targets,
         )
     except Exception as e:
         raise HTTPException(

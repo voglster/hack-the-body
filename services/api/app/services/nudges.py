@@ -162,6 +162,19 @@ def rule_steps_below_pace(ctx: NudgeContext) -> FiredNudge | None:
     )
 
 
+def rule_bedtime_reminder(ctx: NudgeContext) -> FiredNudge | None:
+    t = ctx.now_local.time()
+    if t < BEDTIME_START or t >= BEDTIME_END:
+        return None
+    return FiredNudge(
+        id="bedtime_reminder",
+        kind="bedtime",
+        severity="info",
+        title="Wind down",
+        body="In bed by 10pm — close out and head up.",
+    )
+
+
 RULES: list[Rule] = [
     Rule(
         id="vitamins_missing", kind="vitamin",
@@ -182,5 +195,10 @@ RULES: list[Rule] = [
         id="steps_below_pace", kind="steps",
         pushable=False, push_at=None,
         evaluate=rule_steps_below_pace,
+    ),
+    Rule(
+        id="bedtime_reminder", kind="bedtime",
+        pushable=True, push_at=time(21, 30),
+        evaluate=rule_bedtime_reminder,
     ),
 ]

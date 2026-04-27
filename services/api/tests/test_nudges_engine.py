@@ -221,3 +221,30 @@ class TestStepsBelowPace:
             targets=self.TARGETS, steps=3500,
         )
         assert rule_steps_below_pace(ctx) is None
+
+
+from app.services.nudges import rule_bedtime_reminder
+
+
+class TestBedtimeReminder:
+    def test_before_window_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 21, 29, tzinfo=MT))
+        assert rule_bedtime_reminder(ctx) is None
+
+    def test_at_window_start_fires(self):
+        ctx = _ctx(datetime(2026, 4, 27, 21, 30, tzinfo=MT))
+        nudge = rule_bedtime_reminder(ctx)
+        assert nudge is not None
+        assert nudge.id == "bedtime_reminder"
+
+    def test_inside_window_fires(self):
+        ctx = _ctx(datetime(2026, 4, 27, 22, 0, tzinfo=MT))
+        assert rule_bedtime_reminder(ctx) is not None
+
+    def test_at_window_end_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 22, 30, tzinfo=MT))
+        assert rule_bedtime_reminder(ctx) is None
+
+    def test_after_window_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 23, 0, tzinfo=MT))
+        assert rule_bedtime_reminder(ctx) is None

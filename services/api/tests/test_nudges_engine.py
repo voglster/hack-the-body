@@ -174,3 +174,50 @@ class TestNoWeighin:
     def test_after_floor_weighed_silent(self):
         ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), weight=True)
         assert rule_no_weighin(ctx) is None
+
+
+from app.services.nudges import rule_steps_below_pace
+
+
+class TestStepsBelowPace:
+    TARGETS = {"step_goal_override": 10000}
+
+    def test_before_floor_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 11, 59, tzinfo=MT),
+            targets=self.TARGETS, steps=0,
+        )
+        assert rule_steps_below_pace(ctx) is None
+
+    def test_steps_none_silent(self):
+        # No daily summary doc → can't distinguish 'behind' from 'no data'
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets=self.TARGETS, steps=None,
+        )
+        assert rule_steps_below_pace(ctx) is None
+
+    def test_no_target_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets={}, steps=0,
+        )
+        assert rule_steps_below_pace(ctx) is None
+
+    def test_below_pace_fires(self):
+        # 2pm: elapsed = 8/16 = 0.5. With 0.6 tolerance:
+        #   10000 * 0.5 * 0.6 = 3000. 1000 steps is below → fires.
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets=self.TARGETS, steps=1000,
+        )
+        nudge = rule_steps_below_pace(ctx)
+        assert nudge is not None
+        assert nudge.id == "steps_below_pace"
+
+    def test_at_pace_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets=self.TARGETS, steps=3500,
+        )
+        assert rule_steps_below_pace(ctx) is None

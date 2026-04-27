@@ -141,6 +141,27 @@ def rule_no_weighin(ctx: NudgeContext) -> FiredNudge | None:
     )
 
 
+def rule_steps_below_pace(ctx: NudgeContext) -> FiredNudge | None:
+    if ctx.now_local.time() < STEPS_FLOOR:
+        return None
+    if ctx.steps_today is None:
+        return None  # no Garmin data yet — can't judge
+    target = ctx.targets.get("step_goal_override")
+    if not target:
+        return None
+    elapsed = _elapsed_fraction(ctx.now_local)
+    threshold = target * elapsed * STEPS_PACE_TOLERANCE
+    if ctx.steps_today >= threshold:
+        return None
+    return FiredNudge(
+        id="steps_below_pace",
+        kind="steps",
+        severity="info",
+        title="Behind on steps",
+        body=f"{ctx.steps_today:,} of {target:,} so far — go for a walk.",
+    )
+
+
 RULES: list[Rule] = [
     Rule(
         id="vitamins_missing", kind="vitamin",
@@ -156,5 +177,10 @@ RULES: list[Rule] = [
         id="no_weighin", kind="weight",
         pushable=True, push_at=time(10, 0),
         evaluate=rule_no_weighin,
+    ),
+    Rule(
+        id="steps_below_pace", kind="steps",
+        pushable=False, push_at=None,
+        evaluate=rule_steps_below_pace,
     ),
 ]

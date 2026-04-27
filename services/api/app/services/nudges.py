@@ -108,10 +108,34 @@ def rule_vitamins_missing(ctx: NudgeContext) -> FiredNudge | None:
     )
 
 
+def rule_water_below_pace(ctx: NudgeContext) -> FiredNudge | None:
+    if ctx.now_local.time() < WATER_FLOOR:
+        return None
+    target = ctx.targets.get("daily_water_oz")
+    if not target:  # None or 0 → silent (rule doesn't apply)
+        return None
+    elapsed = _elapsed_fraction(ctx.now_local)
+    threshold = target * elapsed * WATER_PACE_TOLERANCE
+    if ctx.water_oz_today >= threshold:
+        return None
+    return FiredNudge(
+        id="water_below_pace",
+        kind="water",
+        severity="info",
+        title="Drink some water",
+        body=f"{int(ctx.water_oz_today)} of {int(target)} oz so far — behind pace.",
+    )
+
+
 RULES: list[Rule] = [
     Rule(
         id="vitamins_missing", kind="vitamin",
         pushable=True, push_at=time(12, 0),
         evaluate=rule_vitamins_missing,
+    ),
+    Rule(
+        id="water_below_pace", kind="water",
+        pushable=False, push_at=None,
+        evaluate=rule_water_below_pace,
     ),
 ]

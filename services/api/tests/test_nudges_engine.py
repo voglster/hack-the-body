@@ -107,3 +107,50 @@ class TestVitaminsMissing:
     def test_after_floor_zero_logged_fires(self):
         ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), vitamins=0)
         assert rule_vitamins_missing(ctx) is not None
+
+
+from app.services.nudges import rule_water_below_pace
+
+
+class TestWaterBelowPace:
+    TARGETS = {"daily_water_oz": 64}
+
+    def test_no_target_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets={}, water_oz=0,
+        )
+        assert rule_water_below_pace(ctx) is None
+
+    def test_before_floor_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 9, 59, tzinfo=MT),
+            targets=self.TARGETS, water_oz=0,
+        )
+        assert rule_water_below_pace(ctx) is None
+
+    def test_at_pace_silent(self):
+        # 1pm: elapsed = 7/16 = 0.4375. Pace target with 0.7 tolerance:
+        #   64 * 0.4375 * 0.7 ≈ 19.6oz. Drinking 20oz is just at pace.
+        ctx = _ctx(
+            datetime(2026, 4, 27, 13, 0, tzinfo=MT),
+            targets=self.TARGETS, water_oz=20,
+        )
+        assert rule_water_below_pace(ctx) is None
+
+    def test_below_pace_fires(self):
+        # Same time, but only 10oz consumed → fires.
+        ctx = _ctx(
+            datetime(2026, 4, 27, 13, 0, tzinfo=MT),
+            targets=self.TARGETS, water_oz=10,
+        )
+        nudge = rule_water_below_pace(ctx)
+        assert nudge is not None
+        assert nudge.id == "water_below_pace"
+
+    def test_target_zero_silent(self):
+        ctx = _ctx(
+            datetime(2026, 4, 27, 14, 0, tzinfo=MT),
+            targets={"daily_water_oz": 0}, water_oz=0,
+        )
+        assert rule_water_below_pace(ctx) is None

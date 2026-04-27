@@ -59,6 +59,25 @@ class FoodRepo:
     async def get_food(self, food_id: str) -> dict[str, Any] | None:
         return _doc_to_dict(await self.db["foods"].find_one({"_id": _oid(food_id)}))
 
+    async def rename_food(self, food_id: str, new_name: str) -> dict[str, Any] | None:
+        """Rename a Food doc and cascade the name onto every snapshotted
+        meal entry that references it. Returns the updated Food, or None
+        if the food doesn't exist. The cascade is intentional: meal entries
+        denormalize `food_name` for display, and renaming should fix the
+        label everywhere — past entries included.
+        """
+        res = await self.db["foods"].update_one(
+            {"_id": _oid(food_id)},
+            {"$set": {"name": new_name}},
+        )
+        if res.matched_count == 0:
+            return None
+        await self.db["meal_entries"].update_many(
+            {"food_id": food_id},
+            {"$set": {"food_name": new_name}},
+        )
+        return _doc_to_dict(await self.db["foods"].find_one({"_id": _oid(food_id)}))
+
     async def get_food_by_barcode(self, barcode: str) -> dict[str, Any] | None:
         return _doc_to_dict(await self.db["foods"].find_one({"barcode": barcode}))
 

@@ -114,6 +114,17 @@ export const api = {
   ) => post<{ id: string; stored: boolean }>(
     "/foods/parse/feedback", { text, parsed, corrected, note },
   ),
+  renameFood: (food_id: string, name: string) => {
+    return fetch(`${BASE}/foods/${food_id}`, {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ name }),
+    }).then(async r => {
+      if (r.status === 401) handleUnauthorized();
+      if (!r.ok) throw new Error(`PATCH failed: ${r.status} ${await r.text().catch(() => "")}`);
+      return (await r.json()) as Food;
+    });
+  },
 
   // meal entries
   todayTotals: () => get<TodayTotals>(`/meals/today/totals?${todayWindowQuery()}`),

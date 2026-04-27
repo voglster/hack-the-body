@@ -136,17 +136,21 @@ function setMinutesFromStart(base: Date, mins: number): Date {
 }
 
 export function EntryTimeEditor({
-  entry, dayEntries, onSave, onCancel, busy,
+  entry, dayEntries, onSave, onCancel, onRenameFood, busy,
 }: {
   entry: MealEntry;
   dayEntries: MealEntry[];
   onSave: (patch: { ts: string; slot: MealSlot; quantity_g?: number }) => void;
   onCancel: () => void;
+  onRenameFood?: (food_id: string, name: string) => Promise<void>;
   busy: boolean;
 }) {
   const initial = new Date(entry.ts);
   const [t, setT] = useState<Date>(initial);
   const [slot, setSlot] = useState<MealSlot>(entry.slot);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(entry.food_name);
+  const [renameBusy, setRenameBusy] = useState(false);
   // Servings as a string so the user can clear/retype freely. Defaults to
   // the current entry's `servings` (e.g. 325 for a buggy entry — they'll
   // immediately see "this is wildly wrong").
@@ -205,9 +209,63 @@ export function EntryTimeEditor({
   return (
     <div className="rounded-xl bg-neutral-900 border border-neutral-700 p-4 space-y-4">
       <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-wide text-neutral-400">edit time</div>
-          <div className="font-medium truncate">{entry.food_name}</div>
+          {renaming ? (
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                disabled={renameBusy || busy}
+                autoFocus
+                className="flex-1 min-w-0 px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base"
+                aria-label="food name"
+              />
+              <button
+                onClick={async () => {
+                  if (!onRenameFood) return;
+                  const next = renameValue.trim();
+                  if (!next || next === entry.food_name) {
+                    setRenaming(false);
+                    return;
+                  }
+                  setRenameBusy(true);
+                  try {
+                    await onRenameFood(entry.food_id, next);
+                    setRenaming(false);
+                  } finally {
+                    setRenameBusy(false);
+                  }
+                }}
+                disabled={renameBusy || busy || !renameValue.trim()}
+                className="px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 text-white text-sm disabled:opacity-50"
+              >
+                {renameBusy ? "..." : "save"}
+              </button>
+              <button
+                onClick={() => { setRenaming(false); setRenameValue(entry.food_name); }}
+                disabled={renameBusy}
+                className="px-2 py-2 text-neutral-400 text-sm"
+                aria-label="cancel rename"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="font-medium truncate">{entry.food_name}</div>
+              {onRenameFood && (
+                <button
+                  onClick={() => { setRenameValue(entry.food_name); setRenaming(true); }}
+                  className="text-neutral-500 active:text-neutral-200 text-sm px-1"
+                  aria-label="rename food"
+                  title="rename food (cascades to all entries)"
+                >
+                  ✎
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-2xl font-semibold tabular-nums text-emerald-300">
           {fmtTime(t)}

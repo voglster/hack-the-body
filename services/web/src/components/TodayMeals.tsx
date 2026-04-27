@@ -51,6 +51,11 @@ export function TodayMeals() {
     },
   });
 
+  const renameFood = async (food_id: string, name: string) => {
+    await api.renameFood(food_id, name);
+    refresh();
+  };
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = entries.data?.find(e => e.id === editingId) ?? null;
 
@@ -91,6 +96,7 @@ export function TodayMeals() {
           dayEntries={entries.data ?? []}
           busy={editEntry.isPending}
           onCancel={() => setEditingId(null)}
+          onRenameFood={renameFood}
           onSave={(patch) => {
             editEntry.mutate({ id: editing.id, patch }, {
               onSuccess: () => setEditingId(null),

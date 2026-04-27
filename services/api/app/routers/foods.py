@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
 from app.models.food import Food, Macros, MealEntry
@@ -208,3 +208,18 @@ async def get_food(food_id: str, request: Request) -> dict:
     if not found:
         raise HTTPException(status_code=404, detail="food not found")
     return found
+
+
+class RenameFoodReq(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.patch("/{food_id}")
+async def rename_food(food_id: str, req: RenameFoodReq, request: Request) -> dict:
+    """Rename a Food and cascade the new name to every snapshotted meal
+    entry that references it. Returns the updated Food. Used by the
+    dashboard's per-entry rename affordance to fix sloppy OFF labels."""
+    updated = await _repo(request).rename_food(food_id, req.name.strip())
+    if updated is None:
+        raise HTTPException(status_code=404, detail="food not found")
+    return updated

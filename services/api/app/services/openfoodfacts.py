@@ -75,13 +75,26 @@ def _to_food(off_product: dict[str, Any], barcode: str) -> Food:
             sodium_mg=_s(per_100g.sodium_mg),
         )
 
+    product_name = (
+        off_product.get("product_name")
+        or off_product.get("product_name_en")
+        or "Unknown product"
+    )
+    brand = (off_product.get("brands") or "").split(",")[0].strip() or None
+    # OFF stores brand and product_name separately, but the product_name is
+    # often the parent SKU only (e.g. "Total 5% Milkfat"). Without the brand
+    # prefix the dashboard reads as anonymous yogurt. Prefix it here so every
+    # downstream snapshot already includes the brand. Skip the prefix if the
+    # name already starts with the brand (case-insensitive) to avoid
+    # "Fage Fage Total ...".
+    if brand and not product_name.lower().startswith(brand.lower()):
+        display_name = f"{brand} {product_name}"
+    else:
+        display_name = product_name
+
     return Food(
-        name=(
-            off_product.get("product_name")
-            or off_product.get("product_name_en")
-            or "Unknown product"
-        ),
-        brand=(off_product.get("brands") or "").split(",")[0].strip() or None,
+        name=display_name,
+        brand=brand,
         barcode=barcode,
         category="food",
         serving_g=serving_g,

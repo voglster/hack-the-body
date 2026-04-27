@@ -246,3 +246,47 @@ async def test_auth_required(client):
     assert r.status_code == 401
     r = await client.post("/meals/entries", json={"food_id": "x", "quantity_g": 1, "slot": "snack"})
     assert r.status_code == 401
+
+
+async def test_rename_food_updates_doc_and_entries(client):
+    food = await _create_food(client, name="Total 5% Milkfat")
+    # Log two entries pointing at the food.
+    r1 = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 150, "slot": "breakfast"},
+    )
+    r2 = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 150, "slot": "snack"},
+    )
+    assert r1.status_code == 201 and r2.status_code == 201
+
+    r = await client.patch(
+        f"/foods/{food['id']}", headers=HEADERS,
+        json={"name": "Fage Total 5% Milkfat"},
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "Fage Total 5% Milkfat"
+
+    # Entries snapshot updated.
+    r = await client.get("/meals/entries", headers=HEADERS)
+    rows = r.json()
+    relevant = [e for e in rows if e["food_id"] == food["id"]]
+    assert len(relevant) == 2
+    assert all(e["food_name"] == "Fage Total 5% Milkfat" for e in relevant)
+
+
+async def test_rename_food_404_when_missing(client):
+    r = await client.patch(
+        "/foods/000000000000000000000000", headers=HEADERS,
+        json={"name": "x"},
+    )
+    assert r.status_code == 404
+
+
+async def test_rename_food_rejects_blank_name(client):
+    food = await _create_food(client, name="Old")
+    r = await client.patch(
+        f"/foods/{food['id']}", headers=HEADERS, json={"name": ""},
+    )
+    assert r.status_code == 422

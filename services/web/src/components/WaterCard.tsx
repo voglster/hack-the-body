@@ -10,7 +10,10 @@ import { useState } from "react";
 import { api } from "../api/client";
 
 const QUICK_OZ = [8, 12, 16, 20];
-const DAILY_GOAL_OZ = 100;  // rule of thumb; 'half body weight in oz' = ~120, this is a softer target
+/** Fallback when /profile/targets has no daily_water_oz set (cold-start
+ *  users). 100 oz is the IOM-style "drinking water from beverages"
+ *  baseline — sensible default until the user picks one. */
+const DEFAULT_GOAL_OZ = 100;
 
 export function WaterCard() {
   const qc = useQueryClient();
@@ -18,6 +21,10 @@ export function WaterCard() {
     queryKey: ["water.today"],
     queryFn: api.waterToday,
     refetchInterval: 60_000,
+  });
+  const targets = useQuery({
+    queryKey: ["profile.targets"],
+    queryFn: api.getTargets,
   });
   const log = useMutation({
     mutationFn: (oz: number) => api.logWater(oz),
@@ -30,8 +37,9 @@ export function WaterCard() {
   const [forceExpanded, setForceExpanded] = useState(false);
 
   const oz = today.data?.oz ?? 0;
-  const fraction = Math.min(1, oz / DAILY_GOAL_OZ);
-  const goalMet = oz >= DAILY_GOAL_OZ;
+  const goal = targets.data?.daily_water_oz ?? DEFAULT_GOAL_OZ;
+  const fraction = Math.min(1, oz / goal);
+  const goalMet = oz >= goal;
 
   if (goalMet && !forceExpanded) {
     return (
@@ -50,7 +58,7 @@ export function WaterCard() {
         <div>
           <div className="text-xs uppercase tracking-wide text-neutral-400">Water</div>
           <div className="text-2xl font-semibold tabular-nums">
-            {oz.toFixed(0)} <span className="text-sm font-normal text-neutral-500">/ {DAILY_GOAL_OZ} oz</span>
+            {oz.toFixed(0)} <span className="text-sm font-normal text-neutral-500">/ {goal} oz</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

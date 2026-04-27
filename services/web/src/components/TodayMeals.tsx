@@ -56,8 +56,28 @@ export function TodayMeals() {
     refresh();
   };
 
+  const createTemplate = useMutation({
+    mutationFn: (t: { name: string; default_slot: MealSlot; items: { food_id: string; quantity_g: number }[] }) =>
+      api.createTemplate(t),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["meals.templates"] }),
+  });
+
+  const deleteTemplate = useMutation({
+    mutationFn: (id: string) => api.deleteTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["meals.templates"] }),
+  });
+
+  const saveSlotAsUsual = (slot: MealSlot, list: MealEntry[], name: string) => {
+    const items = list
+      .filter(e => e.food_name !== "Water" && e.food_name !== "Vitamins")
+      .map(e => ({ food_id: e.food_id, quantity_g: e.quantity_g }));
+    if (items.length === 0) return;
+    createTemplate.mutate({ name: name.trim(), default_slot: slot, items });
+  };
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = entries.data?.find(e => e.id === editingId) ?? null;
+  const [manageUsuals, setManageUsuals] = useState(false);
 
   const t = totals.data?.totals;
 
@@ -72,17 +92,45 @@ export function TodayMeals() {
 
       {templates.data && templates.data.length > 0 && (
         <div>
-          <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">My usuals</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs uppercase tracking-wide text-neutral-500">My usuals</div>
+            <button
+              onClick={() => setManageUsuals(v => !v)}
+              className="text-[11px] text-neutral-500 active:text-neutral-200 px-2 py-1"
+              aria-label={manageUsuals ? "done managing" : "manage usuals"}
+            >
+              {manageUsuals ? "done" : "manage"}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {templates.data.map(tpl => (
-              <button
-                key={tpl.id}
-                onClick={() => logTemplate.mutate(tpl.id)}
-                disabled={logTemplate.isPending}
-                className="px-3 py-2 rounded-full bg-neutral-800 active:bg-neutral-600 text-sm disabled:opacity-50 min-h-[44px]"
-              >
-                + {tpl.name}
-              </button>
+              <div key={tpl.id} className="flex items-stretch">
+                <button
+                  onClick={() => !manageUsuals && tpl.id && logTemplate.mutate(tpl.id)}
+                  disabled={logTemplate.isPending || manageUsuals}
+                  className={`px-3 py-2 text-sm min-h-[44px] ${
+                    manageUsuals
+                      ? "rounded-l-full bg-neutral-800 text-neutral-300 disabled:opacity-100"
+                      : "rounded-full bg-neutral-800 active:bg-neutral-600 disabled:opacity-50"
+                  }`}
+                >
+                  + {tpl.name}
+                </button>
+                {manageUsuals && tpl.id && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete usual "${tpl.name}"?`)) {
+                        deleteTemplate.mutate(tpl.id!);
+                      }
+                    }}
+                    disabled={deleteTemplate.isPending}
+                    className="px-3 py-2 rounded-r-full bg-red-900/60 active:bg-red-800 text-red-200 text-sm min-h-[44px]"
+                    aria-label={`delete ${tpl.name}`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -108,6 +156,8 @@ export function TodayMeals() {
         entries={entries.data}
         onDelete={(id) => deleteEntry.mutate(id)}
         onEdit={setEditingId}
+        onSaveSlotAsUsual={saveSlotAsUsual}
+        savingUsual={createTemplate.isPending}
       />
     </div>
   );
@@ -158,10 +208,12 @@ function slotTotals(list: MealEntry[]): { cal: number; protein: number } {
   return { cal, protein };
 }
 
-function EntryList({ entries, onDelete, onEdit }: {
+function EntryList({ entries, onDelete, onEdit, onSaveSlotAsUsual, savingUsual }: {
   entries: MealEntry[] | undefined;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onSaveSlotAsUsual: (slot: MealSlot, list: MealEntry[], name: string) => void;
+  savingUsual: boolean;
 }) {
   if (!entries?.length) {
     return (
@@ -185,31 +237,101 @@ function EntryList({ entries, onDelete, onEdit }: {
           list={grouped.get(slot) ?? []}
           onDelete={onDelete}
           onEdit={onEdit}
+          onSaveAsUsual={onSaveSlotAsUsual}
+          savingUsual={savingUsual}
         />
       ))}
     </div>
   );
 }
 
-function SlotSection({ slot, list, onDelete, onEdit }: {
+/** Names of singleton "auto-managed" foods we don't want to bundle into a
+ *  saved template (water and the daily vitamin stack). */
+const TEMPLATE_EXCLUDED_NAMES = new Set(["Water", "Vitamins"]);
+
+function templateableEntries(list: MealEntry[]): MealEntry[] {
+  return list.filter(e => !TEMPLATE_EXCLUDED_NAMES.has(e.food_name));
+}
+
+function SlotSection({ slot, list, onDelete, onEdit, onSaveAsUsual, savingUsual }: {
   slot: MealSlot;
   list: MealEntry[];
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onSaveAsUsual: (slot: MealSlot, list: MealEntry[], name: string) => void;
+  savingUsual: boolean;
 }) {
   const { cal, protein } = slotTotals(list);
   const summaryParts = [
     cal > 0 ? `${Math.round(cal)} cal` : "",
     protein > 0 ? `${Math.round(protein)} p` : "",
   ].filter(Boolean);
+  const saveable = templateableEntries(list);
+  const [naming, setNaming] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+
+  const beginNaming = () => {
+    // Default name: the foods, joined. e.g. "Yogurt + Protein Powder + Granola"
+    // Capped at 3 components so the chip stays compact; the user can edit.
+    const parts = saveable.map(e => e.food_name);
+    const joined = parts.length <= 3
+      ? parts.join(" + ")
+      : `${parts.slice(0, 3).join(" + ")} +${parts.length - 3}`;
+    setNameValue(joined || SLOT_LABEL[slot]);
+    setNaming(true);
+  };
+
   return (
     <section>
       <div className="flex items-baseline justify-between gap-3 mb-1">
         <h3 className="text-sm font-medium text-neutral-300">{SLOT_LABEL[slot]}</h3>
-        <span className="text-[11px] text-neutral-500 tabular-nums">
-          {summaryParts.join(" · ")}
-        </span>
+        <div className="flex items-baseline gap-3">
+          <span className="text-[11px] text-neutral-500 tabular-nums">
+            {summaryParts.join(" · ")}
+          </span>
+          {!naming && saveable.length > 0 && (
+            <button
+              onClick={beginNaming}
+              className="text-[11px] text-neutral-500 active:text-emerald-300 px-1"
+              aria-label={`save ${SLOT_LABEL[slot]} as a usual`}
+            >
+              + save as usual
+            </button>
+          )}
+        </div>
       </div>
+      {naming && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-neutral-900 border border-neutral-800 p-2">
+          <input
+            value={nameValue}
+            onChange={e => setNameValue(e.target.value)}
+            disabled={savingUsual}
+            autoFocus
+            placeholder="usual name"
+            className="flex-1 min-w-0 px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-sm"
+            aria-label="usual name"
+          />
+          <button
+            onClick={() => {
+              if (!nameValue.trim()) return;
+              onSaveAsUsual(slot, saveable, nameValue);
+              setNaming(false);
+            }}
+            disabled={savingUsual || !nameValue.trim()}
+            className="px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 text-white text-sm disabled:opacity-50"
+          >
+            {savingUsual ? "..." : "save"}
+          </button>
+          <button
+            onClick={() => setNaming(false)}
+            disabled={savingUsual}
+            className="px-2 py-2 text-neutral-400 text-sm"
+            aria-label="cancel"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <ul className="divide-y divide-neutral-800 text-sm">
         {list.map(e => (
           <EntryRow key={e.id} entry={e} onDelete={onDelete} onEdit={onEdit} />

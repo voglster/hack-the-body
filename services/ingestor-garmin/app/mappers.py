@@ -69,8 +69,13 @@ def map_body_comp(raw: list[dict]) -> list[BodyComp]:
     ]
 
 
-def map_vo2max(raw: dict) -> VO2Max:
-    g = raw["generic"]
+def map_vo2max(raw: dict) -> VO2Max | None:
+    # Garmin returns a response with no "generic" block on days without a
+    # measurement (VO2max only updates after qualifying runs). Treat that
+    # as "nothing to record" rather than an error.
+    g = (raw or {}).get("generic")
+    if not g or g.get("vo2MaxPreciseValue") is None:
+        return None
     return VO2Max(
         ts=datetime.strptime(g["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         value=float(g["vo2MaxPreciseValue"]),

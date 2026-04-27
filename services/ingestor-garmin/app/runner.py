@@ -106,6 +106,10 @@ async def _do_daily_per_day(client, repo, days, counts, jitter: JitterFn):
         for name, fetch, mapper, upsert in single:
             try:
                 mapped = mapper(fetch())
+                # Mappers may return None for "no data" (e.g. vo2max on a
+                # day with no qualifying activity). Skip silently.
+                if mapped is None:
+                    continue
                 # Garmin returns stub daily_summary rows for "tomorrow"
                 # when the user's local TZ is past midnight UTC. They
                 # have steps=0 and step_goal=None; persisting them makes

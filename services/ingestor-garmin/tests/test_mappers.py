@@ -56,6 +56,13 @@ def test_map_vo2max(fixture):
     assert v.value == 42.0
 
 
+def test_map_vo2max_no_measurement():
+    # Garmin omits "generic" on days without a qualifying activity.
+    assert map_vo2max({}) is None
+    assert map_vo2max({"generic": None}) is None
+    assert map_vo2max({"generic": {"calendarDate": "2026-04-25"}}) is None
+
+
 def test_map_daily_summary(fixture):
     raw = fixture("daily_summary.json")
     s = map_daily_summary(raw)

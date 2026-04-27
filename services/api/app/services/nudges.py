@@ -11,9 +11,13 @@ file so tuning is a one-file change. See
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import UTC, datetime, time, timedelta
 from typing import Any, Callable, Literal
+from zoneinfo import ZoneInfo
+
+from pymongo.asynchronous.database import AsyncDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -226,3 +230,77 @@ def evaluate_all(
         if nudge is not None:
             out.append(nudge)
     return out
+
+
+# ----- context assembly -----
+
+def _local_tz() -> ZoneInfo:
+    name = os.environ.get("TZ") or "UTC"
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def _local_day_window_utc(now_utc: datetime) -> tuple[datetime, datetime, datetime]:
+    """Return (start_utc, end_utc, now_local) for the user's local 'today'."""
+    tz = _local_tz()
+    now_local = now_utc.astimezone(tz)
+    start_local = datetime.combine(now_local.date(), time.min, tzinfo=tz)
+    start_utc = start_local.astimezone(UTC)
+    end_utc = start_utc + timedelta(days=1)
+    return start_utc, end_utc, now_local
+
+
+async def build_context(
+    db: AsyncDatabase,
+    *,
+    now_utc: datetime | None = None,
+) -> NudgeContext:
+    """Snapshot every signal a rule might need.
+
+    Reads targets + today's vitamin count + today's water oz + today's
+    weight presence + today's steps. Empty/missing data → safe defaults
+    (zeroes / False / None).
+    """
+    if now_utc is None:
+        now_utc = datetime.now(UTC)
+    start_utc, end_utc, now_local = _local_day_window_utc(now_utc)
+
+    targets_doc = await db["user_profile"].find_one({"_id": "targets"}) or {}
+    targets = {k: v for k, v in targets_doc.items() if k != "_id"}
+
+    # Vitamins + water both come from the meal entries collection.
+    cur = db["meal_entries"].find({"ts": {"$gte": start_utc, "$lt": end_utc}})
+    vitamins_count = 0
+    water_grams = 0.0
+    async for e in cur:
+        name = e.get("food_name")
+        if name == "Vitamins":
+            vitamins_count += 1
+        elif name == "Water":
+            water_grams += float(e.get("quantity_g") or 0)
+    water_oz = water_grams / 29.5735 if water_grams else 0.0
+
+    weight_doc = await db["metrics_weight"].find_one(
+        {"ts": {"$gte": start_utc, "$lt": end_utc}},
+    )
+    weight_logged = weight_doc is not None
+
+    # Steps: today's daily_summary doc, if any.
+    summary = await db["metrics_daily_summary"].find_one(
+        {"ts": {"$gte": start_utc, "$lt": end_utc}, "step_goal": {"$ne": None}},
+        sort=[("ts", -1)],
+    )
+    steps_today: int | None = None
+    if summary is not None and summary.get("steps") is not None:
+        steps_today = int(summary["steps"])
+
+    return NudgeContext(
+        now_local=now_local,
+        targets=targets,
+        vitamins_count_today=vitamins_count,
+        water_oz_today=water_oz,
+        weight_logged_today=weight_logged,
+        steps_today=steps_today,
+    )

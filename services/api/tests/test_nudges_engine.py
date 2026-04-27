@@ -290,3 +290,100 @@ class TestEvaluateAll:
         ids = [n.id for n in out]
         # Rogue swallowed; siblings still fire in order.
         assert ids == ["vitamins_missing", "no_weighin"]
+
+
+import os
+
+from app.models.food import Food, Macros, MealEntry
+from app.models.metrics import DailySummary, Weight
+from app.services.food_repo import FoodRepo
+from app.services.metrics_repo import MetricsRepo
+from app.services.nudges import build_context
+
+
+@pytest.fixture
+def mt_tz(monkeypatch):
+    monkeypatch.setenv("TZ", "America/Denver")
+    return ZoneInfo("America/Denver")
+
+
+class TestBuildContext:
+    async def test_empty_db_safe_defaults(self, mock_db, mt_tz):
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))  # 1pm MT
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.targets == {}
+        assert ctx.vitamins_count_today == 0
+        assert ctx.water_oz_today == 0
+        assert ctx.weight_logged_today is False
+        assert ctx.steps_today is None
+        # now_local is 1pm in Denver
+        assert ctx.now_local.hour == 13
+
+    async def test_reads_targets(self, mock_db, mt_tz):
+        await mock_db["user_profile"].update_one(
+            {"_id": "targets"},
+            {"$set": {"daily_water_oz": 64, "step_goal_override": 10000}},
+            upsert=True,
+        )
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.targets["daily_water_oz"] == 64
+        assert ctx.targets["step_goal_override"] == 10000
+
+    async def test_counts_vitamins_today(self, mock_db, mt_tz):
+        repo = FoodRepo(mock_db)
+        # seed the vitamins food
+        food = await repo.upsert_food(Food(
+            name="Vitamins", category="supplement",
+            serving_g=1, serving_label="1", per_serving=Macros(), source="builtin",
+        ))
+        await repo.insert_entry(MealEntry(
+            ts=datetime(2026, 4, 27, 15, 0, tzinfo=ZoneInfo("UTC")),  # 9am MT
+            food_id=food["id"], food_name="Vitamins",
+            food_category="supplement", quantity_g=1, servings=1,
+            slot="supplement", macros=Macros(),
+        ))
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.vitamins_count_today == 1
+
+    async def test_sums_water_today(self, mock_db, mt_tz):
+        repo = FoodRepo(mock_db)
+        food = await repo.upsert_food(Food(
+            name="Water", category="drink",
+            serving_g=29.5735 * 8, serving_label="cup",
+            per_serving=Macros(), source="builtin",
+        ))
+        # 16oz = 16 * 29.5735g
+        await repo.insert_entry(MealEntry(
+            ts=datetime(2026, 4, 27, 15, 0, tzinfo=ZoneInfo("UTC")),
+            food_id=food["id"], food_name="Water", food_category="drink",
+            quantity_g=16 * 29.5735, servings=2.0,
+            slot="snack", macros=Macros(),
+        ))
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.water_oz_today == pytest.approx(16, abs=0.5)
+
+    async def test_detects_weight_today(self, mock_db, mt_tz):
+        mrepo = MetricsRepo(mock_db)
+        await mrepo.insert_weight(Weight(
+            ts=datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC")),  # 8am MT
+            kg=80.0, raw={}, source="garmin", source_id="x",
+        ))
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.weight_logged_today is True
+
+    async def test_reads_steps_today(self, mock_db, mt_tz):
+        mrepo = MetricsRepo(mock_db)
+        await mrepo.insert_daily_summary(DailySummary(
+            ts=datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC")),
+            steps=4200, step_goal=10000,
+            distance_m=None, active_kcal=None, total_kcal=None,
+            resting_hr=None, intensity_minutes=None, floors_climbed=None,
+            raw={}, source="garmin", source_id="ds-1",
+        ))
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ctx = await build_context(mock_db, now_utc=now_utc)
+        assert ctx.steps_today == 4200

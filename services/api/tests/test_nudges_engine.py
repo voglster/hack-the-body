@@ -387,3 +387,44 @@ class TestBuildContext:
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
         ctx = await build_context(mock_db, now_utc=now_utc)
         assert ctx.steps_today == 4200
+
+
+from app.services.nudge_dismissals import (
+    end_of_day_local,
+    get_active_dismissals,
+    record_dismissal,
+)
+
+
+class TestDismissals:
+    async def test_empty_returns_empty_set(self, mock_db, mt_tz):
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        ids = await get_active_dismissals(mock_db, now_utc=now_utc)
+        assert ids == set()
+
+    async def test_record_then_read(self, mock_db, mt_tz):
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        await record_dismissal(
+            mock_db, nudge_id="vitamins_missing",
+            until="end_of_day", now_utc=now_utc,
+        )
+        ids = await get_active_dismissals(mock_db, now_utc=now_utc)
+        assert ids == {"vitamins_missing"}
+
+    async def test_expired_dismissal_not_active(self, mock_db, mt_tz):
+        # Record a dismissal that's already in the past.
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
+        past = datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC"))
+        await record_dismissal(
+            mock_db, nudge_id="water_below_pace",
+            until=past.isoformat(), now_utc=now_utc,
+        )
+        ids = await get_active_dismissals(mock_db, now_utc=now_utc)
+        assert ids == set()
+
+    async def test_end_of_day_local(self, mt_tz):
+        now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))  # 1pm MT
+        eod = end_of_day_local(now_utc)
+        # End-of-day for Apr 27 in Denver → Apr 28 at 06:00 UTC (MDT is UTC-6).
+        assert eod.tzinfo is not None
+        assert eod.year == 2026 and eod.month == 4 and eod.day == 28

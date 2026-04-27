@@ -127,6 +127,20 @@ def rule_water_below_pace(ctx: NudgeContext) -> FiredNudge | None:
     )
 
 
+def rule_no_weighin(ctx: NudgeContext) -> FiredNudge | None:
+    if ctx.now_local.time() < WEIGHIN_FLOOR:
+        return None
+    if ctx.weight_logged_today:
+        return None
+    return FiredNudge(
+        id="no_weighin",
+        kind="weight",
+        severity="info",
+        title="No weigh-in yet",
+        body="Step on the scale when you get a moment.",
+    )
+
+
 RULES: list[Rule] = [
     Rule(
         id="vitamins_missing", kind="vitamin",
@@ -137,5 +151,10 @@ RULES: list[Rule] = [
         id="water_below_pace", kind="water",
         pushable=False, push_at=None,
         evaluate=rule_water_below_pace,
+    ),
+    Rule(
+        id="no_weighin", kind="weight",
+        pushable=True, push_at=time(10, 0),
+        evaluate=rule_no_weighin,
     ),
 ]

@@ -154,3 +154,23 @@ class TestWaterBelowPace:
             targets={"daily_water_oz": 0}, water_oz=0,
         )
         assert rule_water_below_pace(ctx) is None
+
+
+from app.services.nudges import rule_no_weighin
+
+
+class TestNoWeighin:
+    def test_before_floor_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 9, 59, tzinfo=MT), weight=False)
+        assert rule_no_weighin(ctx) is None
+
+    def test_at_floor_no_weight_fires(self):
+        ctx = _ctx(datetime(2026, 4, 27, 10, 0, tzinfo=MT), weight=False)
+        nudge = rule_no_weighin(ctx)
+        assert nudge is not None
+        assert nudge.id == "no_weighin"
+        assert nudge.kind == "weight"
+
+    def test_after_floor_weighed_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), weight=True)
+        assert rule_no_weighin(ctx) is None

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { api } from "../api/client";
@@ -26,6 +26,12 @@ export function SleepChart() {
           <YAxis stroke="#737373" domain={[0, 10]} fontSize={11} />
           <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626" }} />
           <Bar dataKey="hours" fill="#818cf8" />
+          <ReferenceLine
+            y={8}
+            stroke="#34d399"
+            strokeDasharray="4 4"
+            label={{ value: "8h", position: "right", fill: "#34d399", fontSize: 11 }}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

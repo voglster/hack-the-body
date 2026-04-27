@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
@@ -144,7 +145,15 @@ function FoodTab() {
   return <TodayMeals />;
 }
 
-function TrendsTab({ focus }: { focus?: TrendFocus }) {
+/** Read the focused-section hint from the URL (`/trends?focus=steps`). */
+function useTrendFocus(): TrendFocus | undefined {
+  const [params] = useSearchParams();
+  const f = params.get("focus");
+  return f === "steps" || f === "sleep" || f === "weight" ? f : undefined;
+}
+
+function TrendsTab() {
+  const focus = useTrendFocus();
   const today = todayLocalISO();
   const { start, end } = localDayBoundsUTC(today);
   const { data: stepsToday } = useQuery({
@@ -241,23 +250,19 @@ function MoreTab() {
 
 export function Dashboard() {
   const [tab, setTab] = useActiveTab();
-  // When the user taps a metric card on Today, we route to Trends and
-  // hand the target section to TrendsTab so it can open + scroll. The
-  // ref is unique per click so even tapping the same card twice
-  // re-fires the effect.
-  const [pendingFocus, setPendingFocus] = useState<{ section: TrendFocus; nonce: number } | null>(null);
-  const onOpenTrend = (focus: TrendFocus) => {
-    setPendingFocus({ section: focus, nonce: Date.now() });
-    setTab("trends");
+  // Tap a Today-tab metric → push /trends?focus=<section>. Putting the
+  // focus in the URL means browser back/forward, deep links, and PWA
+  // refresh all do the right thing without extra plumbing.
+  const navigate = useNavigate();
+  const onOpenTrend = (focus: TrendFocus): void => {
+    void navigate(`/trends?focus=${focus}`);
   };
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-6 pb-24">
       <PageHeader />
       {tab === "today"  && <TodayTab onOpenTrend={onOpenTrend} />}
       {tab === "food"   && <FoodTab />}
-      {tab === "trends" && (
-        <TrendsTab key={pendingFocus?.nonce ?? "no-focus"} focus={pendingFocus?.section} />
-      )}
+      {tab === "trends" && <TrendsTab />}
       {tab === "more"   && <MoreTab />}
       <BottomNav active={tab} onChange={setTab} />
     </div>

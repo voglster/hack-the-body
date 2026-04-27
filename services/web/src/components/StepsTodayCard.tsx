@@ -133,6 +133,33 @@ const STATUS_TONE: Record<Forecast["status"], { bar: string; pill: string }> = {
   "no-goal": { bar: "bg-neutral-500", pill: "text-neutral-400" },
 };
 
+/** Build the host <section> props. When `onOpen` is set we make the
+ *  whole card a button-like surface (click + Enter/Space). Without it
+ *  the card is purely presentational. Extracted so `StepsTodayCard`
+ *  itself stays under the lint complexity ceiling. */
+function makeCardProps(onOpen?: () => void): React.HTMLAttributes<HTMLElement> {
+  if (!onOpen) {
+    return {
+      className: "rounded-2xl bg-neutral-900 border border-neutral-800 p-4 sm:p-6 space-y-4",
+    };
+  }
+  return {
+    className:
+      "rounded-2xl bg-neutral-900 border border-neutral-800 p-4 sm:p-6 space-y-4 " +
+      "cursor-pointer hover:border-neutral-700 active:bg-neutral-900/60",
+    onClick: onOpen,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onOpen();
+      }
+    },
+    role: "button",
+    tabIndex: 0,
+    "aria-label": "Steps today — open trends",
+  };
+}
+
 function useStepGoal(summary: Summary | undefined): number | null {
   // User-set step_goal_override wins over Garmin's auto-tuned step_goal.
   // Both are optional: if neither is set, callers hide goal-relative UI.
@@ -143,9 +170,13 @@ function useStepGoal(summary: Summary | undefined): number | null {
   return targets?.step_goal_override ?? summary?.daily_summary?.step_goal ?? null;
 }
 
-export function StepsTodayCard({ summary, todaySteps }: {
+export function StepsTodayCard({ summary, todaySteps, onOpenTrends }: {
   summary: Summary | undefined;
   todaySteps: number | undefined;
+  /** Optional handler invoked when the user taps the card (anywhere
+   *  except the inline sync button). Used by the Today tab to jump to
+   *  the Trends tab with the steps chart pre-opened. */
+  onOpenTrends?: () => void;
 }) {
   const ds = summary?.daily_summary;
   const steps = todaySteps ?? ds?.steps ?? 0;
@@ -159,10 +190,14 @@ export function StepsTodayCard({ summary, todaySteps }: {
   const expectedPct = goal ? Math.min(100, f.expectedFraction * 100) : 0;
   const donePct = goal ? Math.min(100, f.fractionDone * 100) : 0;
 
+  const cardProps = makeCardProps(onOpenTrends);
   return (
-    <section className="rounded-2xl bg-neutral-900 border border-neutral-800 p-4 sm:p-6 space-y-4">
+    <section {...cardProps}>
       <div className="flex items-baseline justify-between gap-2">
-        <div className="text-xs uppercase tracking-wide text-neutral-400">Steps today</div>
+        <div className="text-xs uppercase tracking-wide text-neutral-400 flex items-center gap-1">
+          <span>Steps today</span>
+          {onOpenTrends && <span className="text-neutral-600">›</span>}
+        </div>
         {goal && (
           <div className="text-xs text-neutral-500 tabular-nums">
             {Math.round(f.fractionDone * 100)}% of {goal.toLocaleString()}
@@ -203,7 +238,7 @@ export function StepsTodayCard({ summary, todaySteps }: {
         <div className={`text-sm font-medium ${tone.pill}`}>{f.message}</div>
         <button
           type="button"
-          onClick={() => sync.start()}
+          onClick={(e) => { e.stopPropagation(); sync.start(); }}
           disabled={sync.busy}
           className="shrink-0 text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200"
           aria-label="sync steps from Garmin"

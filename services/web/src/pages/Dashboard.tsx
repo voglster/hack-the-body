@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
@@ -38,22 +38,35 @@ const sleepCard = (s: Summary | undefined): CardData => ({
   sub: s?.sleep?.score != null ? `score ${s.sleep.score}` : undefined,
 });
 
-function SummaryCards({ summary }: { summary: Summary | undefined }) {
-  const cards = [sleepCard(summary), weightCard(summary)];
+/** Which Trends section to expand + scroll to when the user taps a
+ *  metric card on the Today tab. `null` = no pending focus. */
+type TrendFocus = "steps" | "sleep" | "weight";
+
+function SummaryCards({ summary, onOpenTrend }: {
+  summary: Summary | undefined;
+  onOpenTrend?: (focus: TrendFocus) => void;
+}) {
+  const sleep = sleepCard(summary);
+  const weight = weightCard(summary);
   return (
     <section className="grid grid-cols-2 gap-2 sm:gap-3">
-      {cards.map(c => (
-        <MetricCard key={c.label} label={c.label} value={c.value} sub={c.sub} />
-      ))}
+      <MetricCard
+        label={sleep.label} value={sleep.value} sub={sleep.sub}
+        onClick={onOpenTrend ? () => onOpenTrend("sleep") : undefined}
+      />
+      <MetricCard
+        label={weight.label} value={weight.value} sub={weight.sub}
+        onClick={onOpenTrend ? () => onOpenTrend("weight") : undefined}
+      />
     </section>
   );
 }
 
-function Section({ title, children, defaultOpen = true }: {
-  title: string; children: React.ReactNode; defaultOpen?: boolean;
+function Section({ id, title, children, defaultOpen = true }: {
+  id?: string; title: string; children: React.ReactNode; defaultOpen?: boolean;
 }) {
   return (
-    <details open={defaultOpen} className="group">
+    <details id={id} open={defaultOpen} className="group">
       <summary className="cursor-pointer list-none flex items-center justify-between text-sm uppercase tracking-wide text-neutral-400 mb-2 select-none">
         <span>{title}</span>
         <span className="text-neutral-600 group-open:rotate-90 transition-transform">▸</span>
@@ -93,7 +106,7 @@ function PageHeader() {
   );
 }
 
-function TodayTab() {
+function TodayTab({ onOpenTrend }: { onOpenTrend?: (focus: TrendFocus) => void }) {
   const { data: summary } = useQuery({
     queryKey: ["summary"], queryFn: api.summary, refetchInterval: 60_000,
   });
@@ -107,7 +120,11 @@ function TodayTab() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <StepsTodayCard summary={summary} todaySteps={stepsToday?.total} />
+      <StepsTodayCard
+        summary={summary}
+        todaySteps={stepsToday?.total}
+        onOpenTrends={onOpenTrend ? () => onOpenTrend("steps") : undefined}
+      />
       <CoachCard />
       <WaterCard />
       <VitaminsCard />
@@ -118,7 +135,7 @@ function TodayTab() {
       <div className="md:hidden">
         <NotificationsCard />
       </div>
-      <SummaryCards summary={summary} />
+      <SummaryCards summary={summary} onOpenTrend={onOpenTrend} />
     </div>
   );
 }
@@ -127,7 +144,7 @@ function FoodTab() {
   return <TodayMeals />;
 }
 
-function TrendsTab() {
+function TrendsTab({ focus }: { focus?: TrendFocus }) {
   const today = todayLocalISO();
   const { start, end } = localDayBoundsUTC(today);
   const { data: stepsToday } = useQuery({
@@ -136,20 +153,41 @@ function TrendsTab() {
   });
   const [browseDay, setBrowseDay] = useState<string>(today);
 
+  // When the user lands here from a Today-tab metric tap, force the
+  // matching <details> element open and scroll it into view. Native
+  // <details> open/close stays user-controllable after this.
+  useEffect(() => {
+    if (!focus) return;
+    const id = focus === "steps" ? "trend-steps"
+             : focus === "sleep" ? "trend-sleep"
+             : "trend-weight";
+    const el = document.getElementById(id) as HTMLDetailsElement | null;
+    if (!el) return;
+    el.open = true;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [focus]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <Section
+        id="trend-steps-today"
         title={`Steps · ${browseDay === today ? "today" : "browsing"}`}
         defaultOpen
       >
         <StepsTodayChart onDayChange={setBrowseDay} />
       </Section>
-      <Section title="Steps (30d)" defaultOpen={false}>
+      <Section id="trend-steps" title="Steps (30d)" defaultOpen={focus === "steps"}>
         <StepsChart todayLiveTotal={stepsToday?.total} />
       </Section>
-      <Section title="Sleep (30d)" defaultOpen={false}><SleepChart /></Section>
+      <Section id="trend-sleep" title="Sleep (30d)" defaultOpen={focus === "sleep"}>
+        <SleepChart />
+      </Section>
       <Section title="HRV (30d)" defaultOpen={false}><HrvChart /></Section>
-      <Section title="Weight (60d)" defaultOpen={false}><WeightChart /></Section>
+      <Section id="trend-weight" title="Weight (60d)" defaultOpen={focus === "weight"}>
+        <WeightChart />
+      </Section>
       <Section title="Recent workouts" defaultOpen={false}><WorkoutList /></Section>
     </div>
   );
@@ -203,12 +241,23 @@ function MoreTab() {
 
 export function Dashboard() {
   const [tab, setTab] = useActiveTab();
+  // When the user taps a metric card on Today, we route to Trends and
+  // hand the target section to TrendsTab so it can open + scroll. The
+  // ref is unique per click so even tapping the same card twice
+  // re-fires the effect.
+  const [pendingFocus, setPendingFocus] = useState<{ section: TrendFocus; nonce: number } | null>(null);
+  const onOpenTrend = (focus: TrendFocus) => {
+    setPendingFocus({ section: focus, nonce: Date.now() });
+    setTab("trends");
+  };
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-6 pb-24">
       <PageHeader />
-      {tab === "today"  && <TodayTab />}
+      {tab === "today"  && <TodayTab onOpenTrend={onOpenTrend} />}
       {tab === "food"   && <FoodTab />}
-      {tab === "trends" && <TrendsTab />}
+      {tab === "trends" && (
+        <TrendsTab key={pendingFocus?.nonce ?? "no-focus"} focus={pendingFocus?.section} />
+      )}
       {tab === "more"   && <MoreTab />}
       <BottomNav active={tab} onChange={setTab} />
     </div>

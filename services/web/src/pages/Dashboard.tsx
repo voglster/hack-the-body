@@ -111,8 +111,13 @@ function TodayTab() {
       <CoachCard />
       <WaterCard />
       <VitaminsCard />
-      {/* Hides itself once granted; only shows in 'off' or 'denied'. */}
-      <NotificationsCard />
+      {/* Hides itself once granted; only shows in 'off' or 'denied'.
+          Also hidden on desktop (>=md) — push from a phone/tablet is
+          useful, push to a browser tab you only open at the desk is
+          not. The full settings panel still lives in the More tab. */}
+      <div className="md:hidden">
+        <NotificationsCard />
+      </div>
       <SummaryCards summary={summary} />
     </div>
   );

@@ -92,5 +92,26 @@ def _elapsed_fraction(now_local: datetime) -> float:
     return minutes_in / minutes_total
 
 
-# Rule registry placeholder — populated by later tasks.
-RULES: list[Rule] = []
+# ----- rules -----
+
+def rule_vitamins_missing(ctx: NudgeContext) -> FiredNudge | None:
+    if ctx.now_local.time() < VITAMINS_FLOOR:
+        return None
+    if ctx.vitamins_count_today > 0:
+        return None
+    return FiredNudge(
+        id="vitamins_missing",
+        kind="vitamin",
+        severity="warn",
+        title="Vitamins not taken yet",
+        body="It's past noon and you haven't logged your stack.",
+    )
+
+
+RULES: list[Rule] = [
+    Rule(
+        id="vitamins_missing", kind="vitamin",
+        pushable=True, push_at=time(12, 0),
+        evaluate=rule_vitamins_missing,
+    ),
+]

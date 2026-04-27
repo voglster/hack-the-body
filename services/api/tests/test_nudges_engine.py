@@ -61,3 +61,49 @@ class TestTypes:
             evaluate=lambda ctx: None,
         )
         assert r.pushable is False
+
+
+from app.services.nudges import (
+    NudgeContext,
+    rule_vitamins_missing,
+)
+
+
+def _ctx(
+    now_local: datetime,
+    *,
+    targets: dict | None = None,
+    vitamins: int = 0,
+    water_oz: float = 0,
+    weight: bool = False,
+    steps: int | None = 0,
+) -> NudgeContext:
+    return NudgeContext(
+        now_local=now_local,
+        targets=targets or {},
+        vitamins_count_today=vitamins,
+        water_oz_today=water_oz,
+        weight_logged_today=weight,
+        steps_today=steps,
+    )
+
+
+class TestVitaminsMissing:
+    def test_before_floor_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 11, 59, tzinfo=MT), vitamins=0)
+        assert rule_vitamins_missing(ctx) is None
+
+    def test_at_floor_fires(self):
+        ctx = _ctx(datetime(2026, 4, 27, 12, 0, tzinfo=MT), vitamins=0)
+        nudge = rule_vitamins_missing(ctx)
+        assert nudge is not None
+        assert nudge.id == "vitamins_missing"
+        assert nudge.kind == "vitamin"
+
+    def test_after_floor_with_logged_silent(self):
+        ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), vitamins=1)
+        assert rule_vitamins_missing(ctx) is None
+
+    def test_after_floor_zero_logged_fires(self):
+        ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), vitamins=0)
+        assert rule_vitamins_missing(ctx) is not None

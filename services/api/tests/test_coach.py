@@ -393,6 +393,56 @@ async def test_feedback_replaces_prior_and_archives_to_history(
     assert await mock_db["coach_feedback_history"].count_documents({}) == 1
 
 
+async def test_insights_clear_archives_then_empties(client, mock_db, fake_ollama_response):
+    """`DELETE /coach/insights` archives rows so the next coach prompt
+    doesn't include outputs from the old (now-fixed) prompt as part of
+    its `recent_coach_messages` history."""
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        await client.get("/coach/insight", headers=HEADERS)
+        await client.get("/coach/insight", headers=HEADERS)
+    assert await mock_db["coach_insights"].count_documents({}) == 2
+
+    r = await client.delete("/coach/insights", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.json()["archived"] == 2
+    assert await mock_db["coach_insights"].count_documents({}) == 0
+    assert await mock_db["coach_insights_archive"].count_documents({}) == 2
+    archived = await mock_db["coach_insights_archive"].find_one()
+    assert archived.get("archived_at") is not None
+    assert archived.get("original_id") is not None  # original _id carried over
+
+
+async def test_insights_clear_with_before_only_archives_old(client, mock_db):
+    """`?before=...` lets you keep newer insights (e.g. ones generated
+    after the prompt was fixed) while archiving the older ones."""
+    base = datetime(2026, 4, 26, 0, 0, tzinfo=UTC)
+    await mock_db["coach_insights"].insert_many([
+        {"text": "old", "generated_at": base, "trigger": "manual",
+         "model": "t", "eval_ms": 0, "total_ms": 0, "context": {}},
+        {"text": "newer", "generated_at": base + timedelta(days=2),
+         "trigger": "manual", "model": "t", "eval_ms": 0, "total_ms": 0, "context": {}},
+    ])
+    cutoff = (base + timedelta(days=1)).isoformat()
+    r = await client.delete(
+        "/coach/insights", headers=HEADERS, params={"before": cutoff},
+    )
+    assert r.status_code == 200
+    assert r.json()["archived"] == 1
+    remaining = [d async for d in mock_db["coach_insights"].find()]
+    assert len(remaining) == 1
+    assert remaining[0]["text"] == "newer"
+
+
 async def test_feedback_clear_archives_then_empties(client, mock_db, fake_ollama_response):
     """`DELETE /coach/feedback` archives rows to coach_feedback_archive
     rather than hard-deleting, so the audit trail survives prompt-tuning."""

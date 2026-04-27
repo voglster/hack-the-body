@@ -12,14 +12,18 @@ Workflow:
      rows survive in `coach_feedback_archive` for the audit trail).
 
 Subcommands:
-  list             pretty-print recent feedback
-  dump             stdout JSON, one feedback row per object (includes the
-                   full rendered prompt, food_totals, history_snapshot —
-                   everything the model saw when it earned the rating)
-  show <fb_id>     deep-dive a single feedback row: full insight text,
-                   rendered prompt, food_totals, history snapshot
-  clear            archive all (or --before <iso>) current feedback
-  count            quick tally of up vs. down + total
+  list                pretty-print recent feedback
+  dump                stdout JSON, one feedback row per object (includes the
+                      full rendered prompt, food_totals, history_snapshot —
+                      everything the model saw when it earned the rating)
+  show <fb_id>        deep-dive a single feedback row: full insight text,
+                      rendered prompt, food_totals, history snapshot
+  clear               archive all (or --before <iso>) current feedback
+  count               quick tally of up vs. down + total
+  insights-clear      archive coach insights so the next prompt's
+                      `recent_coach_messages` doesn't include outputs from
+                      a prior (now-fixed) prompt. Use after a prompt edit.
+  insights-count      how many insights currently in the active set
 
 All commands accept --since <iso> to scope by feedback timestamp; clear
 takes --before <iso> instead since "before" is the natural phrasing for
@@ -162,6 +166,41 @@ def cmd_clear(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_insights_count(_args: argparse.Namespace) -> int:
+    with client() as c:
+        r = c.get("/coach/recent", params={"limit": 50})
+        r.raise_for_status()
+    rows = r.json()
+    print(f"insights in active set (latest 50 visible): {len(rows)}")
+    if rows:
+        print(f"oldest visible: {rows[-1]['generated_at']}")
+        print(f"newest:         {rows[0]['generated_at']}")
+    return 0
+
+
+def cmd_insights_clear(args: argparse.Namespace) -> int:
+    """Archive coach insights so they stop polluting `recent_coach_messages`
+    in future prompts. Pair this with a prompt edit: after deploy, clear
+    so the new prompt isn't biased by output from the old one."""
+    params: dict[str, str] = {}
+    if args.before:
+        params["before"] = _parse_iso(args.before)
+    if not args.yes:
+        target = f" before {args.before}" if args.before else ""
+        confirm = input(
+            f"archive all coach INSIGHTS{target}? "
+            "(audit trail kept in coach_insights_archive) [y/N] ",
+        ).strip().lower()
+        if confirm != "y":
+            print("aborted")
+            return 1
+    with client() as c:
+        r = c.delete("/coach/insights", params=params)
+        r.raise_for_status()
+    print(f"archived {r.json()['archived']} insight(s)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -187,6 +226,20 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--before", help="only clear rows before this ISO timestamp")
     sp.add_argument("-y", "--yes", action="store_true", help="skip confirmation")
     sp.set_defaults(func=cmd_clear)
+
+    sp = sub.add_parser(
+        "insights-count",
+        help="show how many coach insights are in the active set",
+    )
+    sp.set_defaults(func=cmd_insights_count)
+
+    sp = sub.add_parser(
+        "insights-clear",
+        help="archive coach insights (use after a prompt edit so the new prompt isn't biased by old outputs)",
+    )
+    sp.add_argument("--before", help="only archive insights before this ISO timestamp")
+    sp.add_argument("-y", "--yes", action="store_true", help="skip confirmation")
+    sp.set_defaults(func=cmd_insights_clear)
 
     args = p.parse_args(argv)
     return args.func(args)

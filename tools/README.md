@@ -59,6 +59,19 @@ the *next* review sees only complaints about the *new* prompt:
 `clear` archives rows to `coach_feedback_archive` in Mongo rather than
 hard-deleting, so the audit trail of "what we tuned and when" survives.
 
+After a prompt edit you usually also want to clear the *insights* so
+the new prompt isn't biased by output from the old one (the LLM gets
+`recent_coach_messages` as part of its prompt — stale outputs there
+re-pollute the new prompt's behavior):
+
+```bash
+.venv/bin/python coach_feedback.py insights-count
+.venv/bin/python coach_feedback.py insights-clear           # everything
+.venv/bin/python coach_feedback.py insights-clear --before 2026-04-27T00:00:00Z
+```
+
+Archived to `coach_insights_archive` (audit trail).
+
 ## Recommending daily targets
 
 `target_recommender.py` does Mifflin-St Jeor BMR + activity-tier TDEE +

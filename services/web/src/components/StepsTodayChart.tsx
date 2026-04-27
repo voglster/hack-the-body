@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
-  Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer,
+  Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { api } from "../api/client";
@@ -106,16 +107,28 @@ function formatLagMin(min: number): string {
  *  then overlay the actual step buckets onto it. Returns 96 rows starting
  *  at local midnight, so the chart x-axis is always 0..24h regardless of
  *  whether the day has finished. */
+interface GridRow {
+  hh: string;
+  steps: number;
+  /** Running total of `steps` up to and including this slot. Drives the
+   *  cumulative line on the dual-axis chart so the user sees not just
+   *  intensity (bars) but progress against goal (line). Plateaus past
+   *  the last synced bucket since later bars are zero — that flat-line
+   *  doubles as a "data ends here" cue. */
+  cumulative: number;
+  sortKey: number;
+}
+
 function buildDayGrid(
   localDayISO: string,
   buckets: { ts: string; steps: number }[],
-): { hh: string; steps: number; sortKey: number }[] {
+): GridRow[] {
   const [y, m, d] = localDayISO.split("-").map(Number);
-  const grid: { hh: string; steps: number; sortKey: number }[] = [];
+  const grid: GridRow[] = [];
   for (let i = 0; i < 96; i++) {
     const dt = new Date(y, m - 1, d, 0, i * 15);
     const label = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    grid.push({ hh: label, steps: 0, sortKey: dt.getTime() });
+    grid.push({ hh: label, steps: 0, cumulative: 0, sortKey: dt.getTime() });
   }
   // Merge actual buckets by nearest 15-min slot start (local).
   for (const b of buckets) {
@@ -124,6 +137,13 @@ function buildDayGrid(
     slotStart.setMinutes(Math.floor(slotStart.getMinutes() / 15) * 15, 0, 0);
     const idx = grid.findIndex(g => g.sortKey === slotStart.getTime());
     if (idx >= 0) grid[idx].steps += b.steps;
+  }
+  // Compute the running total in a second pass so out-of-order bucket
+  // arrivals don't matter.
+  let running = 0;
+  for (const row of grid) {
+    running += row.steps;
+    row.cumulative = running;
   }
   return grid;
 }
@@ -170,14 +190,36 @@ function DayBars({
     <div className="space-y-1">
       <div className="h-48">
         <ResponsiveContainer>
-          <BarChart data={rows}>
+          <ComposedChart data={rows}>
             <CartesianGrid stroke="#262626" />
             <XAxis dataKey="hh" stroke="#737373" fontSize={10} interval={15} />
-            <YAxis stroke="#737373" fontSize={11} />
+            {/* Left axis: per-15-min bucket counts (the bars). */}
+            <YAxis yAxisId="left" stroke="#737373" fontSize={11} />
+            {/* Right axis: cumulative day total (the line). Sized to the
+                final cumulative value so the line uses the full vertical
+                space rather than getting flattened by an aggressive bar
+                scale. */}
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              stroke="#525252"
+              fontSize={10}
+              tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
+            />
             <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626" }} />
-            <Bar dataKey="steps" fill="#34d399" />
+            <Bar yAxisId="left" dataKey="steps" fill="#34d399" />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="cumulative"
+              stroke="#71717a"        // neutral-500: visible but doesn't fight the bars
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
             {m.showLastSync && (
               <ReferenceLine
+                yAxisId="left"
                 x={rows[m.lastIdx].hh}
                 stroke="#fbbf24"
                 strokeDasharray="3 3"
@@ -187,31 +229,35 @@ function DayBars({
             )}
             {m.nowIdx >= 0 && (
               <ReferenceLine
+                yAxisId="left"
                 x={rows[m.nowIdx].hh}
                 stroke="#e5e5e5"
                 strokeWidth={1.5}
                 label={{ value: "now", position: "top", fill: "#e5e5e5", fontSize: 10 }}
               />
             )}
-          </BarChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
-      {isToday && <SyncLegend showLastSync={m.showLastSync} lagMin={m.lagMin} />}
+      <SyncLegend showLastSync={m.showLastSync} lagMin={m.lagMin} isToday={isToday} />
     </div>
   );
 }
 
-function SyncLegend({ showLastSync, lagMin }: { showLastSync: boolean; lagMin: number | null }) {
+function SyncLegend({ showLastSync, lagMin, isToday }: {
+  showLastSync: boolean; lagMin: number | null; isToday: boolean;
+}) {
   return (
-    <div className="flex items-center justify-end gap-3 text-[10px] text-neutral-500 px-1">
-      {showLastSync && lagMin != null ? (
+    <div className="flex items-center justify-end gap-3 text-[10px] text-neutral-500 px-1 flex-wrap">
+      <LegendDot color="#71717a" /> cumulative
+      {isToday && (showLastSync && lagMin != null ? (
         <>
           <LegendDot color="#fbbf24" dashed /> last sync · {formatLagMin(lagMin)} ago
           <LegendDot color="#e5e5e5" /> now
         </>
       ) : (
         <><LegendDot color="#e5e5e5" /> now {lagMin === 0 && "· live"}</>
-      )}
+      ))}
     </div>
   );
 }

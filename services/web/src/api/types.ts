@@ -164,6 +164,8 @@ export interface CoachRecentEntry {
 export interface UserTargets {
   daily_calories: number | null;
   daily_protein_g: number | null;
+  daily_fat_g: number | null;
+  daily_carbs_g: number | null;
   daily_water_oz: number | null;
   step_goal_override: number | null;
   updated_at?: string;

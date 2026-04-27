@@ -17,6 +17,8 @@ import type { UserTargets } from "../api/types";
 interface FormState {
   daily_calories: string;
   daily_protein_g: string;
+  daily_fat_g: string;
+  daily_carbs_g: string;
   daily_water_oz: string;
   step_goal_override: string;
 }
@@ -24,6 +26,8 @@ interface FormState {
 const EMPTY: FormState = {
   daily_calories: "",
   daily_protein_g: "",
+  daily_fat_g: "",
+  daily_carbs_g: "",
   daily_water_oz: "",
   step_goal_override: "",
 };
@@ -33,6 +37,8 @@ function fromServer(t: UserTargets | undefined): FormState {
   return {
     daily_calories: t.daily_calories?.toString() ?? "",
     daily_protein_g: t.daily_protein_g?.toString() ?? "",
+    daily_fat_g: t.daily_fat_g?.toString() ?? "",
+    daily_carbs_g: t.daily_carbs_g?.toString() ?? "",
     daily_water_oz: t.daily_water_oz?.toString() ?? "",
     step_goal_override: t.step_goal_override?.toString() ?? "",
   };
@@ -48,6 +54,8 @@ function toServer(f: FormState): Partial<UserTargets> {
   return {
     daily_calories: num(f.daily_calories),
     daily_protein_g: num(f.daily_protein_g),
+    daily_fat_g: num(f.daily_fat_g),
+    daily_carbs_g: num(f.daily_carbs_g),
     daily_water_oz: num(f.daily_water_oz),
     step_goal_override: num(f.step_goal_override),
   };
@@ -111,6 +119,20 @@ export function TargetsCard() {
               value={form.daily_protein_g}
               onChange={onField("daily_protein_g")}
               placeholder="e.g. 180"
+              suffix="g"
+            />
+            <Field
+              label="fat"
+              value={form.daily_fat_g}
+              onChange={onField("daily_fat_g")}
+              placeholder="e.g. 70"
+              suffix="g"
+            />
+            <Field
+              label="carbs"
+              value={form.daily_carbs_g}
+              onChange={onField("daily_carbs_g")}
+              placeholder="e.g. 220"
               suffix="g"
             />
             <Field

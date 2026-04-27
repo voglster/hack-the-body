@@ -27,6 +27,8 @@ class Targets(BaseModel):
     against this metric." Any future targets are added here."""
     daily_calories: int | None = Field(default=None, ge=0, le=10000)
     daily_protein_g: int | None = Field(default=None, ge=0, le=500)
+    daily_fat_g: int | None = Field(default=None, ge=0, le=500)
+    daily_carbs_g: int | None = Field(default=None, ge=0, le=1000)
     daily_water_oz: int | None = Field(
         default=None, ge=0, le=400,
         description="Daily fluid target in fluid ounces. Half-bodyweight "
@@ -47,6 +49,8 @@ def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "daily_calories": doc.get("daily_calories"),
         "daily_protein_g": doc.get("daily_protein_g"),
+        "daily_fat_g": doc.get("daily_fat_g"),
+        "daily_carbs_g": doc.get("daily_carbs_g"),
         "daily_water_oz": doc.get("daily_water_oz"),
         "step_goal_override": doc.get("step_goal_override"),
         "updated_at": doc.get("updated_at"),

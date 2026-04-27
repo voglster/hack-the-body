@@ -90,21 +90,42 @@ function CalorieBar({ consumed, target }: CaloriesData) {
   );
 }
 
-function MacroStack({ protein, fat, carbs, gramsP, gramsF, gramsC }: MacroPercents & {
+function StackBar({ percents, dim }: { percents: MacroPercents; dim?: boolean }) {
+  const segments = [
+    { key: "protein", label: "P", percent: percents.protein, color: "bg-emerald-600", textColor: "text-emerald-50" },
+    { key: "fat", label: "F", percent: percents.fat, color: "bg-amber-600", textColor: "text-amber-50" },
+    { key: "carbs", label: "C", percent: percents.carbs, color: "bg-sky-600", textColor: "text-sky-50" },
+  ];
+  return (
+    <div className={`flex h-4 w-full rounded-full bg-neutral-800 overflow-hidden ${dim ? "opacity-40" : ""}`}>
+      {segments.map(seg => seg.percent > 0 && (
+        <div
+          key={seg.key}
+          className={`h-full ${seg.color} flex items-center justify-center text-[10px] font-medium ${seg.textColor}`}
+          style={{ width: `${seg.percent}%` }}
+        >
+          {seg.percent >= 12 ? seg.label : ""}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MacroStack({
+  protein, fat, carbs, gramsP, gramsF, gramsC, target,
+}: MacroPercents & {
   gramsP: number;
   gramsF: number;
   gramsC: number;
+  target: MacroPercents | null;
 }) {
-  const segments = [
-    { key: "protein", label: "P", percent: protein, color: "bg-emerald-600", textColor: "text-emerald-50" },
-    { key: "fat", label: "F", percent: fat, color: "bg-amber-600", textColor: "text-amber-50" },
-    { key: "carbs", label: "C", percent: carbs, color: "bg-sky-600", textColor: "text-sky-50" },
-  ];
-
   return (
     <div
       role="img"
-      aria-label={`Macros: protein ${Math.round(protein)} percent, fat ${Math.round(fat)} percent, carbs ${Math.round(carbs)} percent`}
+      aria-label={
+        `Macros: protein ${Math.round(protein)} percent, fat ${Math.round(fat)} percent, carbs ${Math.round(carbs)} percent`
+        + (target ? `. Target: protein ${Math.round(target.protein)}, fat ${Math.round(target.fat)}, carbs ${Math.round(target.carbs)}.` : "")
+      }
     >
       <div className="flex items-baseline justify-between mb-1.5 text-xs">
         <span className="uppercase tracking-wide text-neutral-400">Macros</span>
@@ -112,20 +133,19 @@ function MacroStack({ protein, fat, carbs, gramsP, gramsF, gramsC }: MacroPercen
           P {Math.round(protein)}% · F {Math.round(fat)}% · C {Math.round(carbs)}%
         </span>
       </div>
-      <div className="flex h-4 w-full rounded-full bg-neutral-800 overflow-hidden">
-        {segments.map(seg => seg.percent > 0 && (
-          <div
-            key={seg.key}
-            className={`h-full ${seg.color} flex items-center justify-center text-[10px] font-medium ${seg.textColor}`}
-            style={{ width: `${seg.percent}%` }}
-            // Hide the inline letter when the segment is too narrow to read.
-            // 12% threshold matches roughly 40 px on a 360 px screen.
-          >
-            {seg.percent >= 12 ? seg.label : ""}
+      <StackBar percents={{ protein, fat, carbs }} />
+      {target && (
+        <div className="mt-1.5">
+          <div className="flex items-baseline justify-between mb-1 text-[11px]">
+            <span className="uppercase tracking-wide text-neutral-500">target</span>
+            <span className="text-neutral-600 tabular-nums">
+              P {Math.round(target.protein)}% · F {Math.round(target.fat)}% · C {Math.round(target.carbs)}%
+            </span>
           </div>
-        ))}
-      </div>
-      <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">
+          <StackBar percents={target} dim />
+        </div>
+      )}
+      <div className="mt-2 text-[11px] text-neutral-500 tabular-nums">
         P {Math.round(gramsP)}g · F {Math.round(gramsF)}g · C {Math.round(gramsC)}g
       </div>
     </div>
@@ -175,6 +195,26 @@ export function MacroProgressCard() {
         carbs: pct(carbKcal, macroKcal),
       };
 
+  // Target macro mix: only render if all three are set. Same 4-9-4 weighting
+  // so actual vs target compare on the same axis.
+  const tP = targets.data.daily_protein_g;
+  const tF = targets.data.daily_fat_g;
+  const tC = targets.data.daily_carbs_g;
+  let targetMacros: MacroPercents | null = null;
+  if (tP != null && tF != null && tC != null) {
+    const tProteinKcal = tP * KCAL_PER_G_PROTEIN;
+    const tFatKcal = tF * KCAL_PER_G_FAT;
+    const tCarbKcal = tC * KCAL_PER_G_CARBS;
+    const tMacroKcal = tProteinKcal + tFatKcal + tCarbKcal;
+    if (tMacroKcal > 0) {
+      targetMacros = {
+        protein: pct(tProteinKcal, tMacroKcal),
+        fat: pct(tFatKcal, tMacroKcal),
+        carbs: pct(tCarbKcal, tMacroKcal),
+      };
+    }
+  }
+
   return (
     <Card>
       {targetCal != null && targetCal > 0 ? (
@@ -193,6 +233,7 @@ export function MacroProgressCard() {
           gramsP={t.protein_g || 0}
           gramsF={t.fat_g || 0}
           gramsC={t.carbs_g || 0}
+          target={targetMacros}
         />
       )}
     </Card>

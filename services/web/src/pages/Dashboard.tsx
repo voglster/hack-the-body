@@ -7,6 +7,7 @@ import type { Summary } from "../api/types";
 import { BottomNav, useActiveTab } from "../components/BottomNav";
 import { CoachCard } from "../components/CoachCard";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { NudgesCard } from "../components/NudgesCard";
 import { NotificationsSettings } from "../components/NotificationsSettings";
 import { VitaminsCard } from "../components/VitaminsCard";
 import { WaterCard } from "../components/WaterCard";
@@ -130,6 +131,7 @@ function TodayTab({ onOpenTrend }: { onOpenTrend?: (focus: TrendFocus) => void }
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <NudgesCard />
       <StepsTodayCard
         summary={summary}
         todaySteps={stepsToday?.total}

@@ -3,6 +3,7 @@ import type {
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
+  NudgesResponse, DismissNudgeReq,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -162,6 +163,10 @@ export const api = {
   // vitamins
   vitaminsToday: () => get<VitaminsToday>(`/vitamins/today?${todayWindowQuery()}`),
   logVitamins: () => post<MealEntry>("/vitamins/log", {}),
+
+  // nudges
+  fetchNudges: () => get<NudgesResponse>("/nudges"),
+  dismissNudge: (req: DismissNudgeReq) => post<{ ok: true }>("/nudges/dismiss", req),
 
   // push
   vapidPublicKey: () => get<{ public_key: string }>("/push/vapid-public-key"),

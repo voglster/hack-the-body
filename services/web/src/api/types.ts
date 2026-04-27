@@ -179,6 +179,27 @@ export interface CoachFeedback {
   created_at: string;
 }
 
+export type NudgeSeverity = "info" | "warn";
+
+export interface FiredNudge {
+  id: string;
+  kind: string;
+  severity: NudgeSeverity;
+  title: string;
+  body: string;
+  dismissable: boolean;
+}
+
+export interface NudgesResponse {
+  nudges: FiredNudge[];
+  generated_at: string;
+}
+
+export interface DismissNudgeReq {
+  nudge_id: string;
+  until: "end_of_day" | string;
+}
+
 export interface TodayTotals {
   totals: {
     calories: number; protein_g: number; carbs_g: number; fat_g: number;

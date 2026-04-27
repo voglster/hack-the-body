@@ -4,13 +4,14 @@ We mock the Ollama HTTP call (we don't want CI talking to a real LLM).
 """
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 from bson import ObjectId as ObjectIdFromStr
 
 from app.models.metrics import HRV, Sleep, Weight
-from app.services.coach import SYSTEM_PROMPT
+from app.services.coach import SYSTEM_PROMPT, gather_context
 from app.services.metrics_repo import MetricsRepo
 
 HEADERS = {"X-API-Key": "test-key"}
@@ -48,6 +49,46 @@ async def _seed(mock_db):
 async def test_insight_requires_auth(client):
     r = await client.get("/coach/insight")
     assert r.status_code == 401
+
+
+async def test_gather_context_uses_tz_env_when_day_bounds_missing(mock_db, monkeypatch):
+    """Scheduled coach pushes don't have a browser to compute the local day
+    window — they hit gather_context with no day_start/day_end. The fallback
+    must consult the TZ env var, otherwise steps_today sums from UTC midnight
+    (= last evening for users west of UTC) and local_hour reports UTC hour."""
+    monkeypatch.setenv("TZ", "America/Chicago")
+    repo = MetricsRepo(mock_db)
+    # Seed buckets to cover yesterday-local-evening through now. With the
+    # buggy UTC-midnight fallback, steps_today sums everything since 00:00 UTC,
+    # which sweeps in last-evening Chicago time. With the TZ-aware fix, only
+    # buckets after Chicago midnight count.
+    chicago = ZoneInfo("America/Chicago")
+    now_utc = datetime.now(UTC)
+    chicago_midnight_utc = (
+        datetime.combine(now_utc.astimezone(chicago).date(), datetime.min.time(), tzinfo=chicago)
+        .astimezone(UTC)
+    )
+    # Bucket 30 min before Chicago midnight = "yesterday local".
+    await mock_db["metrics_steps_intraday"].insert_one({
+        "ts": chicago_midnight_utc - timedelta(minutes=30),
+        "steps": 2000,
+        "meta": {"source_id": "b:yesterday-evening"},
+        "source": "garmin",
+    })
+    # Bucket 30 min after Chicago midnight = "today local".
+    await mock_db["metrics_steps_intraday"].insert_one({
+        "ts": chicago_midnight_utc + timedelta(minutes=30),
+        "steps": 20,
+        "meta": {"source_id": "b:just-after-midnight"},
+        "source": "garmin",
+    })
+
+    ctx = await gather_context(repo)
+    # The 2000-step yesterday-evening bucket must be excluded.
+    assert ctx["steps_today"] == 20, ctx
+    # local_hour should reflect Chicago, not UTC.
+    expected_hour = now_utc.astimezone(chicago).hour
+    assert ctx["local_hour"] == expected_hour
 
 
 async def test_insight_returns_text_and_metadata(client, mock_db, fake_ollama_response):

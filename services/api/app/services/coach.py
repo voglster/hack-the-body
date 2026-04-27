@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from pymongo.asynchronous.database import AsyncDatabase
@@ -131,8 +133,11 @@ async def gather_context(
 
     `day_start` / `day_end` are the UTC bounds of the user's *local* day (the
     browser computes them from its IANA tz). When omitted (e.g. a scheduled
-    push) we fall back to the current UTC day, which is wrong for users not
-    in UTC but better than crashing.
+    push that has no browser to ask) we derive them from the TZ env var so
+    'today' lines up with the user's wall clock. Without this, a 7am-local
+    push at 12:00 UTC would treat 'today' as starting at midnight UTC =
+    6pm-local-yesterday, sweeping in last-evening's steps as if they were
+    today's.
     """
     sleep = _strip_meta(await repo.latest_sleep())
     hrv = _strip_meta(await repo.latest_hrv())
@@ -141,7 +146,14 @@ async def gather_context(
 
     now_utc = datetime.now(UTC)
     if day_start is None or day_end is None:
-        day_start = datetime.combine(now_utc.date(), time.min, tzinfo=UTC)
+        tz_name = os.environ.get("TZ") or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            tz = UTC
+        local_now = now_utc.astimezone(tz)
+        local_start = datetime.combine(local_now.date(), time.min, tzinfo=tz)
+        day_start = local_start.astimezone(UTC)
         day_end = day_start + timedelta(days=1)
     intraday = await repo.range_steps_intraday(day_start, day_end)
     today_steps = sum(int(b.get("steps", 0)) for b in intraday)

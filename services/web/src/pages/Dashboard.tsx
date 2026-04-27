@@ -66,13 +66,22 @@ function SummaryCards({ summary, onOpenTrend }: {
 function Section({ id, title, children, defaultOpen = true }: {
   id?: string; title: string; children: React.ReactNode; defaultOpen?: boolean;
 }) {
+  // Children are only mounted while open. Recharts' ResponsiveContainer
+  // measures 0×0 when its parent is inside a collapsed <details> (native
+  // display:none on the slot), which produces a runtime warning.
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <details id={id} open={defaultOpen} className="group">
+    <details
+      id={id}
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      className="group"
+    >
       <summary className="cursor-pointer list-none flex items-center justify-between text-sm uppercase tracking-wide text-neutral-400 mb-2 select-none">
         <span>{title}</span>
         <span className="text-neutral-600 group-open:rotate-90 transition-transform">▸</span>
       </summary>
-      <div>{children}</div>
+      <div>{open ? children : null}</div>
     </details>
   );
 }

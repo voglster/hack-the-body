@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -34,7 +33,7 @@ async def get_nudges(request: Request) -> dict:
 
 class DismissReq(BaseModel):
     nudge_id: str = Field(min_length=1, max_length=64)
-    until: Literal["end_of_day"] | str
+    until: str
 
 
 @router.post("/dismiss")

@@ -1,19 +1,36 @@
 """Unit tests for the nudges rules engine."""
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.models.food import Food, Macros, MealEntry
+from app.models.metrics import DailySummary, Weight
+from app.services import nudges as nudges_module
+from app.services.food_repo import FoodRepo
+from app.services.metrics_repo import MetricsRepo
+from app.services.nudge_dismissals import (
+    end_of_day_local,
+    get_active_dismissals,
+    record_dismissal,
+)
 from app.services.nudges import (
     DAY_END_HOUR,
     DAY_START_HOUR,
     FiredNudge,
+    NudgeContext,
     Rule,
     _elapsed_fraction,
+    build_context,
+    evaluate_all,
+    rule_bedtime_reminder,
+    rule_no_weighin,
+    rule_steps_below_pace,
+    rule_vitamins_missing,
+    rule_water_below_pace,
 )
-
 
 MT = ZoneInfo("America/Denver")
 
@@ -58,15 +75,9 @@ class TestTypes:
     def test_rule_shape(self):
         r = Rule(
             id="x", kind="water", pushable=False, push_at=None,
-            evaluate=lambda ctx: None,
+            evaluate=lambda _ctx: None,
         )
         assert r.pushable is False
-
-
-from app.services.nudges import (
-    NudgeContext,
-    rule_vitamins_missing,
-)
 
 
 def _ctx(
@@ -107,9 +118,6 @@ class TestVitaminsMissing:
     def test_after_floor_zero_logged_fires(self):
         ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), vitamins=0)
         assert rule_vitamins_missing(ctx) is not None
-
-
-from app.services.nudges import rule_water_below_pace
 
 
 class TestWaterBelowPace:
@@ -156,9 +164,6 @@ class TestWaterBelowPace:
         assert rule_water_below_pace(ctx) is None
 
 
-from app.services.nudges import rule_no_weighin
-
-
 class TestNoWeighin:
     def test_before_floor_silent(self):
         ctx = _ctx(datetime(2026, 4, 27, 9, 59, tzinfo=MT), weight=False)
@@ -174,9 +179,6 @@ class TestNoWeighin:
     def test_after_floor_weighed_silent(self):
         ctx = _ctx(datetime(2026, 4, 27, 14, 0, tzinfo=MT), weight=True)
         assert rule_no_weighin(ctx) is None
-
-
-from app.services.nudges import rule_steps_below_pace
 
 
 class TestStepsBelowPace:
@@ -223,9 +225,6 @@ class TestStepsBelowPace:
         assert rule_steps_below_pace(ctx) is None
 
 
-from app.services.nudges import rule_bedtime_reminder
-
-
 class TestBedtimeReminder:
     def test_before_window_silent(self):
         ctx = _ctx(datetime(2026, 4, 27, 21, 29, tzinfo=MT))
@@ -250,9 +249,6 @@ class TestBedtimeReminder:
         assert rule_bedtime_reminder(ctx) is None
 
 
-from app.services.nudges import evaluate_all
-
-
 class TestEvaluateAll:
     def test_returns_in_registry_order(self):
         # 1pm with no targets → only vitamins doesn't fire (before noon? no, 1pm).
@@ -275,15 +271,13 @@ class TestEvaluateAll:
 
     def test_failing_rule_does_not_break_others(self, monkeypatch):
         # Inject a rule that raises; sibling rules must still run.
-        from app.services import nudges
-
-        def boom(ctx):
+        def boom(_ctx):
             raise ValueError("kaboom")
 
-        rogue = nudges.Rule(
+        rogue = nudges_module.Rule(
             id="rogue", kind="x", pushable=False, push_at=None, evaluate=boom,
         )
-        monkeypatch.setattr(nudges, "RULES", [rogue, *nudges.RULES])
+        monkeypatch.setattr(nudges_module, "RULES", [rogue, *nudges_module.RULES])
         now = datetime(2026, 4, 27, 13, 0, tzinfo=MT)
         ctx = _ctx(now, vitamins=0, weight=False)
         out = evaluate_all(ctx, dismissed_ids=set())
@@ -291,24 +285,15 @@ class TestEvaluateAll:
         # Rogue swallowed; siblings still fire in order.
         assert ids == ["vitamins_missing", "no_weighin"]
 
-
-import os
-
-from app.models.food import Food, Macros, MealEntry
-from app.models.metrics import DailySummary, Weight
-from app.services.food_repo import FoodRepo
-from app.services.metrics_repo import MetricsRepo
-from app.services.nudges import build_context
-
-
 @pytest.fixture
 def mt_tz(monkeypatch):
     monkeypatch.setenv("TZ", "America/Denver")
     return ZoneInfo("America/Denver")
 
 
+@pytest.mark.usefixtures("mt_tz")
 class TestBuildContext:
-    async def test_empty_db_safe_defaults(self, mock_db, mt_tz):
+    async def test_empty_db_safe_defaults(self, mock_db):
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))  # 1pm MT
         ctx = await build_context(mock_db, now_utc=now_utc)
         assert ctx.targets == {}
@@ -319,7 +304,7 @@ class TestBuildContext:
         # now_local is 1pm in Denver
         assert ctx.now_local.hour == 13
 
-    async def test_reads_targets(self, mock_db, mt_tz):
+    async def test_reads_targets(self, mock_db):
         await mock_db["user_profile"].update_one(
             {"_id": "targets"},
             {"$set": {"daily_water_oz": 64, "step_goal_override": 10000}},
@@ -330,7 +315,7 @@ class TestBuildContext:
         assert ctx.targets["daily_water_oz"] == 64
         assert ctx.targets["step_goal_override"] == 10000
 
-    async def test_counts_vitamins_today(self, mock_db, mt_tz):
+    async def test_counts_vitamins_today(self, mock_db):
         repo = FoodRepo(mock_db)
         # seed the vitamins food
         food = await repo.upsert_food(Food(
@@ -347,7 +332,7 @@ class TestBuildContext:
         ctx = await build_context(mock_db, now_utc=now_utc)
         assert ctx.vitamins_count_today == 1
 
-    async def test_sums_water_today(self, mock_db, mt_tz):
+    async def test_sums_water_today(self, mock_db):
         repo = FoodRepo(mock_db)
         food = await repo.upsert_food(Food(
             name="Water", category="drink",
@@ -365,7 +350,7 @@ class TestBuildContext:
         ctx = await build_context(mock_db, now_utc=now_utc)
         assert ctx.water_oz_today == pytest.approx(16, abs=0.5)
 
-    async def test_detects_weight_today(self, mock_db, mt_tz):
+    async def test_detects_weight_today(self, mock_db):
         mrepo = MetricsRepo(mock_db)
         await mrepo.insert_weight(Weight(
             ts=datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC")),  # 8am MT
@@ -375,7 +360,7 @@ class TestBuildContext:
         ctx = await build_context(mock_db, now_utc=now_utc)
         assert ctx.weight_logged_today is True
 
-    async def test_reads_steps_today(self, mock_db, mt_tz):
+    async def test_reads_steps_today(self, mock_db):
         mrepo = MetricsRepo(mock_db)
         await mrepo.insert_daily_summary(DailySummary(
             ts=datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC")),
@@ -389,20 +374,14 @@ class TestBuildContext:
         assert ctx.steps_today == 4200
 
 
-from app.services.nudge_dismissals import (
-    end_of_day_local,
-    get_active_dismissals,
-    record_dismissal,
-)
-
-
+@pytest.mark.usefixtures("mt_tz")
 class TestDismissals:
-    async def test_empty_returns_empty_set(self, mock_db, mt_tz):
+    async def test_empty_returns_empty_set(self, mock_db):
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
         ids = await get_active_dismissals(mock_db, now_utc=now_utc)
         assert ids == set()
 
-    async def test_record_then_read(self, mock_db, mt_tz):
+    async def test_record_then_read(self, mock_db):
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
         await record_dismissal(
             mock_db, nudge_id="vitamins_missing",
@@ -411,7 +390,7 @@ class TestDismissals:
         ids = await get_active_dismissals(mock_db, now_utc=now_utc)
         assert ids == {"vitamins_missing"}
 
-    async def test_expired_dismissal_not_active(self, mock_db, mt_tz):
+    async def test_expired_dismissal_not_active(self, mock_db):
         # Record a dismissal that's already in the past.
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))
         past = datetime(2026, 4, 27, 14, 0, tzinfo=ZoneInfo("UTC"))
@@ -422,7 +401,7 @@ class TestDismissals:
         ids = await get_active_dismissals(mock_db, now_utc=now_utc)
         assert ids == set()
 
-    async def test_end_of_day_local(self, mt_tz):
+    async def test_end_of_day_local(self):
         now_utc = datetime(2026, 4, 27, 19, 0, tzinfo=ZoneInfo("UTC"))  # 1pm MT
         eod = end_of_day_local(now_utc)
         # End-of-day for Apr 27 in Denver → Apr 28 at 06:00 UTC (MDT is UTC-6).

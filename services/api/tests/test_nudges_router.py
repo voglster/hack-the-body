@@ -1,11 +1,7 @@
 """Endpoint tests for /nudges."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
-
 import pytest
-
 
 HEADERS = {"X-API-Key": "test-key"}
 
@@ -60,7 +56,7 @@ class TestDismiss:
         )
         assert r.status_code == 422
 
-    async def test_dismissed_nudge_filtered_from_get(self, client, mock_db):
+    async def test_dismissed_nudge_filtered_from_get(self, client):
         # Dismiss vitamins.
         await client.post(
             "/nudges/dismiss",

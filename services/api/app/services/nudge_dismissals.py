@@ -10,14 +10,24 @@ yet model accounts. When that changes, replace USER_KEY with a real user id.
 """
 from __future__ import annotations
 
+import logging
+import os
 from datetime import UTC, datetime, time, timedelta
-from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.services.nudges import _local_tz
+logger = logging.getLogger(__name__)
 
 USER_KEY = "default"
+
+
+def _local_tz() -> ZoneInfo:
+    name = os.environ.get("TZ") or "UTC"
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("UTC")
 
 
 def _doc_id(now_utc: datetime) -> str:
@@ -36,7 +46,7 @@ def end_of_day_local(now_utc: datetime) -> datetime:
 
 
 def _resolve_until(
-    until: Literal["end_of_day"] | str,
+    until: str,
     now_utc: datetime,
 ) -> datetime:
     if until == "end_of_day":
@@ -52,7 +62,7 @@ async def record_dismissal(
     db: AsyncDatabase,
     *,
     nudge_id: str,
-    until: Literal["end_of_day"] | str,
+    until: str,
     now_utc: datetime | None = None,
 ) -> None:
     if now_utc is None:
@@ -86,6 +96,7 @@ async def get_active_dismissals(
                 if until_dt.tzinfo is None:
                     until_dt = until_dt.replace(tzinfo=UTC)
             except Exception:
+                logger.debug("nudge_dismissals: skipping malformed entry", exc_info=True)
                 continue
         if until_dt > now_utc:
             out.add(nudge_id)

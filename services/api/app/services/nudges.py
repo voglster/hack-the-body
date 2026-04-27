@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.services.nudge_dismissals import get_active_dismissals
 from app.services.push import send_push
 
 logger = logging.getLogger(__name__)
@@ -337,8 +339,6 @@ async def nudges_push_tick(
     can drive the function deterministically. The scheduler binding in
     `services/scheduler.py` calls this with `datetime.now(UTC)`.
     """
-    from app.services.nudge_dismissals import get_active_dismissals  # avoid cycle
-
     ctx = await build_context(db, now_utc=now_utc)
     bucket = _matching_bucket(ctx.now_local)
     if bucket is None:

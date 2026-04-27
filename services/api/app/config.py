@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     # Weekly review — uses a much bigger local model on the framework box
     # (RTX 4090, 128GB) where gpt-oss:120b can fit. Slow, deep, runs once
     # a week. Sunday at 21:00 by default.
-    # Vitamin nag — push fires at this local time if no supplement entry
-    # has been logged yet today. Disabled if blank.
+    # DEPRECATED: superseded by the unified nudges push tick (see
+    # services/nudges.py PUSH_BUCKETS). Kept here only so existing .env
+    # files don't break on import. The value is now ignored.
     vitamin_reminder_local: str = "10:00"
 
     weekly_ollama_url: str = "http://10.0.6.45:11434"

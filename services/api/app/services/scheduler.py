@@ -1,27 +1,32 @@
-"""Coach scheduler.
+"""Coach + nudges scheduler.
 
-Fires `generate_insight(trigger='scheduled')` at configured local times and
-sends a push notification to every saved subscription. The schedule is
-defined by the COACH_SCHEDULE_LOCAL env var (see app.config). If the LLM
-is down or push fails for individual subscriptions, the job logs and moves
-on; the next firing tries again.
+Two unrelated jobs share this scheduler:
+
+* Coach insights — fires `generate_insight(trigger='scheduled')` at
+  COACH_SCHEDULE_LOCAL times and sends a push.
+* Weekly review — Sunday at COACH_WEEKLY_LOCAL.
+* Prescriptive nudges push — fires `nudges_push_tick` at 10:00, 12:00,
+  21:30 local (the buckets baked into `services/nudges.py`). The old
+  standalone vitamin reminder is subsumed by the 12:00 nudges tick.
+
+Failure isolation: each job catches its own exceptions; one failing job
+doesn't stop the others. The scheduler itself uses APScheduler's default
+local-tz handling, driven by the TZ env var.
 """
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime, time, timedelta
-from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
-from app.routers.vitamins import count_vitamins_today
 from app.services.coach import generate_insight
 from app.services.coach_weekly import generate_weekly_review
 from app.services.food_repo import FoodRepo
+from app.services.nudges import PUSH_BUCKETS, nudges_push_tick
 from app.services.push import send_push
 
 logger = logging.getLogger(__name__)
@@ -62,37 +67,11 @@ async def _weekly_run(settings: Settings, db: AsyncDatabase) -> None:
         logger.exception("weekly coach: push failed")
 
 
-async def _vitamin_reminder_run(settings: Settings, db: AsyncDatabase) -> None:
-    """Push 'did you take your vitamins?' if today's count is still 0.
-
-    Day window is the LOCAL day (TZ env var) so 'today' lines up with
-    when the user thinks of it as today.
-    """
-    repo = FoodRepo(db)
-    tz_name = os.environ.get("TZ") or "UTC"
+async def _nudges_push_run(settings: Settings, db: AsyncDatabase) -> None:
     try:
-        tz = ZoneInfo(tz_name)
+        await nudges_push_tick(datetime.now(UTC), settings, db)
     except Exception:
-        tz = UTC
-    local_now = datetime.now(tz)
-    local_start = datetime.combine(local_now.date(), time.min, tzinfo=tz)
-    start = local_start.astimezone(UTC)
-    end = start + timedelta(days=1)
-    try:
-        count, _ = await count_vitamins_today(repo, start, end)
-    except Exception:
-        logger.exception("vitamin reminder: count failed")
-        return
-    if count > 0:
-        return
-    try:
-        result = await send_push(
-            db, settings,
-            {"title": "Vitamins", "body": "Did you take your vitamins yet?", "url": "/"},
-        )
-        logger.info("vitamin reminder push: %s", result)
-    except Exception:
-        logger.exception("vitamin reminder: push failed")
+        logger.exception("nudges push tick: failed")
 
 
 async def _today_food_totals(db: AsyncDatabase) -> dict:
@@ -117,11 +96,7 @@ def build_scheduler(
     *,
     timezone: str | None = None,
 ) -> AsyncIOScheduler:
-    """Build (but don't start) the coach scheduler.
-
-    `timezone` defaults to the TZ env var via the OS (APScheduler reads
-    `time.tzname`), so 'America/Denver' / Chicago whatever the container has.
-    """
+    """Build (but don't start) the scheduler."""
     sched = AsyncIOScheduler(timezone=timezone)
     for hh, mm in settings.coach_schedule_times:
         sched.add_job(
@@ -139,14 +114,12 @@ def build_scheduler(
         id=f"coach-weekly-{whh:02d}-{wmm:02d}",
         replace_existing=True,
     )
-    vit = settings.vitamin_reminder_time
-    if vit is not None:
-        vhh, vmm = vit
+    for hh, mm in PUSH_BUCKETS:
         sched.add_job(
-            _vitamin_reminder_run,
-            CronTrigger(hour=vhh, minute=vmm, timezone=timezone),
+            _nudges_push_run,
+            CronTrigger(hour=hh, minute=mm, timezone=timezone),
             args=[settings, db],
-            id=f"vitamin-reminder-{vhh:02d}-{vmm:02d}",
+            id=f"nudges-push-{hh:02d}-{mm:02d}",
             replace_existing=True,
         )
     return sched

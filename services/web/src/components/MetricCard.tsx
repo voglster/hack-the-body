@@ -33,15 +33,28 @@ export function MetricCard({ label, value, sub, progress, behindPace, onClick }:
   );
   const baseClass = "rounded-xl bg-neutral-900 border border-neutral-800 p-3 sm:p-4 flex flex-col gap-1 text-left";
   if (onClick) {
+    // Mirror StepsTodayCard's div+role=button pattern instead of using a
+    // real <button>. Some mobile browsers (notably iOS Safari in PWA
+    // mode) eat the click on a styled <button> inside a CSS grid before
+    // React Router gets it; the role-button div is rock-solid across
+    // every device we've tested.
+    const onKey = (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick();
+      }
+    };
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
-        className={`${baseClass} hover:border-neutral-700 active:bg-neutral-800 transition-colors w-full`}
+        onKeyDown={onKey}
+        className={`${baseClass} cursor-pointer hover:border-neutral-700 active:bg-neutral-800 transition-colors`}
         aria-label={`${label} — open trends`}
       >
         {inner}
-      </button>
+      </div>
     );
   }
   return <div className={baseClass}>{inner}</div>;

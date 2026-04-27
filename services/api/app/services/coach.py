@@ -172,7 +172,10 @@ async def gather_context(
         # the actual target values. None = don't judge that metric.
         out["targets"] = {
             k: targets.get(k)
-            for k in ("daily_calories", "daily_protein_g", "step_goal_override")
+            for k in (
+                "daily_calories", "daily_protein_g",
+                "daily_water_oz", "step_goal_override",
+            )
         }
     return out
 

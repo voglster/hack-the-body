@@ -27,6 +27,12 @@ class Targets(BaseModel):
     against this metric." Any future targets are added here."""
     daily_calories: int | None = Field(default=None, ge=0, le=10000)
     daily_protein_g: int | None = Field(default=None, ge=0, le=500)
+    daily_water_oz: int | None = Field(
+        default=None, ge=0, le=400,
+        description="Daily fluid target in fluid ounces. Half-bodyweight "
+                    "rule (lb/2) is a defensible default; 128 oz/day "
+                    "(1 gallon) for adult males 200-260 lb is mainstream.",
+    )
     step_goal_override: int | None = Field(
         default=None, ge=0, le=100000,
         description="If set, overrides Garmin's step_goal in the dashboard "
@@ -41,6 +47,7 @@ def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "daily_calories": doc.get("daily_calories"),
         "daily_protein_g": doc.get("daily_protein_g"),
+        "daily_water_oz": doc.get("daily_water_oz"),
         "step_goal_override": doc.get("step_goal_override"),
         "updated_at": doc.get("updated_at"),
     }

@@ -52,15 +52,26 @@ async def _today_food_totals(
 ) -> dict[str, Any]:
     entries = await food_repo.list_entries_in_range(start, end)
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+    food_count = 0
+    water_grams = 0.0
     for e in entries:
+        # Water is logged through /water/log as a "drink" entry with the
+        # canonical "Water" food name and zero macros — keep it out of the
+        # food count + macro totals, but tally it here so the coach has
+        # context to comment on hydration.
+        if e.get("food_name") == "Water":
+            water_grams += float(e.get("quantity_g") or 0)
+            continue
         m = e.get("macros") or {}
         for k in totals:
             v = m.get(k)
             if v is not None:
                 totals[k] += float(v)
+        food_count += 1
     out = {k: round(v, 1) for k, v in totals.items()}
-    out["entries"] = len(entries)
-    out["food_logged_today"] = len(entries) > 0
+    out["entries"] = food_count
+    out["food_logged_today"] = food_count > 0
+    out["water_oz"] = round(water_grams / 29.5735, 1)
     return out
 
 

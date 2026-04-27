@@ -155,6 +155,45 @@ async def test_insight_uses_local_day_window_for_food_and_history(
     assert "time_of_day" in body["context"]
 
 
+async def test_insight_carries_water_total_separate_from_food(
+    client, mock_db, fake_ollama_response,
+):
+    """Water entries are tagged food_name='Water' and zero macros — they
+    must not inflate `entries` or macro totals, and they must surface
+    as `water_oz` in food_totals so the coach can comment on hydration."""
+    await _seed(mock_db)
+    # Provision the Water food + log 32 oz across two pours.
+    food = await client.post("/foods", headers=HEADERS, json={
+        "name": "Water", "category": "drink", "serving_g": 236.6,
+        "per_serving": {}, "source": "builtin",
+    })
+    water_id = food.json()["id"]
+    for oz in (16, 16):
+        await client.post("/meals/entries", headers=HEADERS, json={
+            "food_id": water_id,
+            "quantity_g": oz * 29.5735,
+            "slot": "snack",
+        })
+
+    captured: dict = {}
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        captured["payload"] = json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        await client.get("/coach/insight", headers=HEADERS)
+
+    prompt = captured["payload"]["prompt"]
+    assert '"water_oz": 32.0' in prompt
+    # And water didn't get counted as food entries.
+    assert '"entries": 0' in prompt
+    assert '"food_logged_today": false' in prompt
+
+
 async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_response):
     """When zero food entries exist, the prompt must mark
     `food_logged_today: false` and the system prompt must instruct the

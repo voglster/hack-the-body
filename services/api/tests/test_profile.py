@@ -18,18 +18,20 @@ async def test_put_then_get_round_trip(client):
     r = await client.put(
         "/profile/targets", headers=HEADERS,
         json={"daily_calories": 2200, "daily_protein_g": 180,
-              "step_goal_override": 12000},
+              "daily_water_oz": 128, "step_goal_override": 12000},
     )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["daily_calories"] == 2200
     assert body["daily_protein_g"] == 180
+    assert body["daily_water_oz"] == 128
     assert body["step_goal_override"] == 12000
     assert body["updated_at"] is not None
 
     # GET sees the same values.
     r = await client.get("/profile/targets", headers=HEADERS)
     assert r.json()["daily_calories"] == 2200
+    assert r.json()["daily_water_oz"] == 128
 
 
 async def test_partial_update_replaces_unset_fields_with_null(client):

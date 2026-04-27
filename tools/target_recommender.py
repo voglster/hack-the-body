@@ -83,6 +83,7 @@ class Recommendation:
     deficit: int
     recommended_calories: int
     recommended_protein_g: int
+    recommended_water_oz: int
     target_weight_lb: int
     notes: list[str]
     # When activity == "auto", these document what the auto-detect saw.
@@ -90,6 +91,13 @@ class Recommendation:
     tdee_source: str = "formula"  # "formula" | "observed" | "blend"
     observed_tdee: int | None = None
     observed_days: int = 0
+
+
+def water_target_oz(weight_lb: float) -> int:
+    """Half-bodyweight rule, rounded to a 16-oz boundary so the daily
+    target is an easy mental count (e.g. 128 = 8 cups = 1 gallon)."""
+    raw = weight_lb / 2.0
+    return int(round(raw / 16.0)) * 16
 
 
 def mifflin_st_jeor_bmr(*, weight_kg: float, height_cm: float, age: int, sex: str) -> float:
@@ -220,6 +228,7 @@ def recommend(
         deficit=int(deficit),
         recommended_calories=int(round(rec_cal)),
         recommended_protein_g=rec_protein,
+        recommended_water_oz=water_target_oz(weight_lb),
         target_weight_lb=target_weight_lb,
         notes=notes,
         tdee_source=tdee_source,
@@ -280,6 +289,7 @@ def _print(rec: Recommendation, args: argparse.Namespace) -> None:
     print("\n=== recommendation ===")
     print(f"  daily calories:  {rec.recommended_calories:>5} kcal")
     print(f"  daily protein:   {rec.recommended_protein_g:>5} g    (≈0.9 g/lb of target weight)")
+    print(f"  daily water:     {rec.recommended_water_oz:>5} oz   (half-bodyweight, rounded to nearest 16 oz)")
     if rec.notes:
         print("\n=== notes ===")
         for n in rec.notes:
@@ -306,6 +316,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     body = {
         "daily_calories": rec.recommended_calories,
         "daily_protein_g": rec.recommended_protein_g,
+        "daily_water_oz": rec.recommended_water_oz,
     }
     if args.step_goal:
         body["step_goal_override"] = args.step_goal

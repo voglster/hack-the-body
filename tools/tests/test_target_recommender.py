@@ -13,6 +13,7 @@ from target_recommender import (  # noqa: E402
     mifflin_st_jeor_bmr,
     observed_tdee_from_history,
     recommend,
+    water_target_oz,
 )
 
 
@@ -143,6 +144,24 @@ def test_auto_warns_when_observed_below_bmr():
     assert rec.tdee_source == "observed"
     assert any("off-wrist" in n.lower() or "below predicted bmr" in n.lower()
                for n in rec.notes)
+
+
+def test_water_target_uses_half_bodyweight_rounded():
+    # 253 lb / 2 = 126.5 → rounds to 128 (1 gallon).
+    assert water_target_oz(253) == 128
+    assert water_target_oz(250) == 128
+    # 200 lb / 2 = 100 → rounds to 96 (the next-lower 16-boundary).
+    assert water_target_oz(200) == 96
+    # 150 lb / 2 = 75 → rounds to 80 (next 16-boundary).
+    assert water_target_oz(150) == 80
+
+
+def test_recommendation_includes_water():
+    rec = recommend(
+        age=44, sex="male", height_in=77, weight_lb=253,
+        activity="light", goal="lose-1lb-week", target_weight_lb=None,
+    )
+    assert rec.recommended_water_oz == 128
 
 
 def test_healthy_bmi_target_weight_for_6ft5():

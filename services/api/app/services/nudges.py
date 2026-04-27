@@ -19,6 +19,9 @@ from zoneinfo import ZoneInfo
 
 from pymongo.asynchronous.database import AsyncDatabase
 
+from app.config import Settings
+from app.services.push import send_push
+
 logger = logging.getLogger(__name__)
 
 # ----- day-window constants (waking hours used for pace math) -----
@@ -304,3 +307,60 @@ async def build_context(
         weight_logged_today=weight_logged,
         steps_today=steps_today,
     )
+
+
+PUSH_GRACE_MINUTES = 5
+
+
+def _matching_bucket(now_local: datetime) -> tuple[int, int] | None:
+    """Return the push bucket that `now_local` matches within grace, or None.
+
+    Buckets are wall-clock times; a tick at 12:04 still matches the 12:00
+    bucket. Anything farther than PUSH_GRACE_MINUTES away matches nothing.
+    """
+    for hh, mm in PUSH_BUCKETS:
+        bucket_minutes = hh * 60 + mm
+        now_minutes = now_local.hour * 60 + now_local.minute
+        if abs(now_minutes - bucket_minutes) <= PUSH_GRACE_MINUTES:
+            return (hh, mm)
+    return None
+
+
+async def nudges_push_tick(
+    now_utc: datetime,
+    settings: Settings,
+    db: AsyncDatabase,
+) -> None:
+    """Evaluate push-eligible rules for the current bucket and send pushes.
+
+    Pure with respect to wall clock — pass `now_utc` explicitly so tests
+    can drive the function deterministically. The scheduler binding in
+    `services/scheduler.py` calls this with `datetime.now(UTC)`.
+    """
+    from app.services.nudge_dismissals import get_active_dismissals  # avoid cycle
+
+    ctx = await build_context(db, now_utc=now_utc)
+    bucket = _matching_bucket(ctx.now_local)
+    if bucket is None:
+        return
+    bucket_time = time(*bucket)
+    dismissed = await get_active_dismissals(db, now_utc=now_utc)
+    for rule in RULES:
+        if not rule.pushable or rule.push_at != bucket_time:
+            continue
+        if rule.id in dismissed:
+            continue
+        try:
+            fired = rule.evaluate(ctx)
+        except Exception:
+            logger.exception("nudges push: rule %s raised", rule.id)
+            continue
+        if fired is None:
+            continue
+        try:
+            await send_push(
+                db, settings,
+                {"title": fired.title, "body": fired.body, "url": "/"},
+            )
+        except Exception:
+            logger.exception("nudges push: send failed for %s", fired.id)

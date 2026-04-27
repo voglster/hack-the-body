@@ -202,3 +202,27 @@ RULES: list[Rule] = [
         evaluate=rule_bedtime_reminder,
     ),
 ]
+
+
+def evaluate_all(
+    ctx: NudgeContext,
+    *,
+    dismissed_ids: set[str],
+) -> list[FiredNudge]:
+    """Run every rule. Skip dismissed. Swallow per-rule exceptions.
+
+    Returns nudges in `RULES` registry order — render order is tunable
+    by reordering `RULES`.
+    """
+    out: list[FiredNudge] = []
+    for rule in RULES:
+        if rule.id in dismissed_ids:
+            continue
+        try:
+            nudge = rule.evaluate(ctx)
+        except Exception:
+            logger.exception("nudges: rule %s raised — skipping", rule.id)
+            continue
+        if nudge is not None:
+            out.append(nudge)
+    return out

@@ -248,3 +248,45 @@ class TestBedtimeReminder:
     def test_after_window_silent(self):
         ctx = _ctx(datetime(2026, 4, 27, 23, 0, tzinfo=MT))
         assert rule_bedtime_reminder(ctx) is None
+
+
+from app.services.nudges import evaluate_all
+
+
+class TestEvaluateAll:
+    def test_returns_in_registry_order(self):
+        # 1pm with no targets → only vitamins doesn't fire (before noon? no, 1pm).
+        # vitamins not logged → vitamins fires. weight not logged → weighin fires.
+        # No targets → water/steps silent. Bedtime out of window.
+        now = datetime(2026, 4, 27, 13, 0, tzinfo=MT)
+        ctx = _ctx(now, vitamins=0, weight=False)
+        out = evaluate_all(ctx, dismissed_ids=set())
+        ids = [n.id for n in out]
+        # Registry order: vitamins, water, weighin, steps, bedtime.
+        # Water/steps silent (no target), bedtime out of window.
+        assert ids == ["vitamins_missing", "no_weighin"]
+
+    def test_dismissed_filtered(self):
+        now = datetime(2026, 4, 27, 13, 0, tzinfo=MT)
+        ctx = _ctx(now, vitamins=0, weight=False)
+        out = evaluate_all(ctx, dismissed_ids={"vitamins_missing"})
+        ids = [n.id for n in out]
+        assert ids == ["no_weighin"]
+
+    def test_failing_rule_does_not_break_others(self, monkeypatch):
+        # Inject a rule that raises; sibling rules must still run.
+        from app.services import nudges
+
+        def boom(ctx):
+            raise ValueError("kaboom")
+
+        rogue = nudges.Rule(
+            id="rogue", kind="x", pushable=False, push_at=None, evaluate=boom,
+        )
+        monkeypatch.setattr(nudges, "RULES", [rogue, *nudges.RULES])
+        now = datetime(2026, 4, 27, 13, 0, tzinfo=MT)
+        ctx = _ctx(now, vitamins=0, weight=False)
+        out = evaluate_all(ctx, dismissed_ids=set())
+        ids = [n.id for n in out]
+        # Rogue swallowed; siblings still fire in order.
+        assert ids == ["vitamins_missing", "no_weighin"]

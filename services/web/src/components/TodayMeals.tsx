@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Food, MealEntry, MealSlot } from "../api/types";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { EntryTimeEditor } from "./EntryTimeEditor";
+import { MacroProgressCard } from "./MacroProgressCard";
 import { PasteFood } from "./PasteFood";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
@@ -83,6 +84,7 @@ export function TodayMeals() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <MacroProgressCard />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <Stat label="Calories" value={t ? Math.round(t.calories).toLocaleString() : "0"} />
         <Stat label="Protein" value={t ? `${Math.round(t.protein_g)} g` : "0 g"} />

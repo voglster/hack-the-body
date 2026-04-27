@@ -95,11 +95,19 @@ Optionally writes them to `/profile/targets`.
   --activity light --goal lose-1lb-week --step-goal 12000
 ```
 
-Activity tiers: `sedentary` (desk job), `light` (~12k steps, no
-training), `moderate` (12k steps + 3-5 sessions/week), `very`,
-`athlete`. Goal rates: `maintain`, `lose-0.5lb-week`,
-`lose-1lb-week` (default), `lose-1.5lb-week`. The tool flags
-unsustainable combinations (under 1,800 kcal, athlete + deficit).
+Activity tiers: `auto` (default — uses Garmin's measured median
+`total_kcal` from the last 14 days as observed TDEE), or pick by
+hand: `sedentary` (desk job), `light` (~12k steps, no training),
+`moderate` (12k steps + 3-5 sessions/week), `very`, `athlete`. Goal
+rates: `maintain`, `lose-0.5lb-week`, `lose-1lb-week` (default),
+`lose-1.5lb-week`. The tool flags unsustainable combinations (under
+1,800 kcal, athlete + deficit, observed TDEE below predicted BMR).
+
+`auto` is the recommended default — the multipliers are calibrated
+for established athletes, so they tend to over-predict TDEE for
+beginners. Garmin's per-day measurement is calibrated to *your* body.
+Auto falls back to "light" formula when there are fewer than 5 days
+of usable data.
 
 Protein math anchors on the *target* body weight (BMI 22 midpoint by
 default, override with `--target-weight-lb`) at ~0.9 g/lb — preserves

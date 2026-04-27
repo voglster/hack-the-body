@@ -9,9 +9,18 @@ based on the goal weekly weight change. Protein recommendation tracks
 ISSN/ACSM cutting guidance: ~0.8–1.0 g per lb of *target* body weight
 preserves lean mass through a sustained deficit.
 
+Activity-tier guessing is a known source of error — beginners
+overestimate, the multipliers were derived from athletes. Pass
+`--activity auto` to skip the guessing entirely: the tool pulls the
+last 14 days of Garmin daily_summary from /metrics/daily_summary/range,
+takes the median `total_kcal` (Garmin's per-day measured burn), and
+uses that as observed TDEE. This is the "honest" number — what your
+body has actually been doing. Falls back to a multiplier tier if you
+have <5 days of data.
+
 Inputs that change the math:
   --age 44 --sex male --height-in 77 --weight-lb 250
-  --activity moderate            (sedentary | light | moderate | very | athlete)
+  --activity auto                (auto | sedentary | light | moderate | very | athlete)
   --goal lose-1lb-week           (maintain | lose-0.5lb | lose-1lb-week | lose-1.5lb-week)
   --target-weight-lb 195         (used for protein math; defaults to 'healthy BMI midpoint')
 
@@ -76,6 +85,11 @@ class Recommendation:
     recommended_protein_g: int
     target_weight_lb: int
     notes: list[str]
+    # When activity == "auto", these document what the auto-detect saw.
+    # Otherwise None.
+    tdee_source: str = "formula"  # "formula" | "observed" | "blend"
+    observed_tdee: int | None = None
+    observed_days: int = 0
 
 
 def mifflin_st_jeor_bmr(*, weight_kg: float, height_cm: float, age: int, sex: str) -> float:
@@ -98,18 +112,80 @@ def healthy_bmi_target_weight_lb(height_cm: float) -> int:
     return round(kg / KG_PER_LB)
 
 
+MIN_AUTO_DAYS = 5  # below this, fall back to a tier estimate
+AUTO_KCAL_FLOOR = 1000  # exclude obviously-partial days from the median
+
+
+def _median(xs: list[float]) -> float:
+    s = sorted(xs)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    if n % 2:
+        return s[n // 2]
+    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def observed_tdee_from_history(rows: list[dict]) -> tuple[int, int]:
+    """Median Garmin total_kcal over real-data days. Returns
+    (median_tdee, days_used). Filters out days under AUTO_KCAL_FLOOR
+    (partial-day stubs)."""
+    kcals = [
+        float(r["total_kcal"]) for r in rows
+        if r.get("total_kcal") is not None and r["total_kcal"] >= AUTO_KCAL_FLOOR
+    ]
+    if not kcals:
+        return 0, 0
+    return int(round(_median(kcals))), len(kcals)
+
+
 def recommend(
     *, age: int, sex: str, height_in: float, weight_lb: float,
     activity: str, goal: str, target_weight_lb: int | None,
+    history_rows: list[dict] | None = None,
 ) -> Recommendation:
+    """Compute a recommendation. When `activity="auto"` and `history_rows`
+    has >= MIN_AUTO_DAYS rows of usable data, TDEE comes from observed
+    Garmin burn instead of a multiplier guess."""
     height_cm = in_to_cm(height_in)
     weight_kg = lb_to_kg(weight_lb)
     bmr = mifflin_st_jeor_bmr(
         weight_kg=weight_kg, height_cm=height_cm, age=age, sex=sex,
     )
-    factor = ACTIVITY_FACTORS[activity]
-    tdee = bmr * factor
     deficit = GOAL_WEEKLY_DEFICIT_KCAL[goal]
+    notes: list[str] = []
+
+    obs_tdee = 0
+    obs_days = 0
+    if activity == "auto":
+        obs_tdee, obs_days = observed_tdee_from_history(history_rows or [])
+        if obs_days >= MIN_AUTO_DAYS:
+            tdee = obs_tdee
+            tdee_source = "observed"
+            # Sanity check: if observed TDEE is implausibly low (below
+            # BMR), the wearable was probably off-wrist a lot. Warn but
+            # still use observed since it's calibrated to *this* body.
+            if obs_tdee < bmr * 0.95:
+                notes.append(
+                    f"observed TDEE ({obs_tdee}) is below predicted BMR "
+                    f"({int(round(bmr))}). Wearable may have been off-wrist; "
+                    "consider running with --activity light to compare.",
+                )
+        else:
+            # Cold-start: fall back to "light" as the most common honest
+            # tier for someone new to tracking.
+            tdee = bmr * ACTIVITY_FACTORS["light"]
+            tdee_source = "formula"
+            notes.append(
+                f"only {obs_days} day(s) of usable Garmin history; "
+                f"falling back to formula at 'light' activity. "
+                "Re-run with --activity auto after 2 weeks of wear.",
+            )
+    else:
+        factor = ACTIVITY_FACTORS[activity]
+        tdee = bmr * factor
+        tdee_source = "formula"
+
     rec_cal = tdee - deficit
 
     if target_weight_lb is None:
@@ -119,7 +195,6 @@ def recommend(
     # sustained deficit. Round to nearest 5 for ergonomics.
     rec_protein = int(round(target_weight_lb * 0.9 / 5.0) * 5)
 
-    notes: list[str] = []
     if rec_cal < 1800 and sex == "male":
         notes.append(
             "WARNING: recommended kcal under 1,800 for an adult male — "
@@ -147,6 +222,9 @@ def recommend(
         recommended_protein_g=rec_protein,
         target_weight_lb=target_weight_lb,
         notes=notes,
+        tdee_source=tdee_source,
+        observed_tdee=obs_tdee or None,
+        observed_days=obs_days,
     )
 
 
@@ -167,16 +245,39 @@ def _pull_latest_weight_lb() -> float | None:
         return None
 
 
+def _pull_daily_summary_history(days: int) -> list[dict]:
+    """Fetch the last N days of Garmin daily_summary for auto-detect."""
+    try:
+        with client() as c:
+            r = c.get("/metrics/daily_summary/range", params={"days": days})
+            r.raise_for_status()
+            return r.json()
+    except Exception as e:
+        sys.stderr.write(f"warning: couldn't pull daily history ({e}); auto-detect disabled\n")
+        return []
+
+
 def _print(rec: Recommendation, args: argparse.Namespace) -> None:
-    print(f"=== inputs ===")
+    print("=== inputs ===")
     print(f"  age={args.age}  sex={args.sex}  height={args.height_in}\"  weight={args.weight_lb} lb")
     print(f"  activity={args.activity}  goal={args.goal}")
     print(f"  target_weight_lb={rec.target_weight_lb}")
-    print(f"\n=== math ===")
+    print("\n=== math ===")
     print(f"  BMR (Mifflin-St Jeor):     {rec.bmr:>5} kcal/day")
-    print(f"  TDEE @ {args.activity:<10} {rec.tdee:>5} kcal/day  (BMR × {ACTIVITY_FACTORS[args.activity]})")
+    if rec.tdee_source == "observed":
+        print(
+            f"  TDEE (observed Garmin):    {rec.tdee:>5} kcal/day  "
+            f"(median of {rec.observed_days} days)",
+        )
+        # Show what the formula would have said as a sanity reference.
+        formula_light = int(round(rec.bmr * ACTIVITY_FACTORS["light"]))
+        print(f"    formula 'light' would predict:    {formula_light} kcal/day")
+    else:
+        factor = ACTIVITY_FACTORS.get(args.activity, ACTIVITY_FACTORS["light"])
+        label = args.activity if args.activity != "auto" else f"light (auto fallback)"
+        print(f"  TDEE @ {label:<18} {rec.tdee:>5} kcal/day  (BMR × {factor})")
     print(f"  deficit:                   {rec.deficit:>5} kcal/day  ({args.goal})")
-    print(f"\n=== recommendation ===")
+    print("\n=== recommendation ===")
     print(f"  daily calories:  {rec.recommended_calories:>5} kcal")
     print(f"  daily protein:   {rec.recommended_protein_g:>5} g    (≈0.9 g/lb of target weight)")
     if rec.notes:
@@ -229,10 +330,14 @@ def _build(args: argparse.Namespace) -> Recommendation:
         else:
             sys.stderr.write("error: --weight-lb required (or pass --pull-weight)\n")
             sys.exit(2)
+    history_rows: list[dict] | None = None
+    if args.activity == "auto":
+        history_rows = _pull_daily_summary_history(args.auto_days)
     return recommend(
         age=args.age, sex=args.sex, height_in=args.height_in,
         weight_lb=args.weight_lb, activity=args.activity, goal=args.goal,
         target_weight_lb=args.target_weight_lb,
+        history_rows=history_rows,
     )
 
 
@@ -252,7 +357,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="current weight in lb (or use --pull-weight)")
         sp.add_argument("--pull-weight", action="store_true",
                         help="auto-pull latest weight from /metrics/summary")
-        sp.add_argument("--activity", choices=list(ACTIVITY_FACTORS), default="moderate")
+        sp.add_argument(
+            "--activity",
+            choices=["auto", *ACTIVITY_FACTORS.keys()],
+            default="auto",
+            help="auto = use median Garmin total_kcal from last 14 days (default)",
+        )
+        sp.add_argument(
+            "--auto-days", type=int, default=14,
+            help="how many days of history to median over when activity=auto",
+        )
         sp.add_argument("--goal", choices=list(GOAL_WEEKLY_DEFICIT_KCAL),
                         default="lose-1lb-week")
         sp.add_argument("--target-weight-lb", type=int,

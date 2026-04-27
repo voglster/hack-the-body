@@ -6,10 +6,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from target_recommender import (  # noqa: E402
+    MIN_AUTO_DAYS,
     healthy_bmi_target_weight_lb,
     in_to_cm,
     lb_to_kg,
     mifflin_st_jeor_bmr,
+    observed_tdee_from_history,
     recommend,
 )
 
@@ -75,6 +77,72 @@ def test_protein_uses_target_weight_not_current():
     )
     # Default is BMI 22 = ~186; explicit is 190. Protein scales with target.
     assert rec_explicit.recommended_protein_g >= rec_default.recommended_protein_g
+
+
+def test_observed_tdee_uses_median_and_filters_partial_days():
+    rows = [
+        {"total_kcal": 2500},
+        {"total_kcal": 2600},
+        {"total_kcal": 2700},
+        {"total_kcal": 100},   # off-wrist day, must be filtered
+        {"total_kcal": None},  # missing data, must be filtered
+    ]
+    median, days = observed_tdee_from_history(rows)
+    # 3 valid days → median of [2500, 2600, 2700] = 2600
+    assert median == 2600
+    assert days == 3
+
+
+def test_observed_tdee_returns_zero_when_no_data():
+    median, days = observed_tdee_from_history([])
+    assert median == 0
+    assert days == 0
+
+
+def test_auto_uses_observed_when_enough_days():
+    """The motivating use case — formula says ~2,944 (light), but
+    observed is 2,533 (the user's actual Garmin median). Auto must
+    pick observed since the formula systematically over-predicts for
+    beginners."""
+    rows = [{"total_kcal": v} for v in [
+        2337, 2493, 2533, 2489, 2643, 2730, 2882, 2627, 2468, 2538, 2523,
+    ]]
+    rec = recommend(
+        age=44, sex="male", height_in=77, weight_lb=253.4,
+        activity="auto", goal="lose-1lb-week", target_weight_lb=None,
+        history_rows=rows,
+    )
+    assert rec.tdee_source == "observed"
+    assert rec.observed_days >= MIN_AUTO_DAYS
+    # Median of those values is ~2,533. Recommendation = 2,533 - 500 = ~2,033.
+    assert 2000 <= rec.recommended_calories <= 2100
+    # Way different from what formula 'light' would have given (~2,440)
+    assert rec.recommended_calories < 2400
+
+
+def test_auto_falls_back_to_formula_with_thin_history():
+    rows = [{"total_kcal": 2500}, {"total_kcal": 2600}]  # only 2 days
+    rec = recommend(
+        age=44, sex="male", height_in=77, weight_lb=253.4,
+        activity="auto", goal="lose-1lb-week", target_weight_lb=None,
+        history_rows=rows,
+    )
+    assert rec.tdee_source == "formula"
+    assert any("falling back" in n.lower() for n in rec.notes)
+
+
+def test_auto_warns_when_observed_below_bmr():
+    """Wearable off-wrist a lot can produce observed TDEE < BMR. Don't
+    silently swallow that — flag it."""
+    rows = [{"total_kcal": 1500}] * 7  # implausibly low for the test profile
+    rec = recommend(
+        age=44, sex="male", height_in=77, weight_lb=253.4,
+        activity="auto", goal="lose-1lb-week", target_weight_lb=None,
+        history_rows=rows,
+    )
+    assert rec.tdee_source == "observed"
+    assert any("off-wrist" in n.lower() or "below predicted bmr" in n.lower()
+               for n in rec.notes)
 
 
 def test_healthy_bmi_target_weight_for_6ft5():

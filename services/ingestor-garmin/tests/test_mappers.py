@@ -63,6 +63,31 @@ def test_map_vo2max_no_measurement():
     assert map_vo2max({"generic": {"calendarDate": "2026-04-25"}}) is None
 
 
+def test_map_sleep_no_measurement():
+    # Repeat-pull during the day: dailySleepDTO present but timestamps null.
+    stub = {
+        "dailySleepDTO": {
+            "calendarDate": "2026-04-27",
+            "sleepEndTimestampGMT": None,
+            "sleepTimeSeconds": None,
+            "deepSleepSeconds": None,
+            "remSleepSeconds": None,
+            "lightSleepSeconds": None,
+            "awakeSleepSeconds": None,
+        },
+    }
+    assert map_sleep(stub) is None
+    assert map_sleep({}) is None
+    assert map_sleep({"dailySleepDTO": None}) is None
+
+
+def test_map_hrv_no_measurement():
+    # Garmin omits hrvSummary (or its lastNightAvg) on days without a reading.
+    assert map_hrv({}) is None
+    assert map_hrv({"hrvSummary": None}) is None
+    assert map_hrv({"hrvSummary": {"calendarDate": "2026-04-27", "lastNightAvg": None}}) is None
+
+
 def test_map_daily_summary(fixture):
     raw = fixture("daily_summary.json")
     s = map_daily_summary(raw)

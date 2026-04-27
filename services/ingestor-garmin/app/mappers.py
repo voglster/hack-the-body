@@ -11,8 +11,14 @@ def _utc_from_str(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
 
-def map_sleep(raw: dict) -> Sleep:
-    d = raw["dailySleepDTO"]
+def map_sleep(raw: dict) -> Sleep | None:
+    # Garmin returns a payload with `dailySleepDTO` populated only after a
+    # sleep window has been finalized (typically after the user wakes). Repeat
+    # pulls during the day re-fetch the same endpoint and get a stub with
+    # null timestamps. Treat that as "nothing to record" silently.
+    d = (raw or {}).get("dailySleepDTO") or {}
+    if d.get("sleepEndTimestampGMT") is None or d.get("sleepTimeSeconds") is None:
+        return None
     score = (d.get("sleepScores") or {}).get("overall", {}).get("value")
     return Sleep(
         ts=_utc_from_ms(d["sleepEndTimestampGMT"]),
@@ -28,8 +34,12 @@ def map_sleep(raw: dict) -> Sleep:
     )
 
 
-def map_hrv(raw: dict) -> HRV:
-    s = raw["hrvSummary"]
+def map_hrv(raw: dict) -> HRV | None:
+    # Same shape as sleep — Garmin's HRV endpoint omits `hrvSummary` (or
+    # leaves `lastNightAvg` null) on days without a usable overnight reading.
+    s = (raw or {}).get("hrvSummary")
+    if not s or s.get("lastNightAvg") is None:
+        return None
     return HRV(
         ts=datetime.strptime(s["calendarDate"], "%Y-%m-%d").replace(tzinfo=UTC),
         rmssd_ms=float(s["lastNightAvg"]),

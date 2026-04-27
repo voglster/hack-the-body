@@ -59,6 +59,47 @@ the *next* review sees only complaints about the *new* prompt:
 `clear` archives rows to `coach_feedback_archive` in Mongo rather than
 hard-deleting, so the audit trail of "what we tuned and when" survives.
 
+## Recommending daily targets
+
+`target_recommender.py` does Mifflin-St Jeor BMR + activity-tier TDEE +
+goal-rate deficit math, then prints recommended calories and protein.
+Optionally writes them to `/profile/targets`.
+
+```bash
+# Print a recommendation
+.venv/bin/python target_recommender.py recommend \
+  --age 44 --height-in 77 --weight-lb 250 \
+  --activity light --goal lose-1lb-week
+
+# Auto-pull current weight from the API instead of typing it
+.venv/bin/python target_recommender.py recommend \
+  --age 44 --height-in 77 --pull-weight \
+  --activity light --goal lose-1lb-week
+
+# Write the recommendation to /profile/targets (skip y/n with -y)
+.venv/bin/python target_recommender.py apply \
+  --age 44 --height-in 77 --pull-weight \
+  --activity light --goal lose-1lb-week --step-goal 12000
+```
+
+Activity tiers: `sedentary` (desk job), `light` (~12k steps, no
+training), `moderate` (12k steps + 3-5 sessions/week), `very`,
+`athlete`. Goal rates: `maintain`, `lose-0.5lb-week`,
+`lose-1lb-week` (default), `lose-1.5lb-week`. The tool flags
+unsustainable combinations (under 1,800 kcal, athlete + deficit).
+
+Protein math anchors on the *target* body weight (BMI 22 midpoint by
+default, override with `--target-weight-lb`) at ~0.9 g/lb — preserves
+lean mass through a sustained cut.
+
+Math is unit-tested — run `pytest tests/` from the tools dir. The math
+functions are pure and importable, so you can also do:
+```python
+from target_recommender import recommend
+recommend(age=44, sex="male", height_in=77, weight_lb=250,
+          activity="light", goal="lose-1lb-week", target_weight_lb=None)
+```
+
 ## Adding a new tool
 
 Each script imports `_client.client()` and writes a `cmd_*` function per

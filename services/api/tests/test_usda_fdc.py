@@ -107,3 +107,59 @@ async def test_barcode_route_falls_back_to_fdc(client, settings):
     body = r.json()
     assert body["source"] == "usda_fdc"
     assert body["per_serving"]["protein_g"] == 40.0
+
+
+async def test_barcode_route_refetches_legacy_off_default(client, mock_db):
+    # Simulate a row cached before serving resolution: OFF source but
+    # placeholder 100 g serving. A scan should re-query OFF, see the
+    # real 325 g serving, and replace the stale row.
+    barcode = "643843715351"
+    await mock_db["foods"].insert_one({
+        "name": "Vanilla Premier Protein Shake",
+        "brand": "premier protein",
+        "barcode": barcode,
+        "category": "food",
+        "serving_g": 100.0,
+        "serving_label": "100 g",
+        "per_serving": {"calories": 50.0, "protein_g": 9.0, "carbs_g": 1.0, "fat_g": 1.0},
+        "source": "off",
+    })
+
+    async def _off_with_real_serving(_barcode):
+        return Food(
+            name="Vanilla Premier Protein Shake", brand="premier protein",
+            barcode=_barcode, category="food",
+            serving_g=325.3085, serving_label="11 fl (11 fl oz)",
+            per_serving=Macros(calories=160.0, protein_g=30.0, carbs_g=4.0, fat_g=3.0),
+            source="off",
+        )
+
+    with patch("app.routers.foods.fetch_off_product", _off_with_real_serving):
+        r = await client.get(f"/foods/barcode/{barcode}", headers=HEADERS)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["serving_g"] == 325.3085
+    assert body["serving_label"] == "11 fl (11 fl oz)"
+    assert body["per_serving"]["protein_g"] == 30.0
+
+
+async def test_barcode_route_keeps_legitimate_100g_off(client, mock_db):
+    # A non-OFF cached row with 100 g serving should NOT trigger refetch
+    # — only OFF source rows are suspect.
+    barcode = "111111111111"
+    await mock_db["foods"].insert_one({
+        "name": "Manual entry", "brand": None, "barcode": barcode,
+        "category": "food", "serving_g": 100.0, "serving_label": "100 g",
+        "per_serving": {"calories": 200.0},
+        "source": "manual",
+    })
+
+    async def _boom(_barcode):
+        raise AssertionError("should not refetch for non-OFF source")
+
+    with patch("app.routers.foods.fetch_off_product", _boom):
+        r = await client.get(f"/foods/barcode/{barcode}", headers=HEADERS)
+
+    assert r.status_code == 200
+    assert r.json()["source"] == "manual"

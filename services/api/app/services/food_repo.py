@@ -173,7 +173,11 @@ class FoodRepo:
 
     # ---------- templates ----------
     async def upsert_template(self, t: MealTemplate) -> dict[str, Any]:
+        # `created_at` is owned by `$setOnInsert` so it stays stable across
+        # repeat saves of the same-named template; drop it from `$set` to
+        # avoid Mongo's path-conflict (same fix as `upsert_food`).
         doc = t.model_dump(exclude={"id"})
+        doc.pop("created_at", None)
         await self.db["meal_templates"].update_one(
             {"name": t.name},
             {"$set": doc, "$setOnInsert": {"created_at": datetime.now(UTC)}},

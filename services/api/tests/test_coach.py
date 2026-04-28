@@ -11,7 +11,7 @@ import pytest
 from bson import ObjectId as ObjectIdFromStr
 
 from app.models.metrics import HRV, Sleep, Weight
-from app.services.coach import SYSTEM_PROMPT, gather_context
+from app.services.coach import SYSTEM_PROMPT, gather_context, generate_insight
 from app.services.metrics_repo import MetricsRepo
 
 HEADERS = {"X-API-Key": "test-key"}
@@ -410,6 +410,59 @@ async def test_system_prompt_requires_weight_in_lbs():
     lowered = SYSTEM_PROMPT.lower()
     assert "weight.lb" in lowered
     assert "lbs" in lowered or "pounds" in lowered
+
+
+async def test_generate_insight_food_totals_respect_tz_env(
+    mock_db, monkeypatch, fake_ollama_response,
+):
+    """Regression for the scheduler timezone bug: when no day_start is
+    provided (the scheduler path), generate_insight must scope food
+    totals to the user's *local* day, not UTC midnight. Pre-fix, a 5 PM
+    Chicago run at 22:00 UTC would sweep in last-evening's food because
+    the scheduler computed totals against 00:00 UTC."""
+    monkeypatch.setenv("TZ", "America/Chicago")
+    await _seed(mock_db)
+
+    chicago = ZoneInfo("America/Chicago")
+    now_utc = datetime.now(UTC)
+    chicago_midnight_utc = (
+        datetime.combine(now_utc.astimezone(chicago).date(), datetime.min.time(), tzinfo=chicago)
+        .astimezone(UTC)
+    )
+    # Yesterday-evening Chicago (= today UTC, before Chicago midnight).
+    await mock_db["meal_entries"].insert_one({
+        "ts": chicago_midnight_utc - timedelta(hours=2),
+        "food_name": "TestFood", "quantity_g": 100, "slot": "dinner",
+        "macros": {"calories": 999.0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
+    })
+    # After Chicago midnight = today.
+    await mock_db["meal_entries"].insert_one({
+        "ts": chicago_midnight_utc + timedelta(hours=1),
+        "food_name": "TestFood", "quantity_g": 100, "slot": "breakfast",
+        "macros": {"calories": 100.0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
+    })
+
+    class _FakeSettings:
+        ollama_url = "http://x"
+        ollama_model = "test"
+        coach_timeout_s = 5
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        # Note: no day_start/day_end — exercises the scheduler path.
+        ins = await generate_insight(_FakeSettings(), mock_db, trigger="scheduled")
+
+    # Yesterday-evening's 999 cal must be excluded; only today's 100 counts.
+    assert ins.food_totals is not None
+    assert ins.food_totals["calories"] == 100.0, ins.food_totals
 
 
 async def test_gather_context_converts_weight_to_lbs(mock_db):

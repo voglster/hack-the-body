@@ -2,9 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api } from "../api/client";
-import type { CoachFeedbackRating, CoachInsight, CoachRecentEntry } from "../api/types";
+import type { CoachFeedbackRating, CoachFoodTotals, CoachInsight, CoachRecentEntry } from "../api/types";
 
-interface DisplayMsg { id: string | null; text: string; meta: string }
+interface DisplayMsg {
+  id: string | null;
+  text: string;
+  meta: string;
+  food_totals?: CoachFoodTotals | null;
+}
 
 function pickDisplay(
   fresh: CoachInsight | undefined,
@@ -15,6 +20,7 @@ function pickDisplay(
       id: fresh.id,
       text: fresh.text,
       meta: `${fresh.model} · ${(fresh.total_ms / 1000).toFixed(1)}s · ${new Date(fresh.generated_at).toLocaleTimeString()}`,
+      food_totals: fresh.food_totals,
     };
   }
   if (latest) {
@@ -22,9 +28,33 @@ function pickDisplay(
       id: latest.id,
       text: latest.text,
       meta: `${latest.trigger} · ${new Date(latest.generated_at).toLocaleString()}`,
+      food_totals: latest.food_totals,
     };
   }
   return null;
+}
+
+/** "What the model saw" — collapsed by default; kept tight so it's a
+ *  reference, not the headline. Catches data-pipeline bugs (e.g. wrong
+ *  local-day window inflating calories) that the coach text alone hides. */
+function ModelInputs({ food_totals }: { food_totals?: CoachFoodTotals | null }) {
+  if (!food_totals) return null;
+  const parts: string[] = [];
+  if (food_totals.calories != null) parts.push(`${Math.round(food_totals.calories)} cal`);
+  if (food_totals.protein_g != null) parts.push(`${Math.round(food_totals.protein_g)}g P`);
+  if (food_totals.carbs_g != null) parts.push(`${Math.round(food_totals.carbs_g)}g C`);
+  if (food_totals.fat_g != null) parts.push(`${Math.round(food_totals.fat_g)}g F`);
+  if (food_totals.water_oz != null) parts.push(`${Math.round(food_totals.water_oz)} oz water`);
+  if (food_totals.entries != null) parts.push(`${food_totals.entries} entries`);
+  if (parts.length === 0) return null;
+  return (
+    <details className="text-[11px] text-neutral-500">
+      <summary className="cursor-pointer select-none hover:text-neutral-300">
+        what the model saw
+      </summary>
+      <div className="pt-1 pl-1 font-mono text-neutral-400">{parts.join(" · ")}</div>
+    </details>
+  );
 }
 
 function CoachBody({ display, error }: { display: DisplayMsg | null; error: Error | null }) {
@@ -33,6 +63,7 @@ function CoachBody({ display, error }: { display: DisplayMsg | null; error: Erro
       <>
         <div className="text-sm whitespace-pre-wrap leading-relaxed">{display.text}</div>
         <div className="text-[10px] text-neutral-500">{display.meta}</div>
+        <ModelInputs food_totals={display.food_totals} />
         {display.id && <FeedbackRow key={display.id} insightId={display.id} />}
       </>
     );

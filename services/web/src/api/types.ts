@@ -143,6 +143,16 @@ export interface SyncStatusEntry {
 }
 export type SyncStatus = Record<string, SyncStatusEntry>;
 
+export interface CoachFoodTotals {
+  calories?: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+  entries?: number;
+  food_logged_today?: boolean;
+  water_oz?: number;
+}
+
 export interface CoachInsight {
   id: string | null;
   text: string;
@@ -152,6 +162,7 @@ export interface CoachInsight {
   generated_at: string;
   context: Record<string, unknown>;
   trigger: string;
+  food_totals?: CoachFoodTotals | null;
 }
 
 export interface CoachRecentEntry {
@@ -159,6 +170,8 @@ export interface CoachRecentEntry {
   text: string;
   generated_at: string;
   trigger: string;
+  food_totals?: CoachFoodTotals | null;
+  context?: Record<string, unknown> | null;
 }
 
 export interface UserTargets {

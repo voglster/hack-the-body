@@ -22,6 +22,7 @@ import httpx
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.services.food_repo import FoodRepo
 from app.services.metrics_repo import MetricsRepo
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,58 @@ def _time_of_day(hour: int) -> str:
     return "night"
 
 
+def resolve_day_window(
+    day_start: datetime | None, day_end: datetime | None,
+) -> tuple[datetime, datetime]:
+    """Return UTC bounds of the user's local day.
+
+    The browser passes its computed bounds when calling /coach/insight; the
+    scheduler has no browser, so we derive bounds from the TZ env var. Both
+    paths must agree, otherwise food totals (router-resolved) and steps_today
+    (gather_context-resolved) drift across the local-midnight crossing.
+    Centralizing here is the fix for that drift.
+    """
+    if day_start is not None and day_end is not None:
+        return day_start, day_end
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        tz = UTC
+    now_local = datetime.now(UTC).astimezone(tz)
+    start = datetime.combine(now_local.date(), time.min, tzinfo=tz).astimezone(UTC)
+    return start, start + timedelta(days=1)
+
+
+async def today_food_totals(
+    food_repo: FoodRepo, start: datetime, end: datetime,
+) -> dict[str, Any]:
+    """Sum food entries inside the local-day window into a coach-prompt blob.
+
+    Water (food_name=='Water', zero macros) is tallied separately into
+    `water_oz` so it doesn't inflate `entries` or macro totals.
+    """
+    entries = await food_repo.list_entries_in_range(start, end)
+    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+    food_count = 0
+    water_grams = 0.0
+    for e in entries:
+        if e.get("food_name") == "Water":
+            water_grams += float(e.get("quantity_g") or 0)
+            continue
+        m = e.get("macros") or {}
+        for k in totals:
+            v = m.get(k)
+            if v is not None:
+                totals[k] += float(v)
+        food_count += 1
+    out = {k: round(v, 1) for k, v in totals.items()}
+    out["entries"] = food_count
+    out["food_logged_today"] = food_count > 0
+    out["water_oz"] = round(water_grams / 29.5735, 1)
+    return out
+
+
 async def gather_context(
     repo: MetricsRepo,
     *,
@@ -164,16 +217,7 @@ async def gather_context(
     daily = _strip_meta(await repo.latest_daily_summary())
 
     now_utc = datetime.now(UTC)
-    if day_start is None or day_end is None:
-        tz_name = os.environ.get("TZ") or "UTC"
-        try:
-            tz = ZoneInfo(tz_name)
-        except ZoneInfoNotFoundError:
-            tz = UTC
-        local_now = now_utc.astimezone(tz)
-        local_start = datetime.combine(local_now.date(), time.min, tzinfo=tz)
-        day_start = local_start.astimezone(UTC)
-        day_end = day_start + timedelta(days=1)
+    day_start, day_end = resolve_day_window(day_start, day_end)
     intraday = await repo.range_steps_intraday(day_start, day_end)
     today_steps = sum(int(b.get("steps", 0)) for b in intraday)
 
@@ -235,6 +279,10 @@ async def recent_insights(
             "generated_at": doc.get("generated_at"),
             "text": doc.get("text"),
             "trigger": doc.get("trigger", "manual"),
+            # Included so the FE debug panel can show what the model saw
+            # for any rendered insight, not just the freshly-generated one.
+            "food_totals": doc.get("food_totals"),
+            "context": doc.get("context"),
         }
         async for doc in cur
     ]
@@ -288,7 +336,6 @@ def _format_prompt(
 async def generate_insight(
     settings: Settings,
     db: AsyncDatabase,
-    food_totals: dict[str, Any] | None = None,
     *,
     trigger: str = "manual",
     day_start: datetime | None = None,
@@ -296,6 +343,12 @@ async def generate_insight(
     targets: dict[str, Any] | None = None,
 ) -> Insight:
     repo = MetricsRepo(db)
+    # Resolve once, share with gather_context AND food_totals so both use
+    # the same local-day window. Previously the scheduler computed food
+    # totals against UTC midnight while gather_context used local midnight,
+    # which sweeps last evening's food into "today" west of UTC.
+    day_start, day_end = resolve_day_window(day_start, day_end)
+    food_totals = await today_food_totals(FoodRepo(db), day_start, day_end)
     context = await gather_context(
         repo, day_start=day_start, day_end=day_end, targets=targets,
     )

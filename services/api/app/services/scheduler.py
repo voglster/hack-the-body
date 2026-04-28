@@ -16,7 +16,7 @@ local-tz handling, driven by the TZ env var.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -25,7 +25,6 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.config import Settings
 from app.services.coach import generate_insight
 from app.services.coach_weekly import generate_weekly_review
-from app.services.food_repo import FoodRepo
 from app.services.nudges import PUSH_BUCKETS, nudges_push_tick
 from app.services.push import send_push
 
@@ -33,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _scheduled_run(settings: Settings, db: AsyncDatabase) -> None:
-    food_totals = await _today_food_totals(db)
     try:
-        insight = await generate_insight(
-            settings, db, food_totals=food_totals, trigger="scheduled",
-        )
+        # generate_insight resolves the local-day window from $TZ and
+        # computes food_totals itself, so the scheduler doesn't need to
+        # (and used to get it wrong by anchoring on UTC midnight).
+        insight = await generate_insight(settings, db, trigger="scheduled")
     except Exception:
         logger.exception("scheduled coach: generate_insight failed")
         return
@@ -72,22 +71,6 @@ async def _nudges_push_run(settings: Settings, db: AsyncDatabase) -> None:
         await nudges_push_tick(datetime.now(UTC), settings, db)
     except Exception:
         logger.exception("nudges push tick: failed")
-
-
-async def _today_food_totals(db: AsyncDatabase) -> dict:
-    repo = FoodRepo(db)
-    now = datetime.now(UTC)
-    start = datetime.combine(now.date(), time.min, tzinfo=UTC)
-    _ = start + timedelta(days=1)
-    entries = await repo.list_entries_for_day(start)
-    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
-    for e in entries:
-        m = e.get("macros") or {}
-        for k in totals:
-            v = m.get(k)
-            if v is not None:
-                totals[k] += float(v)
-    return {k: round(v, 1) for k, v in totals.items()} | {"entries": len(entries)}
 
 
 def build_scheduler(

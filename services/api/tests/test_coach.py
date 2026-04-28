@@ -339,7 +339,6 @@ async def test_system_prompt_allows_action_optional():
     """User feedback: not every reply needs an action. SYSTEM_PROMPT
     must let the model skip the action when nothing's off-track."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "only if" in lowered
     assert "off-track" in lowered or "off track" in lowered
     assert "do not invent action" in lowered
 
@@ -391,6 +390,38 @@ async def test_insight_persists_full_prompt_inputs(
     assert ins["prompt"] is not None
     assert ins["system_prompt"] is not None
     assert isinstance(ins["history_snapshot"], list)
+
+
+async def test_system_prompt_forbids_metric_regurgitation():
+    """User feedback 2026-04-27: don't list every metric when nothing's
+    off-track. The prompt must explicitly forbid the roll-call pattern
+    and instruct the model to skip metrics entirely on on-track replies."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "regurgitate" in lowered or "roll-call" in lowered
+    assert "off-track" in lowered or "off track" in lowered
+    # Positive instruction: stay quiet about fine metrics.
+    assert "skip the metrics" in lowered or "say nothing about it" in lowered
+
+
+async def test_system_prompt_requires_weight_in_lbs():
+    """User feedback 2026-04-27: weight should be reported in pounds, not
+    kg. Pin both the unit instruction and the conversion factor so a
+    future edit can't quietly drop the rule."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "lbs" in lowered or "pounds" in lowered
+    assert "2.205" in SYSTEM_PROMPT
+    assert "never print the kg" in lowered
+
+
+async def test_system_prompt_requires_varied_positive_close():
+    """User feedback 2026-04-27: the 'On track.' closer is repetitive.
+    The prompt must require varied, positive phrasing on on-track replies."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "vary" in lowered or "varied" in lowered
+    # At least one example phrasing should be present so the model has
+    # concrete options to draw from.
+    assert "keep it rolling" in lowered or "keep going" in lowered or \
+           "keep stacking" in lowered
 
 
 async def test_system_prompt_forbids_clinical_alarmism():

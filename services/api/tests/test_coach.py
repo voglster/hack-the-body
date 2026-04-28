@@ -405,12 +405,25 @@ async def test_system_prompt_forbids_metric_regurgitation():
 
 async def test_system_prompt_requires_weight_in_lbs():
     """User feedback 2026-04-27: weight should be reported in pounds, not
-    kg. Pin both the unit instruction and the conversion factor so a
-    future edit can't quietly drop the rule."""
+    kg. The conversion now happens in gather_context (the prompt sees
+    `weight.lb` only), so the prompt rule just needs to anchor the unit."""
     lowered = SYSTEM_PROMPT.lower()
+    assert "weight.lb" in lowered
     assert "lbs" in lowered or "pounds" in lowered
-    assert "2.205" in SYSTEM_PROMPT
-    assert "never print the kg" in lowered
+
+
+async def test_gather_context_converts_weight_to_lbs(mock_db):
+    """Regression: the coach prompt must never see kg. gather_context
+    converts at the boundary so the model can't accidentally print the
+    kg number with an lb label (or vice versa)."""
+    repo = MetricsRepo(mock_db)
+    await repo.insert_weight(Weight(
+        ts=datetime.now(UTC), kg=100.0,
+        source="garmin", source_id="w:lb",
+    ))
+    ctx = await gather_context(repo)
+    assert "kg" not in ctx["weight"], ctx["weight"]
+    assert ctx["weight"]["lb"] == 220.5
 
 
 async def test_system_prompt_requires_varied_positive_close():

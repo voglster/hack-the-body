@@ -49,9 +49,8 @@ SYSTEM_PROMPT = (
     "with it.' / 'Green across the board.' / 'Nothing to fix — keep "
     "stacking the day.' Pick fresh phrasing each time; never emit the "
     "exact same closer twice in a row given recent_coach_messages. "
-    "IMPORTANT — units: when you DO mention weight, report it in pounds "
-    "(lbs), not kilograms. The snapshot stores `weight.kg`; convert with "
-    "lbs = kg * 2.205 and round to one decimal. Never print the kg value. "
+    "IMPORTANT — units: weight is provided as `weight.lb` (pounds). "
+    "Always report weight in lbs. Never invent a kg value or convert. "
     "Do not invent action items when the day is going fine. "
     "Keep total reply under 120 words; aim for under 40 when on track. "
     "If 'recent_coach_messages' is provided, briefly note continuity from "
@@ -157,6 +156,11 @@ async def gather_context(
     sleep = _strip_meta(await repo.latest_sleep())
     hrv = _strip_meta(await repo.latest_hrv())
     weight = _strip_meta(await repo.latest_weight())
+    # The model speaks in lbs; convert at the boundary so it never sees kg
+    # and can't accidentally regurgitate the metric value of the wrong unit.
+    if weight and "kg" in weight:
+        weight = {**weight, "lb": round(weight["kg"] * 2.2046226, 1)}
+        weight.pop("kg", None)
     daily = _strip_meta(await repo.latest_daily_summary())
 
     now_utc = datetime.now(UTC)

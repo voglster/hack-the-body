@@ -161,10 +161,10 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function MacroProgressCard() {
+export function MacroProgressCard({ day }: { day?: string } = {}) {
   const totals = useQuery({
-    queryKey: ["meals.today.totals"],
-    queryFn: () => api.todayTotals(),
+    queryKey: ["meals.totals", day ?? "today"],
+    queryFn: () => api.todayTotals(day),
     refetchInterval: 60_000,
   });
   const targets = useQuery({

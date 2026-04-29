@@ -164,7 +164,7 @@ function Card({ children }: { children: React.ReactNode }) {
 export function MacroProgressCard() {
   const totals = useQuery({
     queryKey: ["meals.today.totals"],
-    queryFn: api.todayTotals,
+    queryFn: () => api.todayTotals(),
     refetchInterval: 60_000,
   });
   const targets = useQuery({

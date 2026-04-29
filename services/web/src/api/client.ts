@@ -8,11 +8,11 @@ import type {
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
 
-/** UTC bounds of today's local-tz day, encoded as query string. The
- *  backend takes these as `start` and `end` query params and treats
- *  them as the source of truth for the "today" window. */
-function todayWindowQuery(): string {
-  const { start, end } = localDayBoundsUTC(todayLocalISO());
+/** UTC bounds of a given local-tz day (defaults to today), encoded as
+ *  query string. The backend takes these as `start` and `end` query
+ *  params and treats them as the source of truth for the day window. */
+function dayWindowQuery(day?: string): string {
+  const { start, end } = localDayBoundsUTC(day ?? todayLocalISO());
   return `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
 }
 
@@ -127,8 +127,8 @@ export const api = {
   },
 
   // meal entries
-  todayTotals: () => get<TodayTotals>(`/meals/today/totals?${todayWindowQuery()}`),
-  todayEntries: () => get<MealEntry[]>(`/meals/entries?${todayWindowQuery()}`),
+  todayTotals: (day?: string) => get<TodayTotals>(`/meals/today/totals?${dayWindowQuery(day)}`),
+  todayEntries: (day?: string) => get<MealEntry[]>(`/meals/entries?${dayWindowQuery(day)}`),
   logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
     post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
@@ -145,7 +145,7 @@ export const api = {
   },
 
   // coach
-  coachInsight: () => get<CoachInsight>(`/coach/insight?${todayWindowQuery()}`),
+  coachInsight: () => get<CoachInsight>(`/coach/insight?${dayWindowQuery()}`),
   coachRecent: (limit = 10) => {
     const { start } = localDayBoundsUTC(todayLocalISO());
     return get<CoachRecentEntry[]>(
@@ -168,11 +168,11 @@ export const api = {
   },
 
   // water
-  waterToday: () => get<WaterToday>(`/water/today?${todayWindowQuery()}`),
+  waterToday: () => get<WaterToday>(`/water/today?${dayWindowQuery()}`),
   logWater: (oz: number) => post<MealEntry>("/water/log", { oz }),
 
   // vitamins
-  vitaminsToday: () => get<VitaminsToday>(`/vitamins/today?${todayWindowQuery()}`),
+  vitaminsToday: () => get<VitaminsToday>(`/vitamins/today?${dayWindowQuery()}`),
   logVitamins: () => post<MealEntry>("/vitamins/log", {}),
 
   // nudges

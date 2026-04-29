@@ -54,7 +54,7 @@ export function VitaminsCard() {
   });
   const entries = useQuery({
     queryKey: ["meals.today.entries"],
-    queryFn: api.todayEntries,
+    queryFn: () => api.todayEntries(),
     refetchInterval: 60_000,
   });
 

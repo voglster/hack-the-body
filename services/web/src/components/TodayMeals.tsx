@@ -14,12 +14,12 @@ export function TodayMeals() {
   const qc = useQueryClient();
   const totals = useQuery({
     queryKey: ["meals.today.totals"],
-    queryFn: api.todayTotals,
+    queryFn: () => api.todayTotals(),
     refetchInterval: 60_000,
   });
   const entries = useQuery({
     queryKey: ["meals.today.entries"],
-    queryFn: api.todayEntries,
+    queryFn: () => api.todayEntries(),
     refetchInterval: 60_000,
   });
   const templates = useQuery({

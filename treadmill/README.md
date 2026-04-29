@@ -26,17 +26,19 @@ the firmware dumb and easy to reuse for other RS232 toys.
 | D6 (GPIO12) TX    | T1IN       | MCU → RS232 driver input   |
 | D5 (GPIO14) RX    | R1OUT      | RS232 receiver → MCU       |
 
-| MAX3232 RS232 side | Precor RJ45 (CSAFE) |
-|--------------------|---------------------|
-| T1OUT              | RX (treadmill in)   |
-| R1IN               | TX (treadmill out)  |
-| GND                | GND                 |
+| MAX3232 RS232 side | Precor RJ45 (CSAFE) | RJ45 pin |
+|--------------------|---------------------|----------|
+| T1OUT              | RX (data into treadmill)  | 3 |
+| R1IN               | TX (data out of treadmill)| 4 |
+| GND                | Signal ground       | 7        |
 
-CSAFE pinout on Precor RJ45 varies by model — common is pin 4 = TX
-(out of treadmill), pin 5 = RX (into treadmill), pin 7 or 8 = GND.
-**Verify with a multimeter / the service manual for your unit before
-plugging in.** Idle RS232 TX from the treadmill should sit around
-−5 to −12 V relative to GND.
+CSAFE is 9600 8N1 per the spec. Pin 5 is a 4.75–10 V DC source the
+treadmill can supply (up to 85 mA) for accessories — leave it
+disconnected; the ESP is USB-powered and back-feeding it could foul
+your USB rail. Pin 6 (CTS) is optional flow control, also
+disconnected. Idle RS232 TX from the treadmill sits around −5 to
+−12 V relative to GND — handy for a multimeter sanity check before
+you plug into the MAX3232.
 
 We use SoftwareSerial on D5/D6 so the hardware UART stays free for
 USB log output during bring-up.

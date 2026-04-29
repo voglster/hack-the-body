@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
-import type { Food, MealEntry, MealSlot } from "../api/types";
+import type { Food, MealEntry, MealSlot, MealTemplate } from "../api/types";
+import { todayLocalISO } from "../lib/tz";
 import { BarcodeScanner } from "./BarcodeScanner";
+import { DayNav } from "./DayNav";
 import { EntryTimeEditor } from "./EntryTimeEditor";
 import { MacroProgressCard } from "./MacroProgressCard";
 import { PasteFood } from "./PasteFood";
@@ -12,14 +14,16 @@ const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"
 
 export function TodayMeals() {
   const qc = useQueryClient();
+  const [viewedDay, setViewedDay] = useState<string>(todayLocalISO());
+  const isToday = viewedDay === todayLocalISO();
   const totals = useQuery({
-    queryKey: ["meals.today.totals"],
-    queryFn: () => api.todayTotals(),
+    queryKey: ["meals.totals", viewedDay],
+    queryFn: () => api.todayTotals(viewedDay),
     refetchInterval: 60_000,
   });
   const entries = useQuery({
-    queryKey: ["meals.today.entries"],
-    queryFn: () => api.todayEntries(),
+    queryKey: ["meals.entries", viewedDay],
+    queryFn: () => api.todayEntries(viewedDay),
     refetchInterval: 60_000,
   });
   const templates = useQuery({
@@ -28,8 +32,12 @@ export function TodayMeals() {
   });
 
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
-    void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
+    void qc.invalidateQueries({
+      predicate: q => {
+        const k = q.queryKey[0];
+        return k === "meals.totals" || k === "meals.entries";
+      },
+    });
   };
 
   const logTemplate = useMutation({
@@ -68,6 +76,21 @@ export function TodayMeals() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["meals.templates"] }),
   });
 
+  const copyOneToToday = useMutation({
+    mutationFn: (e: MealEntry) =>
+      api.logEntry({ food_id: e.food_id, quantity_g: e.quantity_g, slot: e.slot }),
+    onSuccess: refresh,
+  });
+
+  const copyMealToToday = useMutation({
+    mutationFn: async (list: MealEntry[]) => {
+      for (const e of list) {
+        await api.logEntry({ food_id: e.food_id, quantity_g: e.quantity_g, slot: e.slot });
+      }
+    },
+    onSuccess: refresh,
+  });
+
   const saveSlotAsUsual = (slot: MealSlot, list: MealEntry[], name: string) => {
     const items = list
       .filter(e => e.food_name !== "Water" && e.food_name !== "Vitamins")
@@ -81,10 +104,12 @@ export function TodayMeals() {
   const [manageUsuals, setManageUsuals] = useState(false);
 
   const t = totals.data?.totals;
+  const usuals = isToday ? templates.data ?? [] : [];
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <MacroProgressCard />
+      <DayNav day={viewedDay} onChange={setViewedDay} />
+      <MacroProgressCard day={isToday ? undefined : viewedDay} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <Stat label="Calories" value={t ? Math.round(t.calories).toLocaleString() : "0"} />
         <Stat label="Protein" value={t ? `${Math.round(t.protein_g)} g` : "0 g"} />
@@ -92,75 +117,124 @@ export function TodayMeals() {
         <Stat label="Fat" value={t ? `${Math.round(t.fat_g)} g` : "0 g"} />
       </div>
 
-      {templates.data && templates.data.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs uppercase tracking-wide text-neutral-500">My usuals</div>
-            <button
-              onClick={() => setManageUsuals(v => !v)}
-              className="text-[11px] text-neutral-500 active:text-neutral-200 px-2 py-1"
-              aria-label={manageUsuals ? "done managing" : "manage usuals"}
-            >
-              {manageUsuals ? "done" : "manage"}
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {templates.data.map(tpl => (
-              <div key={tpl.id} className="flex items-stretch">
-                <button
-                  onClick={() => !manageUsuals && tpl.id && logTemplate.mutate(tpl.id)}
-                  disabled={logTemplate.isPending || manageUsuals}
-                  className={`px-3 py-2 text-sm min-h-[44px] ${
-                    manageUsuals
-                      ? "rounded-l-full bg-neutral-800 text-neutral-300 disabled:opacity-100"
-                      : "rounded-full bg-neutral-800 active:bg-neutral-600 disabled:opacity-50"
-                  }`}
-                >
-                  + {tpl.name}
-                </button>
-                {manageUsuals && tpl.id && (
-                  <button
-                    onClick={() => {
-                      if (confirm(`Delete usual "${tpl.name}"?`)) {
-                        deleteTemplate.mutate(tpl.id!);
-                      }
-                    }}
-                    disabled={deleteTemplate.isPending}
-                    className="px-3 py-2 rounded-r-full bg-red-900/60 active:bg-red-800 text-red-200 text-sm min-h-[44px]"
-                    aria-label={`delete ${tpl.name}`}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <PasteFood onLogged={refresh} />
-      <QuickLog onLogged={refresh} />
-      {editing && (
-        <EntryTimeEditor
-          entry={editing}
-          dayEntries={entries.data ?? []}
-          busy={editEntry.isPending}
-          onCancel={() => setEditingId(null)}
-          onRenameFood={renameFood}
-          onSave={(patch) => {
-            editEntry.mutate({ id: editing.id, patch }, {
-              onSuccess: () => setEditingId(null),
-            });
-          }}
+      {usuals.length > 0 && (
+        <UsualsBar
+          templates={usuals}
+          manage={manageUsuals}
+          onToggleManage={() => setManageUsuals(v => !v)}
+          onLog={(id) => logTemplate.mutate(id)}
+          onDelete={(id) => deleteTemplate.mutate(id)}
+          loggingPending={logTemplate.isPending}
+          deletingPending={deleteTemplate.isPending}
         />
       )}
+
+      {isToday && (
+        <>
+          <PasteFood onLogged={refresh} />
+          <QuickLog onLogged={refresh} />
+        </>
+      )}
+      <EditorPane
+        editing={editing}
+        dayEntries={entries.data ?? []}
+        busy={editEntry.isPending}
+        onCancel={() => setEditingId(null)}
+        onRenameFood={renameFood}
+        onSave={(id, patch) => {
+          editEntry.mutate({ id, patch }, {
+            onSuccess: () => setEditingId(null),
+          });
+        }}
+      />
       <EntryList
         entries={entries.data}
         onDelete={(id) => deleteEntry.mutate(id)}
         onEdit={setEditingId}
         onSaveSlotAsUsual={saveSlotAsUsual}
         savingUsual={createTemplate.isPending}
+        isToday={isToday}
+        onCopyEntry={(e) => copyOneToToday.mutate(e)}
+        onCopyMeal={(list) => copyMealToToday.mutate(list)}
+        copying={copyOneToToday.isPending || copyMealToToday.isPending}
       />
+    </div>
+  );
+}
+
+function EditorPane({ editing, dayEntries, busy, onCancel, onRenameFood, onSave }: {
+  editing: MealEntry | null;
+  dayEntries: MealEntry[];
+  busy: boolean;
+  onCancel: () => void;
+  onRenameFood: (food_id: string, name: string) => Promise<void>;
+  onSave: (id: string, patch: { ts?: string; slot?: MealSlot }) => void;
+}) {
+  if (!editing) return null;
+  return (
+    <EntryTimeEditor
+      entry={editing}
+      dayEntries={dayEntries}
+      busy={busy}
+      onCancel={onCancel}
+      onRenameFood={onRenameFood}
+      onSave={(patch) => onSave(editing.id, patch)}
+    />
+  );
+}
+
+function UsualsBar({ templates, manage, onToggleManage, onLog, onDelete, loggingPending, deletingPending }: {
+  templates: MealTemplate[];
+  manage: boolean;
+  onToggleManage: () => void;
+  onLog: (id: string) => void;
+  onDelete: (id: string) => void;
+  loggingPending: boolean;
+  deletingPending: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs uppercase tracking-wide text-neutral-500">My usuals</div>
+        <button
+          onClick={onToggleManage}
+          className="text-[11px] text-neutral-500 active:text-neutral-200 px-2 py-1"
+          aria-label={manage ? "done managing" : "manage usuals"}
+        >
+          {manage ? "done" : "manage"}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {templates.map(tpl => (
+          <div key={tpl.id} className="flex items-stretch">
+            <button
+              onClick={() => !manage && tpl.id && onLog(tpl.id)}
+              disabled={loggingPending || manage}
+              className={`px-3 py-2 text-sm min-h-[44px] ${
+                manage
+                  ? "rounded-l-full bg-neutral-800 text-neutral-300 disabled:opacity-100"
+                  : "rounded-full bg-neutral-800 active:bg-neutral-600 disabled:opacity-50"
+              }`}
+            >
+              + {tpl.name}
+            </button>
+            {manage && tpl.id && (
+              <button
+                onClick={() => {
+                  if (confirm(`Delete usual "${tpl.name}"?`)) {
+                    onDelete(tpl.id!);
+                  }
+                }}
+                disabled={deletingPending}
+                className="px-3 py-2 rounded-r-full bg-red-900/60 active:bg-red-800 text-red-200 text-sm min-h-[44px]"
+                aria-label={`delete ${tpl.name}`}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -210,18 +284,25 @@ function slotTotals(list: MealEntry[]): { cal: number; protein: number } {
   return { cal, protein };
 }
 
-function EntryList({ entries, onDelete, onEdit, onSaveSlotAsUsual, savingUsual }: {
+function EntryList({ entries, onDelete, onEdit, onSaveSlotAsUsual, savingUsual, isToday, onCopyEntry, onCopyMeal, copying }: {
   entries: MealEntry[] | undefined;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onSaveSlotAsUsual: (slot: MealSlot, list: MealEntry[], name: string) => void;
   savingUsual: boolean;
+  isToday: boolean;
+  onCopyEntry: (e: MealEntry) => void;
+  onCopyMeal: (list: MealEntry[]) => void;
+  copying: boolean;
 }) {
+  const header = isToday ? "Today’s log" : "Day log";
   if (!entries?.length) {
     return (
       <div>
-        <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Today’s log</div>
-        <div className="text-sm text-neutral-500">nothing logged yet</div>
+        <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">{header}</div>
+        <div className="text-sm text-neutral-500">
+          {isToday ? "nothing logged yet" : "nothing logged this day"}
+        </div>
       </div>
     );
   }
@@ -230,7 +311,7 @@ function EntryList({ entries, onDelete, onEdit, onSaveSlotAsUsual, savingUsual }
   return (
     <div className="space-y-4">
       <div className="text-xs uppercase tracking-wide text-neutral-500">
-        Today’s log ({entries.length})
+        {header} ({entries.length})
       </div>
       {visibleSlots.map(slot => (
         <SlotSection
@@ -241,6 +322,10 @@ function EntryList({ entries, onDelete, onEdit, onSaveSlotAsUsual, savingUsual }
           onEdit={onEdit}
           onSaveAsUsual={onSaveSlotAsUsual}
           savingUsual={savingUsual}
+          isToday={isToday}
+          onCopyEntry={onCopyEntry}
+          onCopyMeal={onCopyMeal}
+          copying={copying}
         />
       ))}
     </div>
@@ -255,13 +340,17 @@ function templateableEntries(list: MealEntry[]): MealEntry[] {
   return list.filter(e => !TEMPLATE_EXCLUDED_NAMES.has(e.food_name));
 }
 
-function SlotSection({ slot, list, onDelete, onEdit, onSaveAsUsual, savingUsual }: {
+function SlotSection({ slot, list, onDelete, onEdit, onSaveAsUsual, savingUsual, isToday, onCopyEntry, onCopyMeal, copying }: {
   slot: MealSlot;
   list: MealEntry[];
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onSaveAsUsual: (slot: MealSlot, list: MealEntry[], name: string) => void;
   savingUsual: boolean;
+  isToday: boolean;
+  onCopyEntry: (e: MealEntry) => void;
+  onCopyMeal: (list: MealEntry[]) => void;
+  copying: boolean;
 }) {
   const { cal, protein } = slotTotals(list);
   const summaryParts = [
@@ -291,13 +380,23 @@ function SlotSection({ slot, list, onDelete, onEdit, onSaveAsUsual, savingUsual 
           <span className="text-[11px] text-neutral-500 tabular-nums">
             {summaryParts.join(" · ")}
           </span>
-          {!naming && saveable.length > 0 && (
+          {!naming && isToday && saveable.length > 0 && (
             <button
               onClick={beginNaming}
               className="text-[11px] text-neutral-500 active:text-emerald-300 px-1"
               aria-label={`save ${SLOT_LABEL[slot]} as a usual`}
             >
               + save as usual
+            </button>
+          )}
+          {!isToday && saveable.length > 0 && (
+            <button
+              onClick={() => onCopyMeal(saveable)}
+              disabled={copying}
+              className="text-[11px] text-neutral-500 active:text-emerald-300 px-1 disabled:opacity-50"
+              aria-label={`copy ${SLOT_LABEL[slot]} to today`}
+            >
+              + copy to today
             </button>
           )}
         </div>
@@ -336,7 +435,15 @@ function SlotSection({ slot, list, onDelete, onEdit, onSaveAsUsual, savingUsual 
       )}
       <ul className="divide-y divide-neutral-800 text-sm">
         {list.map(e => (
-          <EntryRow key={e.id} entry={e} onDelete={onDelete} onEdit={onEdit} />
+          <EntryRow
+            key={e.id}
+            entry={e}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            showCopy={!isToday && !TEMPLATE_EXCLUDED_NAMES.has(e.food_name)}
+            onCopy={() => onCopyEntry(e)}
+            copying={copying}
+          />
         ))}
       </ul>
     </section>
@@ -351,17 +458,26 @@ function fmtClock(iso: string): string {
   return `${h % 12 === 0 ? 12 : h % 12}:${m}${ampm}`;
 }
 
-function EntryRow({ entry: e, onDelete, onEdit }: {
+function EntryRow({ entry: e, onDelete, onEdit, showCopy, onCopy, copying }: {
   entry: MealEntry;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  showCopy: boolean;
+  onCopy: () => void;
+  copying: boolean;
 }) {
+  const [flashed, setFlashed] = useState(false);
   const cal = e.macros.calories ? `${Math.round(e.macros.calories)} cal` : "";
   const protein = e.macros.protein_g ? `${Math.round(e.macros.protein_g)} p` : "";
   // slot is implicit from the section header now, so leave it out here.
   const detailParts = [
     fmtClock(e.ts), `${Math.round(e.quantity_g)}g`, cal, protein,
   ].filter(Boolean);
+  const handleCopy = () => {
+    onCopy();
+    setFlashed(true);
+    setTimeout(() => setFlashed(false), 1200);
+  };
   return (
     <li className="py-3 flex justify-between gap-3 items-center">
       <button
@@ -372,6 +488,20 @@ function EntryRow({ entry: e, onDelete, onEdit }: {
         <div className="font-medium truncate">{e.food_name}</div>
         <div className="text-xs text-neutral-500">{detailParts.join(" · ")}</div>
       </button>
+      {showCopy && (
+        <button
+          onClick={handleCopy}
+          disabled={copying}
+          aria-label={`copy ${e.food_name} to today`}
+          className={`text-xs px-3 py-2 min-h-[44px] rounded-full ${
+            flashed
+              ? "bg-emerald-700 text-white"
+              : "bg-neutral-800 text-neutral-300 active:bg-neutral-700 disabled:opacity-50"
+          }`}
+        >
+          {flashed ? "copied ✓" : "+ today"}
+        </button>
+      )}
       <button
         onClick={() => onDelete(e.id)}
         className="text-neutral-500 active:text-red-400 px-3 py-2 min-h-[44px] min-w-[44px]"

@@ -1,0 +1,14 @@
+[project]
+name = "treadmill-host"
+version = "0.1.0"
+description = "Host-side helpers for the Precor CSAFE WiFi bridge."
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]

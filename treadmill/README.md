@@ -19,18 +19,23 @@ the firmware dumb and easy to reuse for other RS232 toys.
 
 ### Wiring
 
-| ESP8266 (D1 mini) | MAX3232    | Notes                      |
-|-------------------|------------|----------------------------|
-| 3V3               | VCC        | 3.3 V, **not 5 V**         |
-| GND               | GND        |                            |
-| D6 (GPIO12) TX    | T1IN       | MCU → RS232 driver input   |
-| D5 (GPIO14) RX    | R1OUT      | RS232 receiver → MCU       |
+Using the **Proto-Advantage ICB-MAX3232** DIP-10 breakout (datasheet:
+`datasheets/ICB-MAX3232.pdf`). Pin 1 is top-left when the silkscreen
+"PROTO-ADVANTAGE" reads upright; pins descend 1→5 down the left,
+10→6 down the right. Channel 2 (DIP pins 3, 5, 6, 8) is unused.
 
-| MAX3232 RS232 side | Precor RJ45 (CSAFE) | RJ45 pin |
-|--------------------|---------------------|----------|
-| T1OUT              | RX (data into treadmill)  | 3 |
-| R1IN               | TX (data out of treadmill)| 4 |
-| GND                | Signal ground       | 7        |
+| ESP8266 (D1 mini) | MAX3232 DIP pin | MAX3232 signal | Notes                    |
+|-------------------|-----------------|----------------|--------------------------|
+| 3V3               | **1**           | VCC            | 3.3 V, **not 5 V**       |
+| GND               | **10**          | GND            | also tie to RJ45 pin 7   |
+| D6 (GPIO12) TX    | **2**           | T1IN           | MCU → RS232 driver input |
+| D5 (GPIO14) RX    | **4**           | R1OUT          | RS232 receiver → MCU     |
+
+| MAX3232 DIP pin | MAX3232 signal | Precor RJ45 (CSAFE)        | RJ45 pin |
+|-----------------|----------------|----------------------------|----------|
+| **9**           | T1OUT          | RX (data into treadmill)   | 3        |
+| **7**           | R1IN           | TX (data out of treadmill) | 4        |
+| **10**          | GND            | Signal ground              | 7        |
 
 CSAFE is 9600 8N1 per the spec. Pin 5 is a 4.75–10 V DC source the
 treadmill can supply (up to 85 mA) for accessories — leave it

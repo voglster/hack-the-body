@@ -105,6 +105,9 @@ export function TodayMeals() {
 
   const t = totals.data?.totals;
   const usuals = isToday ? templates.data ?? [] : [];
+  // Water has its own card and adds clutter/false-precision timing rows to
+  // the food log. Hide it here; vitamins still show under Supplements.
+  const visibleEntries = (entries.data ?? []).filter(e => e.food_name !== "Water");
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -137,7 +140,7 @@ export function TodayMeals() {
       )}
       <EditorPane
         editing={editing}
-        dayEntries={entries.data ?? []}
+        dayEntries={visibleEntries}
         busy={editEntry.isPending}
         onCancel={() => setEditingId(null)}
         onRenameFood={renameFood}
@@ -148,7 +151,7 @@ export function TodayMeals() {
         }}
       />
       <EntryList
-        entries={entries.data}
+        entries={visibleEntries}
         onDelete={(id) => deleteEntry.mutate(id)}
         onEdit={setEditingId}
         onSaveSlotAsUsual={saveSlotAsUsual}

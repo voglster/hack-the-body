@@ -132,18 +132,37 @@ class GarminRepo:
         )
 
     async def upsert_steps_bucket(self, b: StepsBucket) -> bool:
-        return await self._ts_upsert(
-            "metrics_steps_intraday",
-            b.source_id,
-            {
-                "ts": b.ts,
-                "end_ts": b.end_ts,
-                "steps": b.steps,
-                "activity_level": b.activity_level,
-                "raw": b.raw,
-                "meta": {"source": b.source, "source_id": b.source_id},
-            },
+        # Replace-if-changed, not insert-or-skip. Garmin retroactively revises
+        # `wellnessSteps` per bucket as the watch finishes syncing and as
+        # recorded activities upload — if we keep the first poll's value
+        # forever, today's intraday total drifts ~1k+ steps below the real
+        # daily total. Compare the value-bearing fields so the counter still
+        # reflects meaningful churn.
+        coll = self.db["metrics_steps_intraday"]
+        # end_ts is fully determined by ts (always +15min), so we only need
+        # to compare the value-bearing fields. Avoids tz-aware vs naive
+        # datetime mismatches that pymongo introduces on read.
+        existing = await coll.find_one(
+            {"meta.source_id": b.source_id},
+            {"steps": 1, "activity_level": 1},
         )
+        if (
+            existing
+            and existing.get("steps") == b.steps
+            and existing.get("activity_level") == b.activity_level
+        ):
+            return False
+        if existing:
+            await coll.delete_many({"meta.source_id": b.source_id})
+        await coll.insert_one({
+            "ts": b.ts,
+            "end_ts": b.end_ts,
+            "steps": b.steps,
+            "activity_level": b.activity_level,
+            "raw": b.raw,
+            "meta": {"source": b.source, "source_id": b.source_id},
+        })
+        return True
 
     async def upsert_workout(self, w: Workout) -> bool:
         existing = await self.db["workouts"].find_one({"source_id": w.source_id}, {"_id": 1})

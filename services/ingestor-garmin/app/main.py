@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.garmin_client import GarminClient
 from app.repo import GarminRepo
 from app.runner import run_steps_sync, run_sync
+from app.treadmill_uploader import upload_pending
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("ingestor-garmin")
@@ -67,6 +68,20 @@ async def _poll_requests(settings, db, interval_s: int = 30) -> None:
         await asyncio.sleep(interval_s)
 
 
+async def _treadmill_upload_loop(settings, db, interval_s: int = 60) -> None:
+    """Push finalized treadmill workouts to Garmin. The watch doesn't
+    auto-record the walk and Garmin's daily steps under-count without
+    our upload, so this fills the gap."""
+    while True:
+        try:
+            counts = await upload_pending(db, GarminClient(settings))
+            if counts["uploaded"] or counts["failed"]:
+                log.info("treadmill -> garmin: %s", counts)
+        except Exception:
+            log.exception("treadmill upload loop error")
+        await asyncio.sleep(interval_s)
+
+
 async def _run() -> None:
     settings = get_settings()
     client = AsyncMongoClient(settings.mongo_url, tz_aware=True)
@@ -91,7 +106,11 @@ async def _run() -> None:
              settings.garmin_schedule_cron)
 
     await _do_sync(settings, db)
-    await _poll_requests(settings, db)
+    # Run the treadmill uploader concurrently with the request poller.
+    await asyncio.gather(
+        _poll_requests(settings, db),
+        _treadmill_upload_loop(settings, db),
+    )
 
 
 def main() -> None:

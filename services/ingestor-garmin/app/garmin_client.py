@@ -140,6 +140,21 @@ class GarminClient:
             f"?calendarDate={day.isoformat()}"
         )
 
+    def upload_tcx(self, tcx_bytes: bytes, *, name_hint: str) -> dict:
+        """Upload a TCX activity. Returns Garmin's response dict (contains
+        the new `activityId` on success, or signals 409 duplicate)."""
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
+        # garminconnect.upload_activity reads from a file path, so write
+        # to a tmpfile first.
+        import tempfile  # noqa: PLC0415
+        with tempfile.NamedTemporaryFile(
+            suffix=".tcx", prefix=f"{name_hint}-", delete=False,
+        ) as f:
+            f.write(tcx_bytes)
+            path = f.name
+        return self._g.upload_activity(path)
+
 
 def today_utc() -> date:
     return datetime.now(UTC).date()

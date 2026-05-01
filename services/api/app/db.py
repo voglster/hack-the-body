@@ -13,6 +13,10 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
     "metrics_daily_summary": {"timeField": "ts", "metaField": "meta", "granularity": "hours"},
     "metrics_steps_intraday": {"timeField": "ts", "metaField": "meta", "granularity": "minutes"},
     "meal_entries": {"timeField": "ts", "metaField": "meta", "granularity": "minutes"},
+    "treadmill_samples": {
+        "timeField": "ts", "metaField": "source", "granularity": "seconds",
+        "expireAfterSeconds": 90 * 24 * 3600,
+    },
 }
 
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
@@ -22,11 +26,16 @@ REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
 
 async def ensure_collections(db: AsyncDatabase) -> None:
     existing = set(await db.list_collection_names())
-    for name, opts in TIMESERIES_COLLECTIONS.items():
+    for name, raw_opts in TIMESERIES_COLLECTIONS.items():
         if name in existing:
             continue
+        opts = dict(raw_opts)
+        ttl = opts.pop("expireAfterSeconds", None)
+        kwargs = {"timeseries": opts}
+        if ttl is not None:
+            kwargs["expireAfterSeconds"] = ttl
         try:
-            await db.create_collection(name, timeseries=opts)
+            await db.create_collection(name, **kwargs)
         except Exception:
             await db.create_collection(name)
     for name in REGULAR_COLLECTIONS:

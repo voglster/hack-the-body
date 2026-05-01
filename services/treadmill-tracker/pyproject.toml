@@ -1,0 +1,42 @@
+[project]
+name = "hack-the-body-treadmill-tracker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "pymongo>=4.9",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "mongomock-motor>=0.0.34",
+  "ruff>=0.7",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "D", "ANN", "FA", "COM812", "ISC001",
+  "EM101", "EM102", "TRY003", "G004", "BLE001", "PLR0913",
+  "RUF012", "S311", "TD", "FIX", "TRY300", "TC", "PGH003", "ERA001",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "PT", "INP001", "SLF001"]

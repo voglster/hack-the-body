@@ -34,10 +34,11 @@ See `docs/superpowers/specs/2026-04-24-hack-the-body-design.md` (full design) an
 
 The frontend is bundled **into the API image**. The Vite build runs in a multi-stage Dockerfile (`services/api/Dockerfile`), and FastAPI serves the resulting static files from `/`. There is no separate web container, no nginx, no runtime config-injection script. FastAPI also serves `/config.js` dynamically — it returns `window.__HTB__ = { apiUrl: "", apiKey: "<settings.api_key>" }` so the same-origin browser bundle can authenticate.
 
-This means **two images** ship to GHCR, not three:
+Three images ship to GHCR:
 
 - `ghcr.io/voglster/hack-the-body-app` — FastAPI + bundled FE
 - `ghcr.io/voglster/hack-the-body-ingestor-garmin` — Garmin nightly puller
+- `ghcr.io/voglster/hack-the-body-treadmill-tracker` — Precor CSAFE relay (writes raw samples; pull-on-read aggregator in the API turns them into `workouts`)
 
 ### CI
 

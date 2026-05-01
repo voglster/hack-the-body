@@ -49,6 +49,7 @@ run_eslint() {
 
 run_ruff api
 run_ruff ingestor-garmin
+run_ruff treadmill-tracker
 run_eslint web
 
 echo

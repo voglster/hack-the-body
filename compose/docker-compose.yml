@@ -77,6 +77,27 @@ services:
     networks:
       - htb
 
+  treadmill-tracker:
+    image: ghcr.io/voglster/hack-the-body-treadmill-tracker:latest
+    container_name: hack-the-body-treadmill-tracker
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: hackthebody
+      # Default to the calibrated LAN IP rather than mDNS, since
+      # bridged-network containers can't resolve `.local` names.
+      # Override in .env if your bridge moves.
+      BRIDGE_HOST: ${TREADMILL_BRIDGE_HOST:-10.0.6.180}
+      BRIDGE_PORT: ${TREADMILL_BRIDGE_PORT:-8023}
+      TZ: ${TZ:-America/Chicago}
+    networks:
+      - htb
+
 networks:
   htb:
     driver: bridge

@@ -83,6 +83,18 @@ export interface ActiveWorkout {
   source_id: string;
   activity_type: string;
 }
+
+export interface TreadmillSample {
+  ts: string;
+  source: string;
+  state: number;
+  speed_mph: number | null;
+  grade_pct: number | null;
+  distance_raw: number | null;
+  calories: number | null;
+  twork_s: number | null;
+  hr_bpm: number | null;
+}
 interface Meta { source: string; source_id: string; }
 
 export interface WaterToday {

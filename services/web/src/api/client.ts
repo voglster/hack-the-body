@@ -1,6 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
-  ActiveWorkout,
+  ActiveWorkout, TreadmillSample,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
@@ -72,6 +72,8 @@ export const api = {
       `/metrics/steps/day?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
     ),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
+  treadmillSamples: (minutes = 120) =>
+    get<TreadmillSample[]>(`/workouts/treadmill/samples?minutes=${minutes}`),
   activeWorkout: async (): Promise<ActiveWorkout | null> => {
     // Returns null on 204 (nothing active right now).
     const r = await fetch(`${BASE}/workouts/active`, { headers: authHeaders() });

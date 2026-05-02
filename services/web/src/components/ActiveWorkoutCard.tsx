@@ -7,6 +7,7 @@
  * distance / time / grade / calories.
  */
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { ActiveWorkout } from "../api/types";
@@ -102,6 +103,7 @@ function GaugeRow({
 }
 
 export function ActiveWorkoutCard() {
+  const navigate = useNavigate();
   const { data: active } = useQuery({
     queryKey: ["workouts.active"],
     queryFn: api.activeWorkout,
@@ -113,6 +115,7 @@ export function ActiveWorkoutCard() {
   });
 
   if (!active || active.status !== "active") return null;
+  const onOpen = () => navigate("/workout");
 
   // Use the trailing-window "current" reading the aggregator computes;
   // fall back to session average only if it's somehow missing (e.g. an
@@ -121,7 +124,14 @@ export function ActiveWorkoutCard() {
   const hr = active.current_hr ?? active.avg_hr;
 
   return (
-    <section className="rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-emerald-700/40 p-4 sm:p-6 space-y-4 shadow-lg shadow-emerald-900/10">
+    <section
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      role="button"
+      tabIndex={0}
+      aria-label="Walking — open workout details"
+      className="rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-emerald-700/40 p-4 sm:p-6 space-y-4 shadow-lg shadow-emerald-900/10 cursor-pointer hover:border-emerald-500/60 active:bg-neutral-900/60"
+    >
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-wider text-emerald-400 flex items-center gap-2">
           <span className="relative flex h-2 w-2">
@@ -129,6 +139,7 @@ export function ActiveWorkoutCard() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
           <span>Walking — live</span>
+          <span className="text-neutral-600">›</span>
         </div>
         <div className="text-[10px] text-neutral-500">{active.sample_count} samples</div>
       </div>

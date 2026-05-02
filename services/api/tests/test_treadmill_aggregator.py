@@ -122,6 +122,64 @@ def test_aggregate_no_hr_when_strap_missing():
 
 
 @pytest.mark.asyncio
+async def test_finalize_drops_too_short_session(mock_db):
+    # 30 samples at 1Hz = 29s duration -> below 120s threshold
+    base = datetime.now(UTC) - timedelta(hours=1)
+    docs = [_sample(base + timedelta(seconds=i)) for i in range(30)]
+    await mock_db["treadmill_samples"].insert_many(docs)
+
+    await get_active(mock_db)
+    # Nothing persisted: it was a non-workout.
+    count = await mock_db["workouts"].count_documents({"source": SOURCE})
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_drops_session_with_no_belt_movement(mock_db):
+    # Long session (5 min) but speed=0 throughout — treadmill on, no walk.
+    base = datetime.now(UTC) - timedelta(hours=1)
+    docs = [
+        _sample(base + timedelta(seconds=i), speed=0.0, dist=100)
+        for i in range(300)
+    ]
+    await mock_db["treadmill_samples"].insert_many(docs)
+
+    await get_active(mock_db)
+    count = await mock_db["workouts"].count_documents({"source": SOURCE})
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_drops_session_with_zero_distance(mock_db):
+    # Long, "active" by speed but distance counter never moved.
+    base = datetime.now(UTC) - timedelta(hours=1)
+    docs = [
+        _sample(base + timedelta(seconds=i), speed=2.0, dist=100)
+        for i in range(300)
+    ]
+    await mock_db["treadmill_samples"].insert_many(docs)
+
+    await get_active(mock_db)
+    count = await mock_db["workouts"].count_documents({"source": SOURCE})
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_keeps_real_workout(mock_db):
+    # 5 minutes of walking, distance counter advancing.
+    base = datetime.now(UTC) - timedelta(hours=1)
+    docs = [
+        _sample(base + timedelta(seconds=i), speed=2.5, dist=1000 + i * 2)
+        for i in range(300)
+    ]
+    await mock_db["treadmill_samples"].insert_many(docs)
+
+    await get_active(mock_db)
+    count = await mock_db["workouts"].count_documents({"source": SOURCE})
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_active_returns_none_for_empty(mock_db):
     summary = await get_active(mock_db)
     assert summary is None
@@ -129,16 +187,19 @@ async def test_get_active_returns_none_for_empty(mock_db):
 
 @pytest.mark.asyncio
 async def test_get_active_finalizes_completed_session(mock_db, monkeypatch):
-    # Old samples — well outside the active window.
+    # 5 minutes of real walking, well outside the active window.
     base = datetime.now(UTC) - timedelta(hours=2)
-    docs = [_sample(base + timedelta(seconds=i)) for i in range(30)]
+    docs = [
+        _sample(base + timedelta(seconds=i), speed=2.5, dist=1000 + i * 2)
+        for i in range(300)
+    ]
     await mock_db["treadmill_samples"].insert_many(docs)
 
     summary = await get_active(mock_db)
     # Most-recent session ended >30s ago -> finalized + returned (status complete).
     assert summary is not None
     assert summary.status == "complete"
-    assert summary.sample_count == 30
+    assert summary.sample_count == 300
 
     # And the workouts collection got a doc.
     stored = await mock_db["workouts"].find_one({"source": SOURCE})
@@ -170,9 +231,12 @@ async def test_get_active_returns_active_when_recent_samples(mock_db):
 @pytest.mark.asyncio
 async def test_get_active_finalizes_old_session_and_returns_active_new(mock_db):
     now = datetime.now(UTC)
-    # Old session 90 minutes ago
+    # Old real session 90 minutes ago — 5 min of walking.
     old_base = now - timedelta(minutes=90)
-    old_docs = [_sample(old_base + timedelta(seconds=i)) for i in range(20)]
+    old_docs = [
+        _sample(old_base + timedelta(seconds=i), speed=2.5, dist=1000 + i * 2)
+        for i in range(300)
+    ]
     # Active session right now
     new_docs = [_sample(now - timedelta(seconds=10 - i)) for i in range(10)]
     await mock_db["treadmill_samples"].insert_many(old_docs + new_docs)

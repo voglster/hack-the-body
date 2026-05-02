@@ -25,6 +25,13 @@ _MIN_SAMPLES_FOR_ZONES = 2
 # How many trailing samples define "right now". 5 samples at 2 Hz =
 # ~2.5s — responsive without single-sample twitch.
 _LIVE_WINDOW_SAMPLES = 5
+# "Real workout" gate. Sessions below ALL of these get dropped at
+# finalize time — no `workouts` doc, no Garmin upload. Catches the
+# case where the deck powers on (e.g. firmware update, accidental
+# tap) but the user never actually walks.
+MIN_REAL_DURATION_S = 120     # at least 2 minutes on the deck
+MIN_REAL_ACTIVE_S = 60        # at least 1 minute with belt moving
+MIN_REAL_DISTANCE_MI = 0.05   # at least ~80m
 HR_ZONES = [
     ("z1", 0, 110),
     ("z2", 110, 130),
@@ -243,11 +250,26 @@ async def get_active(db: AsyncDatabase) -> WorkoutSummary | None:
     return await _finalize_if_missing(db, most_recent)
 
 
+def _is_real_workout(summary: WorkoutSummary) -> bool:
+    """Filter out non-workouts: treadmill turned on but user never walked
+    (firmware update, accidental power-on, brief test of the deck)."""
+    return (
+        summary.duration_s >= MIN_REAL_DURATION_S
+        and summary.active_s >= MIN_REAL_ACTIVE_S
+        and summary.distance_mi >= MIN_REAL_DISTANCE_MI
+    )
+
+
 async def _finalize_if_missing(
     db: AsyncDatabase, samples: list[dict[str, Any]],
 ) -> WorkoutSummary | None:
     summary = _aggregate(samples, status="complete")
     if summary is None:
+        return None
+    if not _is_real_workout(summary):
+        # Non-workout: drop on the floor. Raw samples remain in the
+        # time-series until TTL expires — useful for debugging if a
+        # legitimate session got wrongly classified.
         return None
     doc = summary.to_doc()
     # Insert-if-missing keyed on source_id (started_at-derived).

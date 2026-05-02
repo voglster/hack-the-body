@@ -94,13 +94,24 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
 
 
 def _extract_activity_id(result: Any) -> int | str | None:
-    """Garmin returns either {detailedImportResult: {successes: [{internalId}]}}
-    or a flat status dict. Find the new activity id, or None if absent."""
+    """Garmin's upload response shape varies. Sometimes it's
+    {detailedImportResult: {successes: [{internalId}]}}; in practice for
+    our TCX uploads it returns {detailedImportResult: {uploadId, ...,
+    successes: []}} where uploadId is the unique reference. Fall back
+    through known keys."""
     if not isinstance(result, dict):
         return None
     detail = result.get("detailedImportResult") or {}
     successes = detail.get("successes") or []
     if successes:
         first = successes[0] or {}
-        return first.get("internalId") or first.get("id")
+        if first.get("internalId") or first.get("id"):
+            return first.get("internalId") or first.get("id")
+    # Fallback: top-level uploadId / uploadUuid. Garmin processes the
+    # file async into an activity; uploadId is our handle to it.
+    if detail.get("uploadId"):
+        return detail["uploadId"]
+    uuid = (detail.get("uploadUuid") or {}).get("uuid")
+    if uuid:
+        return uuid
     return None

@@ -91,6 +91,23 @@ async def test_uploader_doesnt_re_upload(db):
 
 
 @pytest.mark.asyncio
+async def test_uploader_uses_uploadid_when_successes_empty(db):
+    # Real-world response shape: successes is empty but uploadId is set.
+    await db["workouts"].insert_one(_workout_doc())
+    client = FakeClient(response={
+        "detailedImportResult": {
+            "uploadId": 433973775291,
+            "uploadUuid": {"uuid": "abc"},
+            "successes": [],
+        },
+    })
+    counts = await upload_pending(db, client)
+    assert counts["uploaded"] == 1
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_activity_id"] == 433973775291
+
+
+@pytest.mark.asyncio
 async def test_uploader_marks_duplicate_when_no_id_returned(db):
     await db["workouts"].insert_one(_workout_doc())
     client = FakeClient(response={"detailedImportResult": {"successes": []}})

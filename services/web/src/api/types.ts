@@ -74,6 +74,11 @@ export interface ActiveWorkout {
   hr_zones_s: { z1: number; z2: number; z3: number; z4: number; z5: number };
   calories: number;
   sample_count: number;
+  /** Last ~2.5s window. Null when status is "complete" (would be stale)
+   *  or when no recent samples carry the field. */
+  current_speed_mph: number | null;
+  current_grade_pct: number | null;
+  current_hr: number | null;
   source: string;
   source_id: string;
   activity_type: string;

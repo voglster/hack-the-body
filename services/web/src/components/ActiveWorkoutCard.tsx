@@ -114,10 +114,11 @@ export function ActiveWorkoutCard() {
 
   if (!active || active.status !== "active") return null;
 
-  const speed = active.avg_speed_mph;  // The aggregator's average IS the rolling mean over the session
-  // For a more "live" feel, use the latest sample's speed via /workouts/treadmill/samples?minutes=1
-  // — left for a follow-up; the average converges fast at 2 Hz.
-  const hr = active.avg_hr;
+  // Use the trailing-window "current" reading the aggregator computes;
+  // fall back to session average only if it's somehow missing (e.g. an
+  // older API still in flight during a deploy).
+  const speed = active.current_speed_mph ?? active.avg_speed_mph;
+  const hr = active.current_hr ?? active.avg_hr;
 
   return (
     <section className="rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-950 border border-emerald-700/40 p-4 sm:p-6 space-y-4 shadow-lg shadow-emerald-900/10">

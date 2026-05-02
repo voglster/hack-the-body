@@ -88,6 +88,31 @@ def test_aggregate_distance_handles_u16_wrap():
     assert abs(summary.distance_mi - 0.136) < 1e-6
 
 
+def test_aggregate_current_uses_trailing_window_when_active():
+    base = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
+    # First 20 samples at hr=120, last 5 jumped to hr=160. Session avg
+    # should be ~128, but `current_hr` should be ~160 since it only looks
+    # at the trailing window.
+    samples = (
+        [_sample(base + timedelta(seconds=i), hr=120) for i in range(20)]
+        + [_sample(base + timedelta(seconds=20 + i), hr=160) for i in range(5)]
+    )
+    summary = _aggregate(samples, status="active")
+    assert summary.avg_hr is not None
+    assert 125 < summary.avg_hr < 132
+    assert summary.current_hr == 160
+
+
+def test_aggregate_current_is_none_when_finalized():
+    base = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
+    samples = [_sample(base + timedelta(seconds=i)) for i in range(10)]
+    summary = _aggregate(samples, status="complete")
+    # Finalized records don't carry "current" snapshots — they'd be stale.
+    assert summary.current_hr is None
+    assert summary.current_speed_mph is None
+    assert summary.current_grade_pct is None
+
+
 def test_aggregate_no_hr_when_strap_missing():
     base = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
     samples = [_sample(base + timedelta(seconds=i), hr=0) for i in range(10)]

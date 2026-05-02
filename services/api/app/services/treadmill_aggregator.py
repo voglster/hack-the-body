@@ -22,6 +22,9 @@ MI_PER_COUNT = 0.001
 _U16_WRAP = 65536
 _MIN_SAMPLES_FOR_DISTANCE = 2
 _MIN_SAMPLES_FOR_ZONES = 2
+# How many trailing samples define "right now". 5 samples at 2 Hz =
+# ~2.5s — responsive without single-sample twitch.
+_LIVE_WINDOW_SAMPLES = 5
 HR_ZONES = [
     ("z1", 0, 110),
     ("z2", 110, 130),
@@ -49,6 +52,12 @@ class WorkoutSummary:
     calories: int
     sample_count: int
     status: str  # "active" | "complete"
+    # "Now" readings: last ~2.5s window average. None when not enough
+    # recent samples (or session is finalized — current values would be
+    # stale). Frontend uses these for live gauges; avg_* for session stats.
+    current_speed_mph: float | None = None
+    current_grade_pct: float | None = None
+    current_hr: int | None = None
 
     def to_doc(self) -> dict[str, Any]:
         return {
@@ -69,6 +78,9 @@ class WorkoutSummary:
             "calories": self.calories,
             "sample_count": self.sample_count,
             "status": self.status,
+            "current_speed_mph": self.current_speed_mph,
+            "current_grade_pct": self.current_grade_pct,
+            "current_hr": self.current_hr,
             "activity_type": "treadmill_walk",
             "duration_s_total": self.duration_s,
             "source": SOURCE,
@@ -103,6 +115,7 @@ def _aggregate(samples: list[dict[str, Any]], status: str) -> WorkoutSummary | N
         distance_mi = delta * MI_PER_COUNT
 
     hr_zones_s = _hr_zones_seconds(samples)
+    cur_speed, cur_grade, cur_hr = _current_window(samples, status)
 
     return WorkoutSummary(
         started_at=started,
@@ -120,7 +133,29 @@ def _aggregate(samples: list[dict[str, Any]], status: str) -> WorkoutSummary | N
         calories=max(cals) if cals else 0,
         sample_count=len(samples),
         status=status,
+        current_speed_mph=cur_speed,
+        current_grade_pct=cur_grade,
+        current_hr=cur_hr,
     )
+
+
+def _current_window(
+    samples: list[dict[str, Any]], status: str,
+) -> tuple[float | None, float | None, int | None]:
+    """Average the trailing _LIVE_WINDOW_SAMPLES samples for live readouts.
+
+    Only meaningful while the session is active — for finalized records,
+    "current" is stale by definition, so we return Nones."""
+    if status != "active" or not samples:
+        return None, None, None
+    window = samples[-_LIVE_WINDOW_SAMPLES:]
+    speeds = [s.get("speed_mph") for s in window if s.get("speed_mph") is not None]
+    grades = [s.get("grade_pct") for s in window if s.get("grade_pct") is not None]
+    hrs = [s.get("hr_bpm") for s in window if (s.get("hr_bpm") or 0) > 0]
+    speed = round(sum(speeds) / len(speeds), 2) if speeds else None
+    grade = round(sum(grades) / len(grades), 2) if grades else None
+    hr = int(sum(hrs) / len(hrs)) if hrs else None
+    return speed, grade, hr
 
 
 def _hr_zones_seconds(samples: list[dict[str, Any]]) -> dict[str, int]:

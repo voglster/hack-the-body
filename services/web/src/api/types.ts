@@ -54,6 +54,30 @@ export interface Workout {
   calories: number | null; notes: string | null;
   source: string; source_id: string;
 }
+
+/** Live treadmill session, computed from raw `treadmill_samples`.
+ *  /workouts/active returns 204 when nothing is active. */
+export interface ActiveWorkout {
+  status: "active" | "complete";
+  started_at: string;
+  ended_at: string;
+  duration_s: number;
+  active_s: number;
+  distance_mi: number;
+  distance_m: number;
+  avg_speed_mph: number;
+  max_speed_mph: number;
+  avg_grade_pct: number;
+  max_grade_pct: number;
+  avg_hr: number | null;
+  max_hr: number | null;
+  hr_zones_s: { z1: number; z2: number; z3: number; z4: number; z5: number };
+  calories: number;
+  sample_count: number;
+  source: string;
+  source_id: string;
+  activity_type: string;
+}
 interface Meta { source: string; source_id: string; }
 
 export interface WaterToday {

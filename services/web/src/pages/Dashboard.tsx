@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
 import { BottomNav, useActiveTab } from "../components/BottomNav";
+import { ActiveWorkoutCard } from "../components/ActiveWorkoutCard";
 import { CoachCard } from "../components/CoachCard";
 import { NotificationsCard } from "../components/NotificationsCard";
 import { NudgesCard } from "../components/NudgesCard";
@@ -131,6 +132,7 @@ function TodayTab({ onOpenTrend }: { onOpenTrend?: (focus: TrendFocus) => void }
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <ActiveWorkoutCard />
       <NudgesCard />
       <StepsTodayCard
         summary={summary}

@@ -1,5 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
+  ActiveWorkout,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
@@ -71,6 +72,14 @@ export const api = {
       `/metrics/steps/day?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
     ),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
+  activeWorkout: async (): Promise<ActiveWorkout | null> => {
+    // Returns null on 204 (nothing active right now).
+    const r = await fetch(`${BASE}/workouts/active`, { headers: authHeaders() });
+    if (r.status === 401) handleUnauthorized();
+    if (r.status === 204) return null;
+    if (!r.ok) throw new Error(`GET /workouts/active failed: ${r.status}`);
+    return (await r.json()) as ActiveWorkout;
+  },
   triggerIngest: async (source: string, kind: "full" | "steps" = "full"): Promise<unknown> => {
     const r = await fetch(`${BASE}/admin/ingest/${source}?kind=${kind}`, {
       method: "POST", headers: authHeaders(),

@@ -155,6 +155,21 @@ class GarminClient:
             path = f.name
         return self._g.upload_activity(path)
 
+    def set_activity_type_walking(self, activity_id: int | str) -> Any:
+        """Re-classify a freshly-uploaded activity as 'walking' on Garmin Connect.
+
+        TCX has no Walking sport, so we upload as Sport=Other and patch the
+        Garmin activity type afterward. typeId/parentTypeId are stable
+        Garmin enums (walking=9, parent fitness_equipment-or-running=17)."""
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
+        return self._g.set_activity_type(
+            str(activity_id),
+            type_id=9,
+            type_key="walking",
+            parent_type_id=17,
+        )
+
 
 def today_utc() -> date:
     return datetime.now(UTC).date()

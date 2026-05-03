@@ -146,8 +146,11 @@ def build_tcx(workout: dict[str, Any], samples: list[dict[str, Any]]) -> bytes:
         )},
     )
     activities = SubElement(root, f"{{{TCX_NS}}}Activities")
+    # TCX v2 only supports Running/Biking/Other. These are walking workouts,
+    # so "Other" is the honest choice — we fix the real Garmin activity type
+    # via set_activity_type() right after upload.
     activity = SubElement(activities, f"{{{TCX_NS}}}Activity",
-                          attrib={"Sport": "Running"})
+                          attrib={"Sport": "Other"})
     SubElement(activity, f"{{{TCX_NS}}}Id").text = _iso(started)
 
     lap = _build_lap(activity, workout, started)

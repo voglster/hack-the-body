@@ -57,16 +57,27 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
             result = client.upload_tcx(tcx, name_hint=name_hint)
             activity_id = _extract_activity_id(result)
             if activity_id:
+                type_corrected = False
+                if _is_real_activity_id(result):
+                    try:
+                        client.set_activity_type_walking(activity_id)
+                        type_corrected = True
+                    except Exception:
+                        log.exception(
+                            "failed to set walking type for activity %s",
+                            activity_id,
+                        )
                 await db["workouts"].update_one(
                     {"_id": workout["_id"]},
                     {"$set": {
                         "garmin_activity_id": activity_id,
                         "garmin_uploaded_at": datetime.now(UTC),
+                        "garmin_type_corrected": type_corrected,
                     }},
                 )
                 counts["uploaded"] += 1
-                log.info("uploaded treadmill workout %s -> garmin %s",
-                         wid, activity_id)
+                log.info("uploaded treadmill workout %s -> garmin %s (walking=%s)",
+                         wid, activity_id, type_corrected)
             else:
                 # 409 duplicate or unrecognized response — still mark so we
                 # don't keep retrying forever.
@@ -91,6 +102,21 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
                 }},
             )
     return counts
+
+
+def _is_real_activity_id(result: Any) -> bool:
+    """True only when the upload response gave us a real activityId (i.e. a
+    successes[0].internalId). The fallback uploadId/uploadUuid path is for
+    duplicates or async-pending uploads where the activity doesn't exist yet
+    and set_activity_type would 404."""
+    if not isinstance(result, dict):
+        return False
+    detail = result.get("detailedImportResult") or {}
+    successes = detail.get("successes") or []
+    if not successes:
+        return False
+    first = successes[0] or {}
+    return bool(first.get("internalId") or first.get("id"))
 
 
 def _extract_activity_id(result: Any) -> int | str | None:

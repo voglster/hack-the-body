@@ -51,7 +51,9 @@ def test_tcx_has_required_lap_fields():
     root = fromstring(xml)
     activity = root.find(f"{{{TCX_NS}}}Activities/{{{TCX_NS}}}Activity")
     assert activity is not None
-    assert activity.get("Sport") == "Running"
+    # Walking workouts go up as Sport=Other and get type-corrected to
+    # walking via set_activity_type after upload.
+    assert activity.get("Sport") == "Other"
     lap = activity.find(f"{{{TCX_NS}}}Lap")
     assert lap is not None
     total = lap.find(f"{{{TCX_NS}}}TotalTimeSeconds").text

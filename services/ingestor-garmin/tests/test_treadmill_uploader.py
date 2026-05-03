@@ -10,11 +10,13 @@ from app.treadmill_uploader import upload_pending
 
 
 class FakeClient:
-    def __init__(self, response=None, raises=None):
+    def __init__(self, response=None, raises=None, set_type_raises=None):
         self.response = response
         self.raises = raises
+        self.set_type_raises = set_type_raises
         self.uploads: list[bytes] = []
         self.logged_in = False
+        self.set_type_calls: list[int | str] = []
 
     def login(self):
         self.logged_in = True
@@ -24,6 +26,12 @@ class FakeClient:
         if self.raises:
             raise self.raises
         return self.response
+
+    def set_activity_type_walking(self, activity_id):
+        self.set_type_calls.append(activity_id)
+        if self.set_type_raises:
+            raise self.set_type_raises
+        return {"ok": True}
 
 
 @pytest.fixture
@@ -79,6 +87,43 @@ async def test_uploader_uploads_pending_and_marks_done(db):
 
     stored = await db["workouts"].find_one({"source": "precor-csafe"})
     assert stored["garmin_activity_id"] == 12345
+    # Activity was re-typed to walking immediately after upload.
+    assert client.set_type_calls == [12345]
+    assert stored["garmin_type_corrected"] is True
+
+
+@pytest.mark.asyncio
+async def test_uploader_marks_uncorrected_when_only_uploadid(db):
+    """Async-pending uploads (uploadId fallback path) shouldn't try to
+    set_activity_type — the activity doesn't exist yet on Garmin's side."""
+    await db["workouts"].insert_one(_workout_doc())
+    client = FakeClient(response={
+        "detailedImportResult": {
+            "uploadId": 433973775291,
+            "successes": [],
+        },
+    })
+    counts = await upload_pending(db, client)
+    assert counts["uploaded"] == 1
+    assert client.set_type_calls == []
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_type_corrected"] is False
+
+
+@pytest.mark.asyncio
+async def test_uploader_survives_set_type_failure(db):
+    """If set_activity_type errors out, the upload is still marked done so
+    we don't loop. The corrected flag stays false so we know to fix it."""
+    await db["workouts"].insert_one(_workout_doc())
+    client = FakeClient(
+        response={"detailedImportResult": {"successes": [{"internalId": 12345}]}},
+        set_type_raises=RuntimeError("boom"),
+    )
+    counts = await upload_pending(db, client)
+    assert counts["uploaded"] == 1
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_activity_id"] == 12345
+    assert stored["garmin_type_corrected"] is False
 
 
 @pytest.mark.asyncio

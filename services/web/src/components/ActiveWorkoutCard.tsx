@@ -30,19 +30,19 @@ function elapsedSeconds(startedAtIso: string): number {
 
 function hrZoneColor(hr: number | null): string {
   if (hr == null || hr <= 0) return "text-neutral-400";
-  if (hr < 110) return "text-sky-400";
-  if (hr < 130) return "text-emerald-400";
-  if (hr < 150) return "text-amber-400";
-  if (hr < 170) return "text-orange-400";
+  if (hr < 126) return "text-sky-400";
+  if (hr < 139) return "text-emerald-400";
+  if (hr < 151) return "text-amber-400";
+  if (hr < 164) return "text-orange-400";
   return "text-red-400";
 }
 
 function hrBarColor(hr: number | null): string {
   if (hr == null || hr <= 0) return "bg-neutral-600";
-  if (hr < 110) return "bg-sky-500";
-  if (hr < 130) return "bg-emerald-500";
-  if (hr < 150) return "bg-amber-500";
-  if (hr < 170) return "bg-orange-500";
+  if (hr < 126) return "bg-sky-500";
+  if (hr < 139) return "bg-emerald-500";
+  if (hr < 151) return "bg-amber-500";
+  if (hr < 164) return "bg-orange-500";
   return "bg-red-500";
 }
 
@@ -53,8 +53,9 @@ function speedBarPct(mph: number): number {
 
 function hrBarPct(hr: number | null): number {
   if (hr == null || hr <= 0) return 0;
-  // 50–190 bpm maps to 0–100%.
-  return Math.min(100, Math.max(0, ((hr - 50) / 140) * 100));
+  // RHR (51) → HRmax (176) maps 0-100%. Anchored to user's HRR so the
+  // bar is meaningful: 50% = bottom of fat-burn, 100% = peak.
+  return Math.min(100, Math.max(0, ((hr - 51) / 125) * 100));
 }
 
 function StatRow({ active }: { active: ActiveWorkout }) {

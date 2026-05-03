@@ -1,10 +1,13 @@
 /**
  * Heart-rate zone helpers.
  *
- * Static thresholds for v1 — match the API aggregator's `HR_ZONES` so
- * client labels line up with the time-in-zone the backend computes.
- * Once we wire user profile age + measured RHR into a Karvonen-based
- * personal calculation we'll thread that through here.
+ * Karvonen-derived zones for the user (age 44, RHR 51 from Garmin
+ * 30-day average, HRmax 176 = 220-age, HRR 125). Must stay in lockstep
+ * with the API aggregator's HR_ZONES so backend time-in-zone math and
+ * frontend labels agree.
+ *
+ * If RHR shifts >5 bpm or fitness step-changes (e.g. a measured HRmax),
+ * recompute: zone_lo = RHR + (HRR * pct), pct ∈ {.50, .60, .70, .80, .90}.
  */
 
 export type ZoneKey = "z1" | "z2" | "z3" | "z4" | "z5";
@@ -25,15 +28,15 @@ export interface ZoneDef {
 }
 
 export const HR_ZONES: ZoneDef[] = [
-  { key: "z1", label: "Warm-up",   lo: 0,   hi: 110,
+  { key: "z1", label: "Recovery",  lo: 0,   hi: 126,
     textClass: "text-sky-300",     bgClass: "bg-sky-500",     borderClass: "border-sky-700/50" },
-  { key: "z2", label: "Fat burn",  lo: 110, hi: 130,
+  { key: "z2", label: "Fat burn",  lo: 126, hi: 139,
     textClass: "text-emerald-300", bgClass: "bg-emerald-500", borderClass: "border-emerald-700/50" },
-  { key: "z3", label: "Cardio",    lo: 130, hi: 150,
+  { key: "z3", label: "Cardio",    lo: 139, hi: 151,
     textClass: "text-amber-300",   bgClass: "bg-amber-500",   borderClass: "border-amber-700/50" },
-  { key: "z4", label: "Threshold", lo: 150, hi: 170,
+  { key: "z4", label: "Threshold", lo: 151, hi: 164,
     textClass: "text-orange-300",  bgClass: "bg-orange-500",  borderClass: "border-orange-700/50" },
-  { key: "z5", label: "Peak",      lo: 170, hi: 999,
+  { key: "z5", label: "Peak",      lo: 164, hi: 999,
     textClass: "text-red-300",     bgClass: "bg-red-500",     borderClass: "border-red-700/50" },
 ];
 

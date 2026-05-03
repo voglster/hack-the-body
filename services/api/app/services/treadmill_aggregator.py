@@ -32,12 +32,19 @@ _LIVE_WINDOW_SAMPLES = 5
 MIN_REAL_DURATION_S = 120     # at least 2 minutes on the deck
 MIN_REAL_ACTIVE_S = 60        # at least 1 minute with belt moving
 MIN_REAL_DISTANCE_MI = 0.05   # at least ~80m
+# Karvonen-derived zones for the user (age 44, RHR 51, HRmax 176,
+# HRR 125). Z2 = fat-burn target.
+#
+# Update when fitness shifts: recompute HRmax (220-age or measured),
+# pull current RHR from metrics_daily_summary, redo HRR * %band + RHR.
+# Eventually this should live on user_profile.targets and be
+# auto-derived from the rolling 30-day RHR.
 HR_ZONES = [
-    ("z1", 0, 110),
-    ("z2", 110, 130),
-    ("z3", 130, 150),
-    ("z4", 150, 170),
-    ("z5", 170, 999),
+    ("z1", 0, 126),
+    ("z2", 126, 139),
+    ("z3", 139, 151),
+    ("z4", 151, 164),
+    ("z5", 164, 999),
 ]
 SOURCE = "precor-csafe"
 

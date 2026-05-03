@@ -62,6 +62,7 @@ export function VitaminsCard() {
     void qc.invalidateQueries({ queryKey: ["vitamins.today"] });
     void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
     void qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
+    void qc.invalidateQueries({ queryKey: ["nudges"] });
   };
 
   const log = useMutation({

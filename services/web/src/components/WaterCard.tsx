@@ -32,6 +32,7 @@ export function WaterCard() {
       void qc.invalidateQueries({ queryKey: ["water.today"] });
       void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
       void qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
+      void qc.invalidateQueries({ queryKey: ["nudges"] });
     },
   });
   const [forceExpanded, setForceExpanded] = useState(false);

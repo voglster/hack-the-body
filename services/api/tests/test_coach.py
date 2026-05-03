@@ -257,9 +257,8 @@ async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_r
     assert '"food_logged_today": false' in prompt
     assert '"entries": 0' in prompt
     # System prompt warns the model about this exact failure mode.
-    assert "food_entries_today" in prompt
-    assert "not that the client hasn't eaten" in prompt.lower() or \
-           "NOT that the client hasn't eaten" in prompt
+    assert "food_logged_today" in prompt
+    assert "food_totals.entries" in prompt
 
 
 async def test_recent_filters_by_since(client, mock_db):

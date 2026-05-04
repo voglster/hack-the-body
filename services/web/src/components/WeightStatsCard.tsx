@@ -1,0 +1,141 @@
+/**
+ * Numbers above the weight chart: current, 7d avg, 7d & 28d trend rate,
+ * delta-to-goal, and an on-target indicator that compares the actual
+ * weekly rate against the [min, max] band the user set in TargetsCard.
+ *
+ * Trend rate is least-squares regression over the window in lb/week —
+ * less noisy than endpoint subtraction (water weight swings 2-3 lb day
+ * to day; a single bad reading would otherwise flip "on track" to
+ * "stalling"). 28d rate is the truth for "am I actually losing"; 7d is
+ * the early signal.
+ */
+import { useQuery } from "@tanstack/react-query";
+
+import { api } from "../api/client";
+import { kgToLbs } from "../lib/format";
+import { ratePerWeek, rollingAverage, type Point } from "../lib/trend";
+import type { UserTargets } from "../api/types";
+
+interface RateClass {
+  label: string;
+  tone: "good" | "warn" | "info" | "bad" | "neutral";
+}
+
+function classifyRate(
+  ratePerWeekLb: number | null,
+  targets: UserTargets | undefined,
+): RateClass {
+  if (ratePerWeekLb == null) return { label: "—", tone: "neutral" };
+  const lo = targets?.weekly_loss_rate_min_lb ?? null;
+  const hi = targets?.weekly_loss_rate_max_lb ?? null;
+  // Sign convention: ratePerWeekLb is signed — negative = losing.
+  // Convert to positive "loss rate" for comparison against the band.
+  const loss = -ratePerWeekLb;
+  if (lo == null || hi == null) {
+    if (loss > 0.1) return { label: "losing", tone: "good" };
+    if (loss < -0.1) return { label: "gaining", tone: "bad" };
+    return { label: "flat", tone: "info" };
+  }
+  // ±0.25 lb/wk tolerance accommodates regression noise on small samples.
+  const tol = 0.25;
+  if (loss >= lo - tol && loss <= hi + tol) return { label: "on target", tone: "good" };
+  if (loss > hi + tol) return { label: "too fast", tone: "warn" };
+  if (loss > 0) return { label: "too slow", tone: "warn" };
+  if (loss > -0.25) return { label: "stalled", tone: "warn" };
+  return { label: "gaining", tone: "bad" };
+}
+
+const TONE_CLASS: Record<RateClass["tone"], string> = {
+  good: "text-emerald-300 bg-emerald-900/30 border-emerald-800/50",
+  warn: "text-amber-300 bg-amber-900/30 border-amber-800/50",
+  info: "text-sky-300 bg-sky-900/30 border-sky-800/50",
+  bad: "text-red-300 bg-red-900/30 border-red-800/50",
+  neutral: "text-neutral-400 bg-neutral-800/40 border-neutral-700/50",
+};
+
+function formatRate(lbPerWeek: number | null): string {
+  if (lbPerWeek == null) return "—";
+  const sign = lbPerWeek > 0 ? "+" : "";
+  return `${sign}${lbPerWeek.toFixed(2)} lb/wk`;
+}
+
+function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | null): string {
+  if (ratePerWeekLb == null) return "—";
+  // Need to be losing (negative rate) for ETA to be meaningful when
+  // goal < current.
+  const distance = currentLb - goalLb;
+  if (distance <= 0) return "at goal";
+  const lossRate = -ratePerWeekLb;
+  if (lossRate <= 0.05) return "—";
+  const weeks = distance / lossRate;
+  if (weeks < 1) return "<1 wk";
+  if (weeks > 104) return ">2 yr";
+  if (weeks > 8) return `${(weeks / 4.33).toFixed(1)} mo`;
+  return `${weeks.toFixed(1)} wk`;
+}
+
+export function WeightStatsCard() {
+  const { data: weightData } = useQuery({
+    queryKey: ["weightRange", 60],
+    queryFn: () => api.weightRange(60),
+  });
+  const { data: targets } = useQuery({
+    queryKey: ["profile.targets"],
+    queryFn: api.getTargets,
+  });
+
+  if (!weightData?.length) return null;
+
+  const pts: Point[] = weightData.map(d => ({ ts: d.ts, value: kgToLbs(d.kg) }));
+  const latest = pts[pts.length - 1];
+  const smoothed = rollingAverage(pts, 7);
+  const latestSmoothed = smoothed[smoothed.length - 1];
+  const rate7 = ratePerWeek(pts, 7);
+  const rate28 = ratePerWeek(pts, 28);
+  const goal = targets?.goal_weight_lb ?? null;
+  const toGoal = goal != null ? latestSmoothed.avg - goal : null;
+  const cls28 = classifyRate(rate28, targets);
+
+  return (
+    <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-xs uppercase tracking-wide text-neutral-400">Weight</div>
+        <div className={`text-[11px] px-2 py-0.5 rounded border ${TONE_CLASS[cls28.tone]}`}>
+          28d: {cls28.label}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="latest" value={`${latest.value.toFixed(1)} lb`} />
+        <Stat label="7d avg" value={`${latestSmoothed.avg.toFixed(1)} lb`} />
+        <Stat label="7d rate" value={formatRate(rate7)} />
+        <Stat label="28d rate" value={formatRate(rate28)} />
+      </div>
+      {goal != null && toGoal != null && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 pt-1 border-t border-neutral-800">
+          <Stat label="goal" value={`${goal.toFixed(0)} lb`} />
+          <Stat
+            label="to goal"
+            value={toGoal > 0 ? `−${toGoal.toFixed(1)} lb` : "at goal"}
+          />
+          <Stat label="ETA (28d)" value={etaWeeks(latestSmoothed.avg, goal, rate28)} />
+          {targets?.weekly_loss_rate_min_lb != null
+              && targets.weekly_loss_rate_max_lb != null && (
+            <Stat
+              label="target band"
+              value={`${targets.weekly_loss_rate_min_lb}–${targets.weekly_loss_rate_max_lb} lb/wk`}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="text-base tabular-nums">{value}</div>
+    </div>
+  );
+}

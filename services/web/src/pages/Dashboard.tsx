@@ -22,6 +22,7 @@ import { SyncDot } from "../components/SyncDot";
 import { TargetsCard } from "../components/TargetsCard";
 import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
+import { WeightStatsCard } from "../components/WeightStatsCard";
 import { WorkoutList } from "../components/WorkoutList";
 import { clearApiKey } from "../lib/auth";
 import { formatDuration, formatLbs } from "../lib/format";
@@ -208,7 +209,10 @@ function TrendsTab() {
       </Section>
       <Section title="HRV (30d)" defaultOpen={false}><HrvChart /></Section>
       <Section id="trend-weight" title="Weight (60d)" defaultOpen={focus === "weight"}>
-        <WeightChart />
+        <div className="space-y-3">
+          <WeightStatsCard />
+          <WeightChart />
+        </div>
       </Section>
       <Section title="Recent workouts" defaultOpen={false}><WorkoutList /></Section>
     </div>

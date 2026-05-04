@@ -41,6 +41,17 @@ class Targets(BaseModel):
                     "and coach context. Useful when you actively disagree "
                     "with Garmin's auto-tuned target.",
     )
+    goal_weight_lb: float | None = Field(default=None, ge=50, le=600)
+    weekly_loss_rate_min_lb: float | None = Field(
+        default=None, ge=0, le=5,
+        description="Lower bound of target weekly weight loss in lb. "
+                    "Pair with the max for a band; the dashboard colors "
+                    "actual rate green when inside [min, max].",
+    )
+    weekly_loss_rate_max_lb: float | None = Field(
+        default=None, ge=0, le=5,
+        description="Upper bound of target weekly weight loss in lb.",
+    )
 
 
 def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
@@ -53,6 +64,9 @@ def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
         "daily_carbs_g": doc.get("daily_carbs_g"),
         "daily_water_oz": doc.get("daily_water_oz"),
         "step_goal_override": doc.get("step_goal_override"),
+        "goal_weight_lb": doc.get("goal_weight_lb"),
+        "weekly_loss_rate_min_lb": doc.get("weekly_loss_rate_min_lb"),
+        "weekly_loss_rate_max_lb": doc.get("weekly_loss_rate_max_lb"),
         "updated_at": doc.get("updated_at"),
     }
 

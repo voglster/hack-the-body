@@ -222,6 +222,9 @@ export interface UserTargets {
   daily_carbs_g: number | null;
   daily_water_oz: number | null;
   step_goal_override: number | null;
+  goal_weight_lb: number | null;
+  weekly_loss_rate_min_lb: number | null;
+  weekly_loss_rate_max_lb: number | null;
   updated_at?: string;
 }
 

@@ -21,6 +21,9 @@ interface FormState {
   daily_carbs_g: string;
   daily_water_oz: string;
   step_goal_override: string;
+  goal_weight_lb: string;
+  weekly_loss_rate_min_lb: string;
+  weekly_loss_rate_max_lb: string;
 }
 
 const EMPTY: FormState = {
@@ -30,34 +33,50 @@ const EMPTY: FormState = {
   daily_carbs_g: "",
   daily_water_oz: "",
   step_goal_override: "",
+  goal_weight_lb: "",
+  weekly_loss_rate_min_lb: "",
+  weekly_loss_rate_max_lb: "",
 };
+
+const FIELDS: (keyof FormState)[] = [
+  "daily_calories", "daily_protein_g", "daily_fat_g", "daily_carbs_g",
+  "daily_water_oz", "step_goal_override",
+  "goal_weight_lb", "weekly_loss_rate_min_lb", "weekly_loss_rate_max_lb",
+];
 
 function fromServer(t: UserTargets | undefined): FormState {
   if (!t) return EMPTY;
-  return {
-    daily_calories: t.daily_calories?.toString() ?? "",
-    daily_protein_g: t.daily_protein_g?.toString() ?? "",
-    daily_fat_g: t.daily_fat_g?.toString() ?? "",
-    daily_carbs_g: t.daily_carbs_g?.toString() ?? "",
-    daily_water_oz: t.daily_water_oz?.toString() ?? "",
-    step_goal_override: t.step_goal_override?.toString() ?? "",
-  };
+  const out = { ...EMPTY };
+  for (const k of FIELDS) {
+    const v = (t as unknown as Record<string, number | null | undefined>)[k];
+    out[k] = v == null ? "" : String(v);
+  }
+  return out;
 }
 
 function toServer(f: FormState): Partial<UserTargets> {
-  const num = (s: string): number | null => {
+  const intNum = (s: string): number | null => {
     const t = s.trim();
     if (t === "") return null;
     const n = parseInt(t, 10);
     return Number.isFinite(n) ? n : null;
   };
+  const floatNum = (s: string): number | null => {
+    const t = s.trim();
+    if (t === "") return null;
+    const n = parseFloat(t);
+    return Number.isFinite(n) ? n : null;
+  };
   return {
-    daily_calories: num(f.daily_calories),
-    daily_protein_g: num(f.daily_protein_g),
-    daily_fat_g: num(f.daily_fat_g),
-    daily_carbs_g: num(f.daily_carbs_g),
-    daily_water_oz: num(f.daily_water_oz),
-    step_goal_override: num(f.step_goal_override),
+    daily_calories: intNum(f.daily_calories),
+    daily_protein_g: intNum(f.daily_protein_g),
+    daily_fat_g: intNum(f.daily_fat_g),
+    daily_carbs_g: intNum(f.daily_carbs_g),
+    daily_water_oz: intNum(f.daily_water_oz),
+    step_goal_override: intNum(f.step_goal_override),
+    goal_weight_lb: floatNum(f.goal_weight_lb),
+    weekly_loss_rate_min_lb: floatNum(f.weekly_loss_rate_min_lb),
+    weekly_loss_rate_max_lb: floatNum(f.weekly_loss_rate_max_lb),
   };
 }
 
@@ -150,6 +169,33 @@ export function TargetsCard() {
               suffix="steps"
             />
           </div>
+          <div className="text-[11px] text-neutral-500 pt-1">Weight goal</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field
+              label="goal weight"
+              value={form.goal_weight_lb}
+              onChange={onField("goal_weight_lb")}
+              placeholder="e.g. 220"
+              suffix="lb"
+              step="0.5"
+            />
+            <Field
+              label="loss rate min"
+              value={form.weekly_loss_rate_min_lb}
+              onChange={onField("weekly_loss_rate_min_lb")}
+              placeholder="e.g. 1"
+              suffix="lb/wk"
+              step="0.25"
+            />
+            <Field
+              label="loss rate max"
+              value={form.weekly_loss_rate_max_lb}
+              onChange={onField("weekly_loss_rate_max_lb")}
+              placeholder="e.g. 1.5"
+              suffix="lb/wk"
+              step="0.25"
+            />
+          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -170,12 +216,13 @@ export function TargetsCard() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, suffix }: {
+function Field({ label, value, onChange, placeholder, suffix, step }: {
   label: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
   suffix?: string;
+  step?: string;
 }) {
   return (
     <label className="block">
@@ -183,7 +230,8 @@ function Field({ label, value, onChange, placeholder, suffix }: {
       <div className="relative">
         <input
           type="number"
-          inputMode="numeric"
+          inputMode={step ? "decimal" : "numeric"}
+          step={step}
           value={value}
           onChange={onChange}
           placeholder={placeholder}

@@ -31,6 +31,24 @@ export function shiftLocalISO(localDateISO: string, delta: number): string {
   return `${yy}-${mm}-${dd}`;
 }
 
+// Slot-typical local hour. When the user logs a forgotten meal to a past
+// day we need *some* timestamp; rather than guess "midnight" or "now",
+// pin to a sensible mealtime so the coach's time-of-day reasoning still
+// works.
+const SLOT_HOURS: Record<string, number> = {
+  breakfast: 8,
+  lunch: 12,
+  dinner: 19,
+  snack: 15,
+  supplement: 9,
+};
+
+export function slotTimestampUTC(localDateISO: string, slot: string): string {
+  const [y, m, d] = localDateISO.split("-").map(Number);
+  const hour = SLOT_HOURS[slot] ?? 12;
+  return new Date(y, m - 1, d, hour, 0, 0, 0).toISOString();
+}
+
 export function formatLocalDay(localDateISO: string): string {
   const [y, m, d] = localDateISO.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, {

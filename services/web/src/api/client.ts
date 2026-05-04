@@ -113,9 +113,9 @@ export const api = {
   createFood: (food: Partial<Food>) => post<Food>("/foods", food),
   parseFoodText: (text: string) =>
     post<{ items: ParsedFoodItem[] }>("/foods/parse", { text }),
-  logParsedFoods: (items: ParsedFoodItem[], slot: MealSlot) =>
+  logParsedFoods: (items: ParsedFoodItem[], slot: MealSlot, ts?: string) =>
     post<{ count: number; entries: MealEntry[] }>(
-      "/foods/parse/log", { items, slot },
+      "/foods/parse/log", ts ? { items, slot, ts } : { items, slot },
     ),
   reportParseFailure: (
     text: string,
@@ -140,8 +140,13 @@ export const api = {
   // meal entries
   todayTotals: (day?: string) => get<TodayTotals>(`/meals/today/totals?${dayWindowQuery(day)}`),
   todayEntries: (day?: string) => get<MealEntry[]>(`/meals/entries?${dayWindowQuery(day)}`),
-  logEntry: (req: { food_id: string; quantity_g: number; slot: MealSlot; note?: string }) =>
-    post<MealEntry>("/meals/entries", req),
+  logEntry: (req: {
+    food_id: string;
+    quantity_g: number;
+    slot: MealSlot;
+    note?: string;
+    ts?: string;
+  }) => post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
   editEntry: (entry_id: string, patch: { ts?: string; slot?: MealSlot; quantity_g?: number }) => {
     return fetch(`${BASE}/meals/entries/${entry_id}`, {

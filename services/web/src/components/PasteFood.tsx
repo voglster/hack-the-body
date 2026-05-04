@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { MealSlot, ParsedFoodItem } from "../api/types";
+import { slotTimestampUTC } from "../lib/tz";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
 
@@ -19,7 +20,7 @@ function defaultSlot(): MealSlot {
   return "snack";
 }
 
-export function PasteFood({ onLogged }: { onLogged: () => void }) {
+export function PasteFood({ onLogged, day }: { onLogged: () => void; day: string | null }) {
   const [text, setText] = useState("");
   const [items, setItems] = useState<ParsedFoodItem[] | null>(null);
   // Snapshot of what the parser returned before the user edited anything,
@@ -73,7 +74,7 @@ export function PasteFood({ onLogged }: { onLogged: () => void }) {
     if (!items?.length) return;
     setBusy(true); setError(null);
     try {
-      await api.logParsedFoods(items, slot);
+      await api.logParsedFoods(items, slot, day ? slotTimestampUTC(day, slot) : undefined);
       setText(""); setItems(null); setOriginalItems([]); setReported(false);
       onLogged();
     } catch (e) {

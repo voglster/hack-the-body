@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { Food, MealEntry, MealSlot, MealTemplate } from "../api/types";
-import { todayLocalISO } from "../lib/tz";
+import { slotTimestampUTC, todayLocalISO } from "../lib/tz";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { DayNav } from "./DayNav";
 import { EntryTimeEditor } from "./EntryTimeEditor";
@@ -132,12 +132,7 @@ export function TodayMeals() {
         />
       )}
 
-      {isToday && (
-        <>
-          <PasteFood onLogged={refresh} />
-          <QuickLog onLogged={refresh} />
-        </>
-      )}
+      <Loggers refresh={refresh} day={isToday ? null : viewedDay} />
       <EditorPane
         editing={editing}
         dayEntries={visibleEntries}
@@ -162,6 +157,20 @@ export function TodayMeals() {
         copying={copyOneToToday.isPending || copyMealToToday.isPending}
       />
     </div>
+  );
+}
+
+function Loggers({ refresh, day }: { refresh: () => void; day: string | null }) {
+  return (
+    <>
+      {day && (
+        <div className="text-xs text-amber-300/80 bg-amber-900/20 border border-amber-800/40 rounded px-3 py-2">
+          Logging to {day} — backdated entries land at the slot's typical hour.
+        </div>
+      )}
+      <PasteFood onLogged={refresh} day={day} />
+      <QuickLog onLogged={refresh} day={day} />
+    </>
   );
 }
 
@@ -532,7 +541,7 @@ interface QuickLogState {
   unknownBarcode: string | null;
 }
 
-function QuickLog({ onLogged }: { onLogged: () => void }) {
+function QuickLog({ onLogged, day }: { onLogged: () => void; day: string | null }) {
   const [s, setS] = useState<QuickLogState>({
     q: "", hits: [], picked: null, qty: "",
     slot: "snack", scanning: false, busy: false, error: null,
@@ -580,6 +589,7 @@ function QuickLog({ onLogged }: { onLogged: () => void }) {
       const grams = servings * (s.picked.serving_g || 100);
       await api.logEntry({
         food_id: s.picked.id, quantity_g: grams, slot: s.slot,
+        ...(day ? { ts: slotTimestampUTC(day, s.slot) } : {}),
       });
       setS({ q: "", hits: [], picked: null, qty: "",
              slot: s.slot, scanning: false, busy: false, error: null,

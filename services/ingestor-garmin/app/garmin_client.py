@@ -105,10 +105,25 @@ class GarminClient:
         )
 
     def fetch_workouts(self, start: date, end: date) -> list[dict]:
-        return self._connectapi(
-            f"/activitylist-service/activities/search/activities"
-            f"?startDate={start.isoformat()}&endDate={end.isoformat()}&limit=200"
-        )
+        # Paginate. Garmin caps each page at 200; iterate via &start= until
+        # a short page comes back. Otherwise duplicate-flood cleanup misses
+        # everything past activity #200.
+        out: list[dict] = []
+        page_size = 200
+        offset = 0
+        while True:
+            page = self._connectapi(
+                f"/activitylist-service/activities/search/activities"
+                f"?startDate={start.isoformat()}&endDate={end.isoformat()}"
+                f"&start={offset}&limit={page_size}"
+            )
+            if not isinstance(page, list) or not page:
+                break
+            out.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        return out
 
     def fetch_rhr_series(self, start: date, end: date) -> list[dict]:
         return self._connectapi(

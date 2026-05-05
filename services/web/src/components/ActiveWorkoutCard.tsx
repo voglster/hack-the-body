@@ -116,7 +116,7 @@ export function ActiveWorkoutCard() {
   });
 
   if (!active || active.status !== "active") return null;
-  const onOpen = () => navigate("/workout");
+  const onOpen = () => navigate(`/workouts/${encodeURIComponent(active.source_id)}`);
 
   // Use the trailing-window "current" reading the aggregator computes;
   // fall back to session average only if it's somehow missing (e.g. an

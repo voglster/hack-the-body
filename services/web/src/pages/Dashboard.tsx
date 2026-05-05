@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
@@ -238,6 +238,16 @@ function MoreTab() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <Link
+        to="/workouts"
+        className="block rounded-xl bg-neutral-900 border border-neutral-800 p-4 active:bg-neutral-900/60"
+      >
+        <div className="flex items-center justify-between">
+          <span className="font-medium">Workouts</span>
+          <span className="text-neutral-600">›</span>
+        </div>
+        <div className="text-xs text-neutral-500 mt-1">Cardio + strength history</div>
+      </Link>
       <TargetsCard />
       <NotificationsSettings />
       <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2">

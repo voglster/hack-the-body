@@ -1,5 +1,6 @@
 import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
+  WorkoutDetail,
   ActiveWorkout, TreadmillSample,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
@@ -72,6 +73,8 @@ export const api = {
       `/metrics/steps/day?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
     ),
   workouts:    (days = 14) => get<Workout[]>(`/workouts?days=${days}`),
+  workout: (sourceId: string) =>
+    get<WorkoutDetail>(`/workouts/${encodeURIComponent(sourceId)}`),
   treadmillSamples: (minutes = 120) =>
     get<TreadmillSample[]>(`/workouts/treadmill/samples?minutes=${minutes}`),
   activeWorkout: async (): Promise<ActiveWorkout | null> => {

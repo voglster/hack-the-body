@@ -53,6 +53,34 @@ export interface Workout {
   distance_m: number | null; avg_hr: number | null; max_hr: number | null;
   calories: number | null; notes: string | null;
   source: string; source_id: string;
+  // Optional, populated for Hevy strength rows; absent for cardio.
+  title?: string | null;
+  exercise_count?: number | null;
+  set_count?: number | null;
+  updated_at?: string | null;
+}
+
+export interface StrengthSetView {
+  set_index: number;
+  set_type: string | null;
+  reps: number | null;
+  weight_kg: number | null;
+  distance_m: number | null;
+  duration_s: number | null;
+  rpe: number | null;
+}
+
+export interface WorkoutDetailExercise {
+  index: number;
+  title: string;
+  template_id: string | null;
+  notes: string | null;
+  superset_id: string | null;
+  sets: StrengthSetView[];
+}
+
+export interface WorkoutDetail extends Workout {
+  exercises?: WorkoutDetailExercise[];
 }
 
 /** Live treadmill session, computed from raw `treadmill_samples`.

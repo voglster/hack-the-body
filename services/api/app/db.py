@@ -21,7 +21,8 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
 
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates", "coach_insights",
-                       "push_subscriptions", "parse_feedback"]
+                       "push_subscriptions", "parse_feedback",
+                       "strength_sets"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:
@@ -54,6 +55,14 @@ async def ensure_collections(db: AsyncDatabase) -> None:
     await db["push_subscriptions"].create_index("endpoint", unique=True)
     # Parse feedback: time-ordered for review.
     await db["parse_feedback"].create_index([("ts", -1)])
+    await db["strength_sets"].create_index(
+        [("workout_source_id", 1), ("exercise_index", 1), ("set_index", 1)],
+        name="strength_sets_parent_order",
+    )
+    await db["strength_sets"].create_index(
+        [("exercise_template_id", 1), ("ts", -1)],
+        name="strength_sets_exercise_ts",
+    )
 
 
 def make_client(settings: Settings) -> AsyncMongoClient:

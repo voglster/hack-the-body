@@ -63,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         push,
         vitamins,
         water,
+        webhooks,
         workouts,
     )
     app.include_router(health.router)
@@ -78,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(water.router)
     app.include_router(vitamins.router)
     app.include_router(nudges.router)
+    app.include_router(webhooks.router)
 
     _mount_frontend(app)
     return app

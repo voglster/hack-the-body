@@ -27,3 +27,6 @@ services/*/.garminsession/
 .idea/
 .vscode/
 .DS_Store
+
+# Claude Code (per-machine local state — scheduled task locks, local settings)
+.claude/

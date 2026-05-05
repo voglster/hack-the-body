@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Open Food Facts (which is EU-leaning). Free key from api.data.gov.
     usda_fdc_api_key: str = ""
 
+    # Hevy webhook bearer secret. If unset, /webhooks/hevy returns 503.
+    hevy_webhook_secret: str | None = None
+
     # Web Push (VAPID). The 'subject' is a contact mailto: per RFC 8292.
     # Keys are optional — if either is empty, the app generates a fresh
     # keypair on first start and persists it in the user_profile collection.

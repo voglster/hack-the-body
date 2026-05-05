@@ -171,6 +171,12 @@ class GarminClient:
         )
 
 
+    def delete_activity(self, activity_id: int | str) -> Any:
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
+        return self._g.delete_activity(str(activity_id))
+
+
 def today_utc() -> date:
     return datetime.now(UTC).date()
 

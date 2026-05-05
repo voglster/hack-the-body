@@ -229,6 +229,31 @@ async def test_get_active_returns_active_when_recent_samples(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_finalize_dedupes_when_lookback_window_slides(mock_db):
+    # Regression: production saw ~750 workout docs per real session because
+    # the source_id was anchored to samples[0].ts and the 6h sliding window
+    # trimmed samples off the front, minting a fresh source_id every poll.
+    # First call: full session in window. Second call: same data, but with
+    # the earliest 5 samples evicted (simulating 6h+ aging of the front).
+    base = datetime.now(UTC) - timedelta(hours=1)
+    docs = [
+        _sample(base + timedelta(seconds=i), speed=2.5, dist=1000 + i * 2)
+        for i in range(300)
+    ]
+    await mock_db["treadmill_samples"].insert_many(docs)
+    await get_active(mock_db)
+
+    # Drop the earliest 5 samples — what the sliding window would do.
+    await mock_db["treadmill_samples"].delete_many({
+        "source": SOURCE, "ts": {"$lt": base + timedelta(seconds=5)},
+    })
+    await get_active(mock_db)
+
+    count = await mock_db["workouts"].count_documents({"source": SOURCE})
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_active_finalizes_old_session_and_returns_active_new(mock_db):
     now = datetime.now(UTC)
     # Old real session 90 minutes ago — 5 min of walking.

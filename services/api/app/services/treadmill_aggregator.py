@@ -98,7 +98,15 @@ class WorkoutSummary:
             "activity_type": "treadmill_walk",
             "duration_s_total": self.duration_s,
             "source": SOURCE,
-            "source_id": f"treadmill:{self.started_at.isoformat()}",
+            # Anchored to ended_at (truncated to second) so a session has a
+            # stable identity across aggregator runs. started_at is unstable:
+            # a sliding lookback window trims earliest samples as wall-clock
+            # advances, which used to mint a fresh source_id every poll and
+            # produced a flood of duplicate workouts (and Garmin uploads).
+            "source_id": (
+                f"treadmill:end:"
+                f"{self.ended_at.replace(microsecond=0).isoformat()}"
+            ),
         }
 
 
@@ -229,6 +237,17 @@ def _split_sessions(
     return sessions
 
 
+async def _latest_finalized_end(db: AsyncDatabase) -> datetime | None:
+    doc = await db["workouts"].find_one(
+        {"source": SOURCE},
+        sort=[("ended_at", -1)],
+        projection={"ended_at": 1},
+    )
+    if not doc or doc.get("ended_at") is None:
+        return None
+    return _aware(doc["ended_at"])
+
+
 async def get_active(db: AsyncDatabase) -> WorkoutSummary | None:
     """Return the in-progress treadmill session, or None if quiet.
 
@@ -236,8 +255,15 @@ async def get_active(db: AsyncDatabase) -> WorkoutSummary | None:
     that hasn't been persisted yet.
     """
     now = datetime.now(UTC)
-    # Pull last 6 hours of samples — generous bound for a single session.
-    samples = await _fetch_samples_since(db, now - timedelta(hours=6))
+    # Pull recent samples. Floor at 6 hours back, but never reach into
+    # samples already represented by a finalized workout — re-aggregating
+    # those just produces duplicate docs (and Garmin uploads) once the
+    # 6h window starts sliding through them.
+    floor = now - timedelta(hours=6)
+    last_end = await _latest_finalized_end(db)
+    if last_end is not None and last_end > floor:
+        floor = last_end + timedelta(seconds=1)
+    samples = await _fetch_samples_since(db, floor)
     if not samples:
         return None
 

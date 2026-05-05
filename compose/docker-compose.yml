@@ -46,6 +46,7 @@ services:
       WEEKLY_TIMEOUT_S: ${WEEKLY_TIMEOUT_S:-600}
       COACH_WEEKLY_LOCAL: ${COACH_WEEKLY_LOCAL:-21:00}
       USDA_FDC_API_KEY: ${USDA_FDC_API_KEY:-}
+      HEVY_WEBHOOK_SECRET: ${HEVY_WEBHOOK_SECRET:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:hack-the-body@local}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -74,6 +75,24 @@ services:
       TZ: ${TZ:-America/Chicago}
     volumes:
       - ./data/garmin-session:/data/garmin-session
+    networks:
+      - htb
+
+  ingestor-hevy:
+    image: ghcr.io/voglster/hack-the-body-ingestor-hevy:latest
+    container_name: hack-the-body-ingestor-hevy
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: hackthebody
+      HEVY_API_KEY: ${HEVY_API_KEY:-}
+      HEVY_SCHEDULE_CRON: ${HEVY_SCHEDULE_CRON:-0 */6 * * *}
+      TZ: ${TZ:-America/Chicago}
     networks:
       - htb
 

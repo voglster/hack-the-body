@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from app.auth import require_api_key
 from app.services.treadmill_aggregator import get_active
@@ -54,3 +54,43 @@ async def treadmill_samples(
         d.pop("_id", None)
         rows.append(d)
     return rows
+
+
+@router.get("/{source_id:path}")
+async def get_workout(request: Request, source_id: str):
+    db = request.app.state.db
+    doc = await db["workouts"].find_one({"source_id": source_id})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="workout not found")
+    doc.pop("_id", None)
+
+    if doc.get("activity_type") == "strength":
+        sets_cursor = db["strength_sets"].find(
+            {"workout_source_id": source_id},
+        ).sort([("exercise_index", 1), ("set_index", 1)])
+        exercises: list[dict] = []
+        current: dict | None = None
+        async for s in sets_cursor:
+            s.pop("_id", None)
+            if current is None or s["exercise_index"] != current["index"]:
+                current = {
+                    "index": s["exercise_index"],
+                    "title": s["exercise_title"],
+                    "template_id": s.get("exercise_template_id"),
+                    "notes": s.get("notes"),
+                    "superset_id": s.get("superset_id"),
+                    "sets": [],
+                }
+                exercises.append(current)
+            current["sets"].append({
+                "set_index": s["set_index"],
+                "set_type": s.get("set_type"),
+                "reps": s.get("reps"),
+                "weight_kg": s.get("weight_kg"),
+                "distance_m": s.get("distance_m"),
+                "duration_s": s.get("duration_s"),
+                "rpe": s.get("rpe"),
+            })
+        doc["exercises"] = exercises
+
+    return doc

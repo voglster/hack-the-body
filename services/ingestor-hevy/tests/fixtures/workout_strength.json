@@ -1,0 +1,35 @@
+{
+  "id": "51a93a88-2f2e-42f2-9fe8-97b0791f836e",
+  "title": "Bodyweight",
+  "description": "",
+  "start_time": "2026-05-05T18:03:37+00:00",
+  "end_time": "2026-05-05T19:05:18+00:00",
+  "updated_at": "2026-05-05T19:05:36.254Z",
+  "created_at": "2026-05-05T19:05:36.254Z",
+  "exercises": [
+    {
+      "index": 0,
+      "title": "Incline Push Ups",
+      "notes": "5th step",
+      "exercise_template_id": "39C99849",
+      "superset_id": null,
+      "sets": [
+        {"index": 0, "type": "normal", "weight_kg": null, "reps": 12,
+         "distance_meters": null, "duration_seconds": null, "rpe": null},
+        {"index": 1, "type": "normal", "weight_kg": null, "reps": 12,
+         "distance_meters": null, "duration_seconds": null, "rpe": null}
+      ]
+    },
+    {
+      "index": 1,
+      "title": "Plank",
+      "notes": "",
+      "exercise_template_id": "C6C9B8A0",
+      "superset_id": null,
+      "sets": [
+        {"index": 0, "type": "normal", "weight_kg": null, "reps": null,
+         "distance_meters": null, "duration_seconds": 32, "rpe": null}
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.config import Settings
+from app.db import ensure_collections
 from app.main import create_app
 
 
@@ -12,14 +13,13 @@ async def app_client():
         api_key="test-key",
         mongo_url="mongodb://stub",
         mongo_db="htb_test",
-        hevy_webhook_secret="webhook-secret",  # noqa: S106
+        hevy_webhook_secret="webhook-secret",
     )
     app = create_app(settings=settings)
     # Replace the real Mongo client created by the lifespan with a mock.
     mock_client = AsyncMongoMockClient()
     app.state.mongo_client = mock_client
     app.state.db = mock_client["htb_test"]
-    from app.db import ensure_collections
     await ensure_collections(app.state.db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

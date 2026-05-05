@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -16,7 +16,7 @@ class HevyEvent(BaseModel):
 async def hevy_webhook(
     payload: HevyEvent,
     request: Request,
-    authorization: str | None = Header(default=None),
+    authorization: Annotated[str | None, Header()] = None,
 ) -> Response:
     expected = request.app.state.settings.hevy_webhook_secret
     if not expected:

@@ -186,6 +186,38 @@ class GarminClient:
         )
 
 
+    def find_activity_by_start_time(
+        self, started_at: datetime, tolerance_s: int = 90,
+    ) -> int | None:
+        """Resolve a freshly-uploaded TCX upload to its real activityId.
+
+        Garmin processes TCX uploads asynchronously: the upload response
+        carries an uploadId, but `set_activity_type` needs the real
+        activityId. This searches recent activities for one whose
+        startTimeGMT lands within tolerance_s of the workout we just
+        uploaded. Returns None if it isn't visible yet (caller should
+        retry after a short delay)."""
+        if self._g is None:
+            raise RuntimeError("login() must be called first")
+        target = started_at if started_at.tzinfo else started_at.replace(tzinfo=UTC)
+        target_utc = target.astimezone(UTC)
+        date_str = target_utc.strftime("%Y-%m-%d")
+        activities = self._g.get_activities_by_date(date_str, date_str)
+        best: tuple[float, int] | None = None
+        for a in activities or []:
+            gmt = a.get("startTimeGMT")
+            aid = a.get("activityId")
+            if not gmt or aid is None:
+                continue
+            try:
+                ts = datetime.strptime(gmt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+            except ValueError:
+                continue
+            diff = abs((ts - target_utc).total_seconds())
+            if diff <= tolerance_s and (best is None or diff < best[0]):
+                best = (diff, int(aid))
+        return best[1] if best else None
+
     def delete_activity(self, activity_id: int | str) -> Any:
         if self._g is None:
             raise RuntimeError("login() must be called first")

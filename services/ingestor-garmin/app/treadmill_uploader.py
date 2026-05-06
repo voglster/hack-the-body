@@ -6,6 +6,7 @@ Idempotent: each workout has a `garmin_activity_id` (or
 processed, so we never re-upload."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -18,6 +19,11 @@ from app.tcx import build_tcx
 log = logging.getLogger(__name__)
 
 SOURCE = "precor-csafe"
+# Garmin processes TCX uploads asynchronously — the activityId isn't
+# available immediately. Poll a few times before giving up so we don't
+# leave the activity classified as "Other".
+RESOLVE_ATTEMPTS = 4
+RESOLVE_DELAY_S = 2.0
 
 
 async def _pending(db: AsyncDatabase) -> list[dict[str, Any]]:
@@ -55,29 +61,35 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
             tcx = build_tcx(workout, samples)
             name_hint = workout["started_at"].strftime("treadmill-%Y%m%dT%H%M%S")
             result = client.upload_tcx(tcx, name_hint=name_hint)
-            activity_id = _extract_activity_id(result)
-            if activity_id:
+            upload_ref = _extract_activity_id(result)
+            if upload_ref:
+                real_id = upload_ref if _is_real_activity_id(result) else None
+                if real_id is None:
+                    real_id = await _resolve_real_activity_id(
+                        client, workout["started_at"],
+                    )
                 type_corrected = False
-                if _is_real_activity_id(result):
+                final_id: int | str = real_id if real_id is not None else upload_ref
+                if real_id is not None:
                     try:
-                        client.set_activity_type_walking(activity_id)
+                        client.set_activity_type_walking(real_id)
                         type_corrected = True
                     except Exception:
                         log.exception(
                             "failed to set walking type for activity %s",
-                            activity_id,
+                            real_id,
                         )
                 await db["workouts"].update_one(
                     {"_id": workout["_id"]},
                     {"$set": {
-                        "garmin_activity_id": activity_id,
+                        "garmin_activity_id": final_id,
                         "garmin_uploaded_at": datetime.now(UTC),
                         "garmin_type_corrected": type_corrected,
                     }},
                 )
                 counts["uploaded"] += 1
                 log.info("uploaded treadmill workout %s -> garmin %s (walking=%s)",
-                         wid, activity_id, type_corrected)
+                         wid, final_id, type_corrected)
             else:
                 # 409 duplicate or unrecognized response — still mark so we
                 # don't keep retrying forever.
@@ -102,6 +114,29 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
                 }},
             )
     return counts
+
+
+async def _resolve_real_activity_id(
+    client: GarminClient, started_at: datetime,
+) -> int | None:
+    """Poll Garmin a few times for the activity that just landed.
+
+    TCX uploads come back with only an uploadId; the real activityId
+    appears on Garmin's side a beat later as the upload is processed.
+    Try a handful of times with a small delay; return None if the
+    activity never shows up (caller leaves it as Other and we can fix
+    it by hand)."""
+    for attempt in range(RESOLVE_ATTEMPTS):
+        try:
+            aid = client.find_activity_by_start_time(started_at)
+        except Exception:
+            log.exception("activity lookup failed (attempt %d)", attempt + 1)
+            aid = None
+        if aid is not None:
+            return aid
+        if attempt < RESOLVE_ATTEMPTS - 1:
+            await asyncio.sleep(RESOLVE_DELAY_S)
+    return None
 
 
 def _is_real_activity_id(result: Any) -> bool:

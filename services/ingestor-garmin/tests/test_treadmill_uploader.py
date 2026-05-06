@@ -10,13 +10,18 @@ from app.treadmill_uploader import upload_pending
 
 
 class FakeClient:
-    def __init__(self, response=None, raises=None, set_type_raises=None):
+    def __init__(
+        self, response=None, raises=None, set_type_raises=None,
+        resolved_activity_id=None,
+    ):
         self.response = response
         self.raises = raises
         self.set_type_raises = set_type_raises
+        self.resolved_activity_id = resolved_activity_id
         self.uploads: list[bytes] = []
         self.logged_in = False
         self.set_type_calls: list[int | str] = []
+        self.resolve_calls: list[datetime] = []
 
     def login(self):
         self.logged_in = True
@@ -32,6 +37,17 @@ class FakeClient:
         if self.set_type_raises:
             raise self.set_type_raises
         return {"ok": True}
+
+    def find_activity_by_start_time(self, started_at, tolerance_s=90):  # noqa: ARG002
+        self.resolve_calls.append(started_at)
+        return self.resolved_activity_id
+
+
+@pytest.fixture(autouse=True)
+def _no_resolve_delay(monkeypatch):
+    # Keep tests fast: skip the inter-attempt sleep when polling for
+    # the async-promoted activityId.
+    monkeypatch.setattr("app.treadmill_uploader.RESOLVE_DELAY_S", 0)
 
 
 @pytest.fixture
@@ -93,21 +109,53 @@ async def test_uploader_uploads_pending_and_marks_done(db):
 
 
 @pytest.mark.asyncio
-async def test_uploader_marks_uncorrected_when_only_uploadid(db):
-    """Async-pending uploads (uploadId fallback path) shouldn't try to
-    set_activity_type — the activity doesn't exist yet on Garmin's side."""
+async def test_uploader_marks_uncorrected_when_only_uploadid_and_resolve_fails(db):
+    """If the upload returns only an uploadId AND we can't find the
+    promoted activityId via lookup, fall back to the uploadId and leave
+    the type uncorrected — at least the row is marked done so we don't
+    loop."""
     await db["workouts"].insert_one(_workout_doc())
-    client = FakeClient(response={
-        "detailedImportResult": {
-            "uploadId": 433973775291,
-            "successes": [],
+    client = FakeClient(
+        response={
+            "detailedImportResult": {
+                "uploadId": 433973775291,
+                "successes": [],
+            },
         },
-    })
+        resolved_activity_id=None,
+    )
     counts = await upload_pending(db, client)
     assert counts["uploaded"] == 1
     assert client.set_type_calls == []
     stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_activity_id"] == 433973775291
     assert stored["garmin_type_corrected"] is False
+    # We polled — multiple times — to try to resolve.
+    assert len(client.resolve_calls) >= 2
+
+
+@pytest.mark.asyncio
+async def test_uploader_resolves_uploadid_then_corrects_type(db):
+    """The common production path: TCX upload returns successes:[]
+    + uploadId, but the activity is on Garmin's side a beat later. We
+    look it up by start time, store the real activityId, and reclassify
+    it to walking."""
+    await db["workouts"].insert_one(_workout_doc())
+    client = FakeClient(
+        response={
+            "detailedImportResult": {
+                "uploadId": 433973775291,
+                "successes": [],
+            },
+        },
+        resolved_activity_id=22769921591,
+    )
+    counts = await upload_pending(db, client)
+    assert counts["uploaded"] == 1
+    assert client.set_type_calls == [22769921591]
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_activity_id"] == 22769921591
+    assert stored["garmin_type_corrected"] is True
 
 
 @pytest.mark.asyncio
@@ -136,16 +184,20 @@ async def test_uploader_doesnt_re_upload(db):
 
 
 @pytest.mark.asyncio
-async def test_uploader_uses_uploadid_when_successes_empty(db):
-    # Real-world response shape: successes is empty but uploadId is set.
+async def test_uploader_uses_uploadid_when_successes_empty_and_no_lookup(db):
+    # When successes is empty and the lookup also can't find it, we
+    # still record the uploadId so the row isn't re-uploaded.
     await db["workouts"].insert_one(_workout_doc())
-    client = FakeClient(response={
-        "detailedImportResult": {
-            "uploadId": 433973775291,
-            "uploadUuid": {"uuid": "abc"},
-            "successes": [],
+    client = FakeClient(
+        response={
+            "detailedImportResult": {
+                "uploadId": 433973775291,
+                "uploadUuid": {"uuid": "abc"},
+                "successes": [],
+            },
         },
-    })
+        resolved_activity_id=None,
+    )
     counts = await upload_pending(db, client)
     assert counts["uploaded"] == 1
     stored = await db["workouts"].find_one({"source": "precor-csafe"})

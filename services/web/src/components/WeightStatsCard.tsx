@@ -1,20 +1,27 @@
 /**
- * Numbers above the weight chart: current, 7d avg, 7d & 28d trend rate,
- * delta-to-goal, and an on-target indicator that compares the actual
- * weekly rate against the [min, max] band the user set in TargetsCard.
+ * Weight numbers above the chart.
  *
- * Trend rate is least-squares regression over the window in lb/week —
- * less noisy than endpoint subtraction (water weight swings 2-3 lb day
- * to day; a single bad reading would otherwise flip "on track" to
- * "stalling"). 28d rate is the truth for "am I actually losing"; 7d is
- * the early signal.
+ * Two numbers describe "rate":
+ *   - smoothed Δ (lead with this)  — (today's 7d avg) − (7d avg N days ago).
+ *     Stable; what people mean by "am I losing".
+ *   - regression trend (secondary) — least-squares slope through every
+ *     intraday weigh-in. Reacts faster but inflates when the window
+ *     happens to start on a high reading.
+ *
+ * The "since 4/26" footer always reflects actual elapsed days, not a
+ * 28d label that lies during early protocol.
  */
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import { kgToLbs } from "../lib/format";
-import { sinceProtocolStart } from "../lib/protocol";
-import { ratePerWeek, rollingAverage, type Point } from "../lib/trend";
+import { PROTOCOL_START_ISO, sinceProtocolStart } from "../lib/protocol";
+import {
+  ratePerWeek,
+  rollingAverage,
+  smoothedRatePerWeek,
+  type Point,
+} from "../lib/trend";
 import type { UserTargets } from "../api/types";
 
 interface RateClass {
@@ -29,15 +36,12 @@ function classifyRate(
   if (ratePerWeekLb == null) return { label: "—", tone: "neutral" };
   const lo = targets?.weekly_loss_rate_min_lb ?? null;
   const hi = targets?.weekly_loss_rate_max_lb ?? null;
-  // Sign convention: ratePerWeekLb is signed — negative = losing.
-  // Convert to positive "loss rate" for comparison against the band.
   const loss = -ratePerWeekLb;
   if (lo == null || hi == null) {
     if (loss > 0.1) return { label: "losing", tone: "good" };
     if (loss < -0.1) return { label: "gaining", tone: "bad" };
     return { label: "flat", tone: "info" };
   }
-  // ±0.25 lb/wk tolerance accommodates regression noise on small samples.
   const tol = 0.25;
   if (loss >= lo - tol && loss <= hi + tol) return { label: "on target", tone: "good" };
   if (loss > hi + tol) return { label: "too fast", tone: "warn" };
@@ -60,10 +64,13 @@ function formatRate(lbPerWeek: number | null): string {
   return `${sign}${lbPerWeek.toFixed(2)} lb/wk`;
 }
 
+function formatLb(lb: number): string {
+  const sign = lb > 0 ? "+" : lb < 0 ? "−" : "";
+  return `${sign}${Math.abs(lb).toFixed(1)} lb`;
+}
+
 function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | null): string {
   if (ratePerWeekLb == null) return "—";
-  // Need to be losing (negative rate) for ETA to be meaningful when
-  // goal < current.
   const distance = currentLb - goalLb;
   if (distance <= 0) return "at goal";
   const lossRate = -ratePerWeekLb;
@@ -73,6 +80,11 @@ function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | nul
   if (weeks > 104) return ">2 yr";
   if (weeks > 8) return `${(weeks / 4.33).toFixed(1)} mo`;
   return `${weeks.toFixed(1)} wk`;
+}
+
+function formatProtocolStart(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 export function WeightStatsCard() {
@@ -93,26 +105,70 @@ export function WeightStatsCard() {
   const latest = pts[pts.length - 1];
   const smoothed = rollingAverage(pts, 7);
   const latestSmoothed = smoothed[smoothed.length - 1];
-  const rate7 = ratePerWeek(pts, 7);
-  const rate28 = ratePerWeek(pts, 28);
+  const firstSmoothed = smoothed[0];
+
+  const smoothed7 = smoothedRatePerWeek(pts, 7);
+  const rate7Trend = ratePerWeek(pts, 7);
+
+  // Total elapsed days since first reading post-protocol.
+  const elapsedMs =
+    new Date(latest.ts).getTime() - new Date(firstSmoothed.ts).getTime();
+  const elapsedDays = elapsedMs / 86_400_000;
+  const sinceStartLb = latestSmoothed.avg - firstSmoothed.avg;
+  const sinceStartRate = elapsedDays > 0
+    ? (sinceStartLb / elapsedDays) * 7
+    : null;
+
   const goal = targets?.goal_weight_lb ?? null;
   const toGoal = goal != null ? latestSmoothed.avg - goal : null;
-  const cls28 = classifyRate(rate28, targets);
+  const cls = classifyRate(smoothed7.rate ?? sinceStartRate, targets);
+
+  const isEarlyProtocol = elapsedDays < 14;
 
   return (
     <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-xs uppercase tracking-wide text-neutral-400">Weight</div>
-        <div className={`text-[11px] px-2 py-0.5 rounded border ${TONE_CLASS[cls28.tone]}`}>
-          28d: {cls28.label}
+        <div className={`text-[11px] px-2 py-0.5 rounded border ${TONE_CLASS[cls.tone]}`}>
+          {cls.label}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="latest" value={`${latest.value.toFixed(1)} lb`} />
         <Stat label="7d avg" value={`${latestSmoothed.avg.toFixed(1)} lb`} />
-        <Stat label="7d rate" value={formatRate(rate7)} />
-        <Stat label="28d rate" value={formatRate(rate28)} />
+        <Stat
+          label="last 7d"
+          value={formatRate(smoothed7.rate)}
+          hint="7d avg now vs 7d ago"
+        />
+        <Stat
+          label="trend pace"
+          value={formatRate(rate7Trend)}
+          hint="regression — reacts to single weigh-ins"
+        />
       </div>
+      <div className="text-[11px] text-neutral-400 pt-1 border-t border-neutral-800
+                      flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span>
+          since {formatProtocolStart(PROTOCOL_START_ISO)}
+          <span className="text-neutral-500"> ({elapsedDays.toFixed(0)}d)</span>:
+          {" "}
+          <span className="text-neutral-200 tabular-nums">
+            {formatLb(sinceStartLb)}
+          </span>
+          {sinceStartRate != null && (
+            <span className="text-neutral-500"> · {formatRate(sinceStartRate)}</span>
+          )}
+        </span>
+      </div>
+      {isEarlyProtocol && (
+        <div className="text-[11px] text-amber-300/80 bg-amber-900/15 border
+                        border-amber-800/40 rounded px-2 py-1.5 leading-snug">
+          Early protocol — first 1–2 weeks include water + glycogen drop
+          (~2–4 lb that isn&apos;t fat). Real sustainable rate emerges around
+          day 14.
+        </div>
+      )}
       {goal != null && toGoal != null && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 pt-1 border-t border-neutral-800">
           <Stat label="goal" value={`${goal.toFixed(0)} lb`} />
@@ -120,7 +176,10 @@ export function WeightStatsCard() {
             label="to goal"
             value={toGoal > 0 ? `−${toGoal.toFixed(1)} lb` : "at goal"}
           />
-          <Stat label="ETA (28d)" value={etaWeeks(latestSmoothed.avg, goal, rate28)} />
+          <Stat
+            label="ETA"
+            value={etaWeeks(latestSmoothed.avg, goal, smoothed7.rate ?? sinceStartRate)}
+          />
           {targets?.weekly_loss_rate_min_lb != null
               && targets.weekly_loss_rate_max_lb != null && (
             <Stat
@@ -134,9 +193,9 @@ export function WeightStatsCard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div>
+    <div title={hint}>
       <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
       <div className="text-base tabular-nums">{value}</div>
     </div>

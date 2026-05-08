@@ -40,3 +40,34 @@ export function ratePerWeek(pts: Point[], days: number, now?: Date): number | nu
   // num/den is units-per-ms. Convert to per-week.
   return (num / den) * MS_PER_WEEK;
 }
+
+// Smoothed week-over-week change: difference between today's 7d
+// rolling avg and the 7d rolling avg from `daysAgo` days back, scaled
+// to lb/week. Less spiky than the regression `ratePerWeek` because it
+// compares two stable averages instead of fitting a slope through
+// every intraday weigh-in. This is the number to lead with when
+// answering "am I actually losing weight" — endpoint regression
+// inflates when the window starts on a high reading and ends on a
+// low one, even if the trend line through the middle is gentle.
+export function smoothedRatePerWeek(
+  pts: Point[],
+  daysAgo: number,
+  now?: Date,
+): { rate: number | null; coveredDays: number } {
+  if (pts.length < 2) return { rate: null, coveredDays: 0 };
+  const smoothed = rollingAverage(pts, 7);
+  const last = smoothed[smoothed.length - 1];
+  const nowMs = (now ?? new Date()).getTime();
+  const targetMs = nowMs - daysAgo * MS_PER_DAY;
+  // Find the smoothed point closest to (but not after) `targetMs`. If
+  // we don't have data going back that far, use the earliest point.
+  let pivot = smoothed[0];
+  for (const s of smoothed) {
+    if (new Date(s.ts).getTime() <= targetMs) pivot = s;
+    else break;
+  }
+  const dtMs = new Date(last.ts).getTime() - new Date(pivot.ts).getTime();
+  if (dtMs <= 0) return { rate: null, coveredDays: 0 };
+  const rate = ((last.avg - pivot.avg) / dtMs) * MS_PER_WEEK;
+  return { rate, coveredDays: dtMs / MS_PER_DAY };
+}

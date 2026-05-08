@@ -36,6 +36,20 @@ async def _pending(db: AsyncDatabase) -> list[dict[str, Any]]:
     return [w async for w in cur]
 
 
+async def _stranded(db: AsyncDatabase) -> list[dict[str, Any]]:
+    """Workouts that uploaded but never got reclassified to walking — pre-fix
+    rows, transient set_activity_type failures, or uploads stored under their
+    uploadId because activity-id resolution timed out. Garmin shows them as
+    'Other'; we keep retrying until the type sticks."""
+    cur = db["workouts"].find({
+        "source": SOURCE,
+        "garmin_activity_id": {"$exists": True},
+        "garmin_type_corrected": {"$ne": True},
+        "garmin_upload_skipped": {"$exists": False},
+    }).sort("started_at", 1)
+    return [w async for w in cur]
+
+
 async def _samples_for(db: AsyncDatabase, workout: dict[str, Any]) -> list[dict[str, Any]]:
     started = workout["started_at"]
     ended = workout["ended_at"]
@@ -47,10 +61,12 @@ async def _samples_for(db: AsyncDatabase, workout: dict[str, Any]) -> list[dict[
 
 
 async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, int]:
-    """Upload every pending treadmill workout. Returns counts dict."""
-    counts = {"uploaded": 0, "duplicate": 0, "failed": 0}
+    """Upload every pending treadmill workout, then retry reclassify on any
+    previously-uploaded rows still stranded as 'Other'. Returns counts dict."""
+    counts = {"uploaded": 0, "duplicate": 0, "failed": 0, "retyped": 0, "retype_failed": 0}
     pending = await _pending(db)
-    if not pending:
+    stranded = await _stranded(db)
+    if not pending and not stranded:
         return counts
 
     client.login()
@@ -113,6 +129,29 @@ async def upload_pending(db: AsyncDatabase, client: GarminClient) -> dict[str, i
                     "garmin_last_error_at": datetime.now(UTC),
                 }},
             )
+
+    for workout in stranded:
+        wid = workout["source_id"]
+        try:
+            stored_id = workout["garmin_activity_id"]
+            # Stored id may be a Garmin uploadId (no activity yet) instead of
+            # a real activityId. Resolve from start time to get the real one.
+            real_id = await _resolve_real_activity_id(client, workout["started_at"])
+            target_id = real_id if real_id is not None else stored_id
+            client.set_activity_type_walking(target_id)
+            await db["workouts"].update_one(
+                {"_id": workout["_id"]},
+                {"$set": {
+                    "garmin_activity_id": target_id,
+                    "garmin_type_corrected": True,
+                    "garmin_type_corrected_at": datetime.now(UTC),
+                }},
+            )
+            counts["retyped"] += 1
+            log.info("retyped stranded workout %s -> walking on %s", wid, target_id)
+        except Exception:
+            counts["retype_failed"] += 1
+            log.exception("retype failed for stranded workout %s", wid)
     return counts
 
 

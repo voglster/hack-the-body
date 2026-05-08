@@ -80,7 +80,7 @@ def _workout_doc(**over):
 async def test_uploader_skips_when_no_pending(db):
     client = FakeClient()
     counts = await upload_pending(db, client)
-    assert counts == {"uploaded": 0, "duplicate": 0, "failed": 0}
+    assert counts["uploaded"] == 0 and counts["retyped"] == 0
     assert not client.logged_in
     assert client.uploads == []
 
@@ -176,11 +176,59 @@ async def test_uploader_survives_set_type_failure(db):
 
 @pytest.mark.asyncio
 async def test_uploader_doesnt_re_upload(db):
-    await db["workouts"].insert_one(_workout_doc(garmin_activity_id=999))
+    await db["workouts"].insert_one(
+        _workout_doc(garmin_activity_id=999, garmin_type_corrected=True),
+    )
     client = FakeClient()
     counts = await upload_pending(db, client)
-    assert counts == {"uploaded": 0, "duplicate": 0, "failed": 0}
+    assert counts["uploaded"] == 0 and counts["retyped"] == 0
     assert client.uploads == []
+
+
+@pytest.mark.asyncio
+async def test_uploader_retypes_stranded_workouts(db):
+    """Pre-fix uploads (or transient set_activity_type failures) leave rows
+    with garmin_activity_id set but garmin_type_corrected=False. On the next
+    pass we resolve the real activityId and reclassify to walking."""
+    await db["workouts"].insert_one(
+        _workout_doc(garmin_activity_id=433973775291, garmin_type_corrected=False),
+    )
+    client = FakeClient(resolved_activity_id=22769921591)
+    counts = await upload_pending(db, client)
+    assert counts["retyped"] == 1
+    assert counts["uploaded"] == 0
+    assert client.set_type_calls == [22769921591]
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_activity_id"] == 22769921591
+    assert stored["garmin_type_corrected"] is True
+
+
+@pytest.mark.asyncio
+async def test_uploader_retype_uses_stored_id_when_resolve_fails(db):
+    """If we can't find the activity by start time, fall back to the stored
+    id (which may be a real activityId from a transient set-type failure)."""
+    await db["workouts"].insert_one(
+        _workout_doc(garmin_activity_id=12345, garmin_type_corrected=False),
+    )
+    client = FakeClient(resolved_activity_id=None)
+    counts = await upload_pending(db, client)
+    assert counts["retyped"] == 1
+    assert client.set_type_calls == [12345]
+
+
+@pytest.mark.asyncio
+async def test_uploader_retype_records_failure(db):
+    await db["workouts"].insert_one(
+        _workout_doc(garmin_activity_id=12345, garmin_type_corrected=False),
+    )
+    client = FakeClient(
+        resolved_activity_id=12345,
+        set_type_raises=RuntimeError("boom"),
+    )
+    counts = await upload_pending(db, client)
+    assert counts["retype_failed"] == 1
+    stored = await db["workouts"].find_one({"source": "precor-csafe"})
+    assert stored["garmin_type_corrected"] is False
 
 
 @pytest.mark.asyncio

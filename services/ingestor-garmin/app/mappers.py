@@ -7,6 +7,19 @@ def _utc_from_ms(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=UTC)
 
 
+# Garmin's weight/body-comp payloads carry two epoch fields:
+#   `date`         — local clock time tagged as if UTC (broken)
+#   `timestampGMT` — true UTC epoch ms
+# Older code used `date`, which silently shifted timestamps by the
+# user's local offset (e.g. a 7:40 AM CDT weigh-in landed as 02:40 UTC).
+# Prefer `timestampGMT` and only fall back if absent.
+def _weight_ts(s: dict) -> datetime:
+    ms = s.get("timestampGMT")
+    if ms is None:
+        ms = s["date"]
+    return _utc_from_ms(int(ms))
+
+
 def _utc_from_str(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
@@ -52,7 +65,7 @@ def map_hrv(raw: dict) -> HRV | None:
 def map_weight(raw: list[dict]) -> list[Weight]:
     return [
         Weight(
-            ts=_utc_from_ms(s["date"]),
+            ts=_weight_ts(s),
             kg=round(float(s["weight"]) / 1000.0, 3),
             raw=s,
             source="garmin",
@@ -65,7 +78,7 @@ def map_weight(raw: list[dict]) -> list[Weight]:
 def map_body_comp(raw: list[dict]) -> list[BodyComp]:
     return [
         BodyComp(
-            ts=_utc_from_ms(s["date"]),
+            ts=_weight_ts(s),
             weight_kg=round(float(s["weight"]) / 1000.0, 3),
             body_fat_pct=_f(s.get("bodyFat")),
             muscle_mass_kg=_g_to_kg(s.get("muscleMass")),

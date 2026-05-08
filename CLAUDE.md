@@ -8,6 +8,13 @@ when tests + lint + typecheck are all green, commit and push to
 master without waiting for explicit approval. Reserve the review
 pause for destructive or hard-to-reverse actions.
 
+**Prod host access (`hd`):** SSH access to `hd` is pre-approved for
+this project. Use it freely for read-only inspection (mongo queries,
+log tails, `docker ps`, etc.) and for routine deploy actions
+(`docker compose pull && up -d`, restarting containers). You manage
+this deployment. Still confirm before destructive ops (dropping
+collections, removing volumes).
+
 ## Repo
 
 - **GitHub:** `voglster/hack-the-body` (public)

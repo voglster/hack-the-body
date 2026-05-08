@@ -36,6 +36,14 @@ def test_map_weight_converts_grams_to_kg(fixture):
     assert len(samples) == 1
     assert samples[0].kg == 108.9
     assert samples[0].source_id == "garmin:weight:900000001"
+    # timestampGMT (true UTC) wins over `date` (local-clock-as-UTC).
+    assert samples[0].ts.isoformat() == "2024-04-25T07:40:00+00:00"
+
+
+def test_map_weight_falls_back_to_date_when_gmt_missing():
+    raw = [{"samplePk": 1, "date": 1714012800000, "weight": 100000.0}]
+    samples = map_weight(raw)
+    assert samples[0].ts.isoformat() == "2024-04-25T02:40:00+00:00"
 
 
 def test_map_body_comp(fixture):

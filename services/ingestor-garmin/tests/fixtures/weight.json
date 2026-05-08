@@ -2,6 +2,7 @@
   {
     "samplePk": 900000001,
     "date": 1714012800000,
+    "timestampGMT": 1714030800000,
     "calendarDate": "2026-04-23",
     "weight": 108900.0,
     "bmi": null,

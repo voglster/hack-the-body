@@ -5,6 +5,7 @@ import {
 
 import { api } from "../api/client";
 import { kgToLbs } from "../lib/format";
+import { sinceProtocolStart } from "../lib/protocol";
 import { rollingAverage } from "../lib/trend";
 
 export function WeightChart() {
@@ -14,7 +15,9 @@ export function WeightChart() {
   });
   if (!data?.length) return <div className="text-neutral-500">no weight data yet</div>;
 
-  const pts = data.map(d => ({ ts: d.ts, value: kgToLbs(d.kg) }));
+  const filtered = sinceProtocolStart(data);
+  if (!filtered.length) return <div className="text-neutral-500">no weight data yet</div>;
+  const pts = filtered.map(d => ({ ts: d.ts, value: kgToLbs(d.kg) }));
   const smoothed = rollingAverage(pts, 7).map(p => ({
     t: new Date(p.ts).getTime(),
     weight: Number(p.value.toFixed(1)),

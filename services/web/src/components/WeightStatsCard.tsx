@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import { kgToLbs } from "../lib/format";
+import { sinceProtocolStart } from "../lib/protocol";
 import { ratePerWeek, rollingAverage, type Point } from "../lib/trend";
 import type { UserTargets } from "../api/types";
 
@@ -86,7 +87,9 @@ export function WeightStatsCard() {
 
   if (!weightData?.length) return null;
 
-  const pts: Point[] = weightData.map(d => ({ ts: d.ts, value: kgToLbs(d.kg) }));
+  const filtered = sinceProtocolStart(weightData);
+  if (!filtered.length) return null;
+  const pts: Point[] = filtered.map(d => ({ ts: d.ts, value: kgToLbs(d.kg) }));
   const latest = pts[pts.length - 1];
   const smoothed = rollingAverage(pts, 7);
   const latestSmoothed = smoothed[smoothed.length - 1];

@@ -77,5 +77,21 @@ def delta(
     return {"recent_avg": r_avg, "prior_avg": p_avg, "abs": abs_delta, "pct": pct}
 
 
-def anomaly_flag(*args, **kwargs):  # placeholder — implemented in Task 4
-    raise NotImplementedError
+def anomaly_flag(
+    *,
+    latest: float | None,
+    baseline_avg: float | None,
+    threshold_pct: float = 15.0,
+) -> dict[str, Any] | None:
+    """Return `{direction, pct}` when `latest` deviates from `baseline_avg`
+    by more than `threshold_pct`; None otherwise.
+    """
+    if latest is None or baseline_avg is None or baseline_avg == 0:
+        return None
+    pct = ((latest - baseline_avg) / baseline_avg) * 100.0
+    if abs(pct) < threshold_pct:
+        return None
+    return {
+        "direction": "up" if pct > 0 else "down",
+        "pct": round(pct, 3),
+    }

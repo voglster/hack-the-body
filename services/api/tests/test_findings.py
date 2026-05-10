@@ -68,3 +68,35 @@ def test_delta_handles_zero_baseline():
     out = delta(_series([5.0]), _series([0.0, 0.0]), value_key="value")
     assert out["pct"] is None  # undefined when prior=0
     assert out["abs"] == 5.0
+
+
+def test_anomaly_flag_fires_when_latest_below_baseline():
+    # Baseline ~60, latest 45 → -25%, fires at default 15% threshold.
+    flag = anomaly_flag(latest=45.0, baseline_avg=60.0)
+    assert flag is not None
+    assert flag["direction"] == "down"
+    assert flag["pct"] == pytest.approx(-25.0, abs=0.01)
+
+
+def test_anomaly_flag_fires_when_latest_above_baseline():
+    flag = anomaly_flag(latest=80.0, baseline_avg=60.0)
+    assert flag is not None
+    assert flag["direction"] == "up"
+    assert flag["pct"] == pytest.approx(33.333, abs=0.01)
+
+
+def test_anomaly_flag_silent_when_within_threshold():
+    assert anomaly_flag(latest=63.0, baseline_avg=60.0) is None
+
+
+def test_anomaly_flag_silent_on_missing_data():
+    assert anomaly_flag(latest=None, baseline_avg=60.0) is None
+    assert anomaly_flag(latest=60.0, baseline_avg=None) is None
+    assert anomaly_flag(latest=60.0, baseline_avg=0.0) is None
+
+
+def test_anomaly_flag_custom_threshold():
+    # 5% below baseline, default threshold 15% → no flag; 4% threshold → flag.
+    assert anomaly_flag(latest=57.0, baseline_avg=60.0) is None
+    flag = anomaly_flag(latest=57.0, baseline_avg=60.0, threshold_pct=4.0)
+    assert flag is not None and flag["direction"] == "down"

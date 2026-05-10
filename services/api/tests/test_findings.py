@@ -45,3 +45,26 @@ def test_trend_ignores_missing_values():
     out = trend(series, value_key="value", window_days=7)
     assert out["count"] == 2
     assert out["avg"] == pytest.approx(62.0, abs=0.01)
+
+
+def test_delta_computes_window_vs_baseline():
+    # Recent 7d avg 70, prior 30d avg 60 → +10 absolute, +16.7%.
+    recent = _series([70.0] * 7)
+    prior = _series([60.0] * 30)
+    out = delta(recent, prior, value_key="value")
+    assert out["recent_avg"] == 70.0
+    assert out["prior_avg"] == 60.0
+    assert out["abs"] == pytest.approx(10.0, abs=0.01)
+    assert out["pct"] == pytest.approx(16.667, abs=0.01)
+
+
+def test_delta_handles_empty_recent():
+    out = delta([], _series([60.0] * 30), value_key="value")
+    assert out == {"recent_avg": None, "prior_avg": 60.0, "abs": None, "pct": None}
+
+
+def test_delta_handles_zero_baseline():
+    """Zero baseline must not blow up the pct calc."""
+    out = delta(_series([5.0]), _series([0.0, 0.0]), value_key="value")
+    assert out["pct"] is None  # undefined when prior=0
+    assert out["abs"] == 5.0

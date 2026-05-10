@@ -54,8 +54,27 @@ def trend(
     }
 
 
-def delta(*args, **kwargs):  # placeholder — implemented in Task 3
-    raise NotImplementedError
+def delta(
+    recent: Sequence[dict[str, Any]],
+    prior: Sequence[dict[str, Any]],
+    *,
+    value_key: str,
+) -> dict[str, Any]:
+    """Compare two windows' averages.
+
+    `recent` and `prior` are oldest-first lists. Returns absolute and
+    percentage delta of recent vs prior averages. `pct` is None when
+    prior is 0 or empty.
+    """
+    r = _values(recent, value_key)
+    p = _values(prior, value_key)
+    r_avg = round(sum(r) / len(r), 3) if r else None
+    p_avg = round(sum(p) / len(p), 3) if p else None
+    if r_avg is None or p_avg is None:
+        return {"recent_avg": r_avg, "prior_avg": p_avg, "abs": None, "pct": None}
+    abs_delta = round(r_avg - p_avg, 3)
+    pct = round((abs_delta / p_avg) * 100.0, 3) if p_avg != 0 else None
+    return {"recent_avg": r_avg, "prior_avg": p_avg, "abs": abs_delta, "pct": pct}
 
 
 def anomaly_flag(*args, **kwargs):  # placeholder — implemented in Task 4

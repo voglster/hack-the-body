@@ -1,10 +1,12 @@
 """Habits repos — config and daily status."""
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
-import pytest
-
+from app.models.metrics import Sleep
 from app.services.coach.habits import (
+    RESOLVERS,
     HabitConfig,
+    compose_today,
     create_habit,
     get_active_habits,
     get_habit_by_name,
@@ -13,6 +15,7 @@ from app.services.coach.habits import (
     status_for_day,
     update_habit,
 )
+from app.services.metrics_repo import MetricsRepo
 
 
 async def test_create_and_list_habits(mock_db):
@@ -58,24 +61,15 @@ async def test_mark_status_upserts_for_day(mock_db):
     s = await status_for_day(mock_db, h, today)
     assert s["status"] == "skipped"
     assert s["source"] == "coach"
-    count = await mock_db["habit_status"].count_documents({"habit_id": h, "local_date": today.isoformat()})
+    count = await mock_db["habit_status"].count_documents({
+        "habit_id": h, "local_date": today.isoformat(),
+    })
     assert count == 1
 
 
 async def test_status_for_day_returns_none_when_unset(mock_db):
     h = await create_habit(mock_db, HabitConfig(name="x", kind="manual"))
     assert await status_for_day(mock_db, h, date(2026, 5, 10)) is None
-
-
-from datetime import timedelta
-from zoneinfo import ZoneInfo
-
-from app.models.metrics import Sleep
-from app.services.coach.habits import (
-    RESOLVERS,
-    compose_today,
-)
-from app.services.metrics_repo import MetricsRepo
 
 
 async def test_bed_by_10_resolver_done_when_onset_before_2200(mock_db):
@@ -136,13 +130,13 @@ async def test_vitamins_resolver_missed_when_not_logged(mock_db):
 async def test_compose_today_mixes_auto_manual_and_none(mock_db):
     chicago = ZoneInfo("America/Chicago")
     local_d = date(2026, 5, 10)
-    h_auto = await create_habit(mock_db, HabitConfig(
+    await create_habit(mock_db, HabitConfig(
         name="bed by 10", kind="auto", resolver="bed_by_10",
     ))
     h_manual = await create_habit(mock_db, HabitConfig(
         name="make the bed", kind="manual",
     ))
-    h_none = await create_habit(mock_db, HabitConfig(
+    await create_habit(mock_db, HabitConfig(
         name="walk after lunch", kind="none",
     ))
     # Manual habit marked done.

@@ -175,7 +175,7 @@ async def _recall(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG0
 async def _habit_status(
     db: AsyncDatabase, *, name: str, days_back: int = 7,
 ) -> dict[str, Any]:
-    from datetime import UTC, date, datetime, timedelta  # noqa: PLC0415
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
 
     from app.services.coach.habits import (  # noqa: PLC0415
         get_habit_by_name,

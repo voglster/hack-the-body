@@ -17,6 +17,7 @@ from app.services.coach.context import (
     delta,
     trend,
 )
+from app.services.coach.habits import HabitConfig, create_habit
 from app.services.food_repo import FoodRepo
 from app.services.metrics_repo import MetricsRepo
 
@@ -221,8 +222,6 @@ async def test_build_findings_returns_structured_object(mock_db):
 
 
 async def test_build_findings_includes_active_habits(mock_db):
-    from app.services.coach.habits import HabitConfig, create_habit
-
     await create_habit(mock_db, HabitConfig(
         name="make the bed", kind="manual",
     ))

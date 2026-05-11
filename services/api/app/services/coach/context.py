@@ -250,9 +250,10 @@ async def build_findings(
         local_hour=local_hour,
     )
 
-    from app.services.coach.habits import compose_today  # noqa: PLC0415
     import os  # noqa: PLC0415
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # noqa: PLC0415
+
+    from app.services.coach.habits import compose_today  # noqa: PLC0415
 
     tz_name = os.environ.get("TZ") or "UTC"
     try:

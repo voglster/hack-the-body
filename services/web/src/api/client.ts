@@ -3,7 +3,7 @@ import type {
   WorkoutDetail,
   ActiveWorkout, TreadmillSample,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
-  CoachFeedback, CoachFeedbackRating, SyncStatus, UserTargets,
+  CoachFeedback, CoachFeedbackRating, CoachThread, CoachTurn, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
   NudgesResponse, DismissNudgeReq,
 } from "./types";
@@ -172,6 +172,16 @@ export const api = {
     );
   },
   coachWeekly: () => get<CoachInsight>("/coach/weekly"),
+  coachThreadActive: async (): Promise<CoachThread | null> => {
+    try {
+      return await get<CoachThread>("/coach/thread/active");
+    } catch (e) {
+      if ((e as Error).message?.includes(" 404")) return null;
+      throw e;
+    }
+  },
+  coachThreadReply: (threadId: string, text: string) =>
+    post<CoachTurn>(`/coach/thread/${threadId}/reply`, { text }),
   coachFeedback: (insight_id: string, rating: CoachFeedbackRating, note?: string) =>
     post<CoachFeedback>(`/coach/insights/${insight_id}/feedback`, { rating, note: note ?? null }),
 

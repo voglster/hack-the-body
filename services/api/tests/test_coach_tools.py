@@ -64,7 +64,7 @@ async def test_trend_tool_returns_hrv_summary(mock_db):
     now = datetime.now(UTC)
     for i in range(7, 0, -1):
         await repo.insert_hrv(HRV(
-            ts=now - timedelta(days=i),
+            ts=now - timedelta(days=i) + timedelta(hours=1),
             rmssd_ms=50.0 + i,  # 51..57
             source="garmin", source_id=f"h:{i}",
         ))
@@ -79,7 +79,7 @@ async def test_trend_tool_returns_weight_summary(mock_db):
     now = datetime.now(UTC)
     for i in range(7, 0, -1):
         await repo.insert_weight(Weight(
-            ts=now - timedelta(days=i),
+            ts=now - timedelta(days=i) + timedelta(hours=1),
             kg=108.0,
             source="garmin", source_id=f"w:{i}",
         ))

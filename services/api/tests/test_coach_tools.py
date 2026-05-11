@@ -116,3 +116,35 @@ async def test_compare_windows_tool_returns_delta(mock_db):
     assert out["recent_avg"] == 40.0
     assert out["prior_avg"] == 60.0
     assert out["abs"] == -20.0
+
+
+async def test_food_history_tool_returns_daily_totals(mock_db):
+    base = datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+    for day_offset, cal in enumerate([1800.0, 2000.0, 2100.0]):
+        await mock_db["meal_entries"].insert_one({
+            "ts": base + timedelta(days=day_offset),
+            "food_name": "Test", "quantity_g": 100, "slot": "dinner",
+            "macros": {"calories": cal, "protein_g": 100, "carbs_g": 200, "fat_g": 50},
+        })
+    out = await dispatch(mock_db, "food_history", {
+        "start_date": "2026-04-26", "end_date": "2026-04-28",
+    })
+    assert "error" not in out, out
+    assert len(out["days"]) == 3
+    assert out["days"][0]["date"] == "2026-04-26"
+    assert out["days"][0]["calories"] == 1800.0
+
+
+async def test_food_history_tool_caps_range_at_30_days(mock_db):
+    out = await dispatch(mock_db, "food_history", {
+        "start_date": "2026-01-01", "end_date": "2026-04-01",  # ~90 days
+    })
+    assert "error" in out
+    assert "30" in out["error"]
+
+
+async def test_food_history_tool_handles_bad_date(mock_db):
+    out = await dispatch(mock_db, "food_history", {
+        "start_date": "not-a-date", "end_date": "2026-04-28",
+    })
+    assert "error" in out

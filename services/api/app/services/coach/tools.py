@@ -128,8 +128,43 @@ async def _compare_windows(
     prior = await repo.range_daily_summary(baseline_start, baseline_end)
     return _delta_helper(recent, prior, value_key="steps")
 
-async def _food_history(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
-    raise ToolError("food_history not implemented yet")
+async def _food_history(
+    db: AsyncDatabase, *, start_date: str, end_date: str,
+) -> dict[str, Any]:
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    try:
+        start = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
+        end = datetime.fromisoformat(end_date).replace(tzinfo=UTC)
+    except ValueError as e:
+        raise ToolError(f"bad date format (use YYYY-MM-DD): {e}") from e
+    if end < start:
+        raise ToolError("end_date must be >= start_date")
+    days = (end - start).days + 1
+    if days > 30:
+        raise ToolError("range too long; max 30 days")
+    # Pull all entries in the range (inclusive of end day).
+    end_exclusive = end + timedelta(days=1)
+    cur = db["meal_entries"].find({"ts": {"$gte": start, "$lt": end_exclusive}})
+    by_date: dict[str, dict[str, float]] = {}
+    async for e in cur:
+        d = e["ts"].astimezone(UTC).date().isoformat()
+        bucket = by_date.setdefault(d, {
+            "calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0,
+        })
+        m = e.get("macros") or {}
+        for k in bucket:
+            v = m.get(k)
+            if v is not None:
+                bucket[k] += float(v)
+    out_days = [
+        {"date": (start + timedelta(days=i)).date().isoformat(),
+         **by_date.get((start + timedelta(days=i)).date().isoformat(), {
+             "calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0,
+         })}
+        for i in range(days)
+    ]
+    return {"days": out_days}
 
 async def _recall(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
     return {"memories": []}  # Slice 4 wires this to a real store.

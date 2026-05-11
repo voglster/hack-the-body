@@ -6,6 +6,7 @@ import type {
   CoachFeedback, CoachFeedbackRating, CoachThread, CoachTurn, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
   NudgesResponse, DismissNudgeReq,
+  Habit, HabitStatusToday, HabitStatusValue,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -184,6 +185,17 @@ export const api = {
     post<CoachTurn>(`/coach/thread/${threadId}/reply`, { text }),
   coachFeedback: (insight_id: string, rating: CoachFeedbackRating, note?: string) =>
     post<CoachFeedback>(`/coach/insights/${insight_id}/feedback`, { rating, note: note ?? null }),
+
+  // habits
+  habitsList: () => get<Habit[]>("/habits"),
+  habitsToday: () => get<HabitStatusToday[]>("/habits/today"),
+  habitCreate: (name: string, kind: Habit["kind"], resolver?: string) =>
+    post<Habit>("/habits", { name, kind, ...(resolver ? { resolver } : {}) }),
+  habitMarkStatus: (habitId: string, status: HabitStatusValue) =>
+    post<{ habit_id: string; status: HabitStatusValue }>(
+      `/habits/${habitId}/status`,
+      { status },
+    ),
 
   // admin
   syncStatus: () => get<SyncStatus>("/admin/sync-status"),

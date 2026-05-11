@@ -323,3 +323,32 @@ export interface TodayTotals {
   supplements: { id: string; name: string; ts: string; quantity_g: number }[];
   entry_count: number;
 }
+
+// ---------- habits ----------
+
+export type HabitKind = "auto" | "manual" | "none";
+export type HabitStatusValue = "done" | "skipped" | "missed" | "unknown";
+
+export interface Habit {
+  id: string;
+  name: string;
+  kind: HabitKind;
+  resolver?: string | null;
+  active: boolean;
+  created_at?: string;
+}
+
+export interface HabitStatusToday {
+  id: string;
+  name: string;
+  kind: HabitKind;
+  resolver?: string | null;
+  status: HabitStatusValue;
+  source: "auto" | "manual" | "coach" | "none";
+}
+
+export interface CreateHabitRequest {
+  name: string;
+  kind: HabitKind;
+  resolver?: string;
+}

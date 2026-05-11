@@ -160,3 +160,61 @@ def test_bucket_metrics_ignores_metrics_without_anomaly_field():
     on_track, attention = bucket_metrics(metrics, food_totals={}, targets={})
     assert "steps_today" in on_track
     assert attention == []
+
+
+from datetime import timedelta as _td
+
+from app.models.metrics import HRV, Sleep, Weight
+from app.services.coach.context import build_findings
+from app.services.metrics_repo import MetricsRepo
+from app.services.food_repo import FoodRepo
+
+
+async def test_build_findings_returns_structured_object(mock_db):
+    repo = MetricsRepo(mock_db)
+    food_repo = FoodRepo(mock_db)
+    now = datetime.now(UTC)
+    # Seed HRV: 30 days at ~60 baseline, last 7 days dropping to ~40.
+    for i in range(30, 0, -1):
+        await repo.insert_hrv(HRV(
+            ts=now - _td(days=i),
+            rmssd_ms=40.0 if i <= 7 else 60.0,
+            source="garmin", source_id=f"h:{i}",
+        ))
+    # Weight: stable around 108 kg for 30 days, latest 108.0.
+    for i in range(30, 0, -1):
+        await repo.insert_weight(Weight(
+            ts=now - _td(days=i),
+            kg=108.0,
+            source="garmin", source_id=f"w:{i}",
+        ))
+    # Sleep: today's only.
+    await repo.insert_sleep(Sleep(
+        ts=now, duration_s=27000, deep_s=3600, rem_s=5400,
+        light_s=16000, awake_s=2000, score=80,
+        source="garmin", source_id="s:1",
+    ))
+
+    findings = await build_findings(repo, food_repo, targets=None)
+
+    assert "hrv" in findings.metrics
+    hrv = findings.metrics["hrv"]
+    assert hrv["latest"] == 40.0
+    assert hrv["trend_7d"]["count"] == 7
+    assert hrv["trend_30d"]["count"] >= 28  # full window minus today edge
+    # 7d avg ~40 vs prior-30d ~60 → down ~33% → anomaly fires.
+    assert hrv["anomaly"] is not None
+    assert hrv["anomaly"]["direction"] == "down"
+    assert "hrv" in findings.attention
+
+    # Weight is flat — no anomaly, on_track.
+    assert findings.metrics["weight"]["anomaly"] is None
+    assert "weight" in findings.on_track
+
+    # Snapshot still present (back-compat with FE debug panel).
+    assert findings.snapshot["sleep"]["score"] == 80
+    assert "lb" in findings.snapshot["weight"]  # converted from kg
+
+    # Local time block present.
+    assert "hour" in findings.local
+    assert "now" in findings.local

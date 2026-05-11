@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -150,3 +151,108 @@ def bucket_metrics(
     ):
         attention.append("calories")
     return on_track, attention
+
+
+async def build_findings(
+    metrics_repo: Any,
+    food_repo: Any,
+    *,
+    day_start: datetime | None = None,
+    day_end: datetime | None = None,
+    targets: dict[str, Any] | None = None,
+) -> Findings:
+    """Deterministic pre-flight for the brief prompt.
+
+    Returns a populated `Findings`. All field shapes match what
+    `render_brief_prompt` (Task 7) expects to read.
+    """
+    # Imports inside the function to avoid a cycle with brief.py at module
+    # load time — context.py is imported by brief.py.
+    from app.services.coach.brief import (
+        gather_context,
+        resolve_day_window,
+        today_food_totals,
+    )
+
+    day_start, day_end = resolve_day_window(day_start, day_end)
+    snapshot = await gather_context(
+        metrics_repo, day_start=day_start, day_end=day_end, targets=targets,
+    )
+    food_totals = await today_food_totals(food_repo, day_start, day_end)
+
+    now = datetime.now(UTC)
+    # Add a small buffer to the window start to avoid sub-second boundary
+    # misses when seeds land right on the exact cutoff.
+    win7_start = now - timedelta(days=7, seconds=60)
+    win7_end = now
+    win30_start = now - timedelta(days=30, seconds=60)
+    win30_end = now - timedelta(days=7)
+
+    hrv_recent = await metrics_repo.range_hrv(win7_start, win7_end)
+    hrv_prior = await metrics_repo.range_hrv(win30_start, win30_end)
+    hrv_latest = (snapshot.get("hrv") or {}).get("rmssd_ms")
+    hrv_t7 = trend(hrv_recent, value_key="rmssd_ms", window_days=7)
+    hrv_t30 = trend(
+        await metrics_repo.range_hrv(now - timedelta(days=30), now),
+        value_key="rmssd_ms", window_days=30,
+    )
+    hrv_delta = delta(hrv_recent, hrv_prior, value_key="rmssd_ms")
+    hrv_anom = anomaly_flag(latest=hrv_latest, baseline_avg=hrv_t30["avg"])
+
+    weight_recent = await metrics_repo.range_weight(win7_start, win7_end)
+    weight_prior = await metrics_repo.range_weight(win30_start, win30_end)
+    weight_30 = await metrics_repo.range_weight(now - timedelta(days=30), now)
+    weight_latest_lb = (snapshot.get("weight") or {}).get("lb")
+    # snapshot.weight is in lb already — convert back for the kg-based series.
+    weight_latest_kg = (
+        weight_latest_lb / 2.2046226 if weight_latest_lb is not None else None
+    )
+    weight_t7 = trend(weight_recent, value_key="kg", window_days=7)
+    weight_t30 = trend(weight_30, value_key="kg", window_days=30)
+    weight_delta = delta(weight_recent, weight_prior, value_key="kg")
+    weight_anom = anomaly_flag(
+        latest=weight_latest_kg, baseline_avg=weight_t30["avg"],
+    )
+
+    metrics = {
+        "hrv": {
+            "latest": hrv_latest, "trend_7d": hrv_t7, "trend_30d": hrv_t30,
+            "delta_7d_vs_30d": hrv_delta, "anomaly": hrv_anom,
+        },
+        "weight": {
+            "latest_kg": weight_latest_kg,
+            "latest_lb": weight_latest_lb,
+            "trend_7d": weight_t7, "trend_30d": weight_t30,
+            "delta_7d_vs_30d": weight_delta, "anomaly": weight_anom,
+        },
+        "sleep_score": {
+            "latest": (snapshot.get("sleep") or {}).get("score"),
+            "anomaly": None,
+        },
+        "steps_today": {
+            "latest": snapshot.get("steps_today"),
+            "anomaly": None,
+        },
+    }
+
+    local_hour = snapshot.get("local_hour")
+    on_track, attention = bucket_metrics(
+        metrics,
+        food_totals=food_totals,
+        targets=snapshot.get("targets") or {},
+        local_hour=local_hour,
+    )
+
+    return Findings(
+        snapshot=snapshot,
+        food_totals=food_totals,
+        targets=snapshot.get("targets") or {},
+        metrics=metrics,
+        on_track=on_track,
+        attention=attention,
+        local={
+            "now": snapshot.get("local_now"),
+            "hour": local_hour,
+            "time_of_day": snapshot.get("time_of_day"),
+        },
+    )

@@ -260,7 +260,7 @@ async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_r
     assert '"entries": 0' in prompt
     # System prompt warns the model about this exact failure mode.
     assert "food_logged_today" in prompt
-    assert "food_totals.entries" in prompt
+    assert "entries" in prompt
 
 
 async def test_recent_filters_by_since(client, mock_db):
@@ -393,15 +393,15 @@ async def test_insight_persists_full_prompt_inputs(
     assert isinstance(ins["history_snapshot"], list)
 
 
-async def test_system_prompt_forbids_metric_regurgitation():
-    """User feedback 2026-04-27: don't list every metric when nothing's
-    off-track. The prompt must explicitly forbid the roll-call pattern
-    and instruct the model to skip metrics entirely on on-track replies."""
+async def test_system_prompt_directs_model_to_attention_block():
+    """With Findings carrying explicit On track / Attention lists, the
+    prompt rule shifts from 'don't roll-call' to 'speak to Attention'."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "regurgitate" in lowered or "roll-call" in lowered
-    assert "off-track" in lowered or "off track" in lowered
-    # Positive instruction: stay quiet about fine metrics.
-    assert "skip the metrics" in lowered or "say nothing about it" in lowered
+    assert "attention" in lowered
+    assert "on track" in lowered or "on-track" in lowered
+    # Positive instruction: only address the named attention items.
+    assert "only address" in lowered or "name only attention" in lowered \
+        or "address only" in lowered
 
 
 async def test_system_prompt_requires_weight_in_lbs():

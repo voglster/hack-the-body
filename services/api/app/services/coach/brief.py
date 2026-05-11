@@ -321,6 +321,13 @@ def render_brief_prompt(
     if findings.food_totals:
         parts.append("Today's food totals:")
         parts.append(json.dumps(findings.food_totals, indent=2, default=str))
+    if findings.habits:
+        parts.append("")
+        parts.append("Today's habits:")
+        parts.extend(
+            f"  - {h['name']} ({h['kind']}): {h['status']}"
+            for h in findings.habits
+        )
     if history:
         parts.append("Recent coach messages (oldest first):")
         for h in reversed(history):

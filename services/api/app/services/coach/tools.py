@@ -172,10 +172,29 @@ async def _recall(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG0
     return {"memories": []}  # Slice 4 wires this to a real store.
 
 
+def _local_today():
+    """Return today's date in the TZ env var's timezone (UTC fallback).
+
+    Habit status rows are keyed by *local* date; using UTC here would
+    misalign with the REST API and resolver writes during the
+    midnight-to-UTC-midnight window.
+    """
+    import os  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # noqa: PLC0415
+
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+    return datetime.now(UTC).astimezone(tz).date()
+
+
 async def _habit_status(
     db: AsyncDatabase, *, name: str, days_back: int = 7,
 ) -> dict[str, Any]:
-    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+    from datetime import timedelta  # noqa: PLC0415
 
     from app.services.coach.habits import (  # noqa: PLC0415
         get_habit_by_name,
@@ -185,7 +204,7 @@ async def _habit_status(
     habit = await get_habit_by_name(db, name)
     if habit is None:
         raise ToolError(f"no habit named {name!r}")
-    today = datetime.now(UTC).date()
+    today = _local_today()
     out: list[dict[str, Any]] = []
     for i in range(days_back):
         d = today - timedelta(days=i)
@@ -201,7 +220,7 @@ async def _habit_status(
 async def _mark_habit_done(
     db: AsyncDatabase, *, name: str, local_date: str | None = None,
 ) -> dict[str, Any]:
-    from datetime import UTC, date, datetime  # noqa: PLC0415
+    from datetime import date  # noqa: PLC0415
 
     from app.services.coach.habits import (  # noqa: PLC0415
         get_habit_by_name,
@@ -222,7 +241,7 @@ async def _mark_habit_done(
         except ValueError as e:
             raise ToolError(f"bad local_date: {e}") from e
     else:
-        d = datetime.now(UTC).date()
+        d = _local_today()
     await mark_status(db, habit["id"], d, status="done", source="coach")
     return {"name": habit["name"], "local_date": d.isoformat(), "status": "done"}
 

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api } from "../api/client";
+import { CoachChatPanel } from "./CoachChatPanel";
 import type { CoachFeedbackRating, CoachFoodTotals, CoachInsight, CoachRecentEntry } from "../api/types";
 
 interface DisplayMsg {
@@ -327,6 +328,8 @@ export function CoachCard() {
       <CoachBody display={display} error={weekly.error ?? ask.error} />
 
       {showHistory && <HistoryList items={history?.slice(1) ?? []} />}
+
+      <CoachChatPanel />
     </div>
   );
 }

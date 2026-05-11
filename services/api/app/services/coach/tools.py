@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # 4KB hard cap on tool results so the model context stays bounded.
 RESULT_BYTE_CAP = 4096
+# Max date range for the food_history tool — keeps response bounded.
+FOOD_HISTORY_MAX_DAYS = 30
 
 
 class ToolError(Exception):
@@ -141,8 +143,8 @@ async def _food_history(
     if end < start:
         raise ToolError("end_date must be >= start_date")
     days = (end - start).days + 1
-    if days > 30:
-        raise ToolError("range too long; max 30 days")
+    if days > FOOD_HISTORY_MAX_DAYS:
+        raise ToolError(f"range too long; max {FOOD_HISTORY_MAX_DAYS} days")
     # Pull all entries in the range (inclusive of end day).
     end_exclusive = end + timedelta(days=1)
     cur = db["meal_entries"].find({"ts": {"$gte": start, "$lt": end_exclusive}})
@@ -177,11 +179,17 @@ REGISTRY.update({
             "type": "function",
             "function": {
                 "name": "trend",
-                "description": "Summarize a metric over the last N days (avg, slope per day, first, last).",
+                "description": (
+                    "Summarize a metric over the last N days "
+                    "(avg, slope per day, first, last)."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "metric": {"type": "string", "enum": ["hrv", "weight", "sleep_score", "steps"]},
+                        "metric": {
+                            "type": "string",
+                            "enum": ["hrv", "weight", "sleep_score", "steps"],
+                        },
                         "window_days": {"type": "integer", "minimum": 2, "maximum": 90},
                     },
                     "required": ["metric", "window_days"],
@@ -195,11 +203,17 @@ REGISTRY.update({
             "type": "function",
             "function": {
                 "name": "compare_windows",
-                "description": "Compare a metric's recent window to an earlier baseline window. Returns abs and pct delta.",
+                "description": (
+                    "Compare a metric's recent window to an earlier baseline "
+                    "window. Returns abs and pct delta."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "metric": {"type": "string", "enum": ["hrv", "weight", "sleep_score", "steps"]},
+                        "metric": {
+                            "type": "string",
+                            "enum": ["hrv", "weight", "sleep_score", "steps"],
+                        },
                         "recent_days": {"type": "integer", "minimum": 1, "maximum": 30},
                         "baseline_days": {"type": "integer", "minimum": 7, "maximum": 90},
                     },
@@ -214,7 +228,10 @@ REGISTRY.update({
             "type": "function",
             "function": {
                 "name": "food_history",
-                "description": "Daily calorie and macro totals over a date range (UTC dates, YYYY-MM-DD).",
+                "description": (
+                    "Daily calorie and macro totals over a date range "
+                    "(UTC dates, YYYY-MM-DD)."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -232,7 +249,10 @@ REGISTRY.update({
             "type": "function",
             "function": {
                 "name": "recall",
-                "description": "Recall durable facts the client has told the coach. Returns list of {key, value}.",
+                "description": (
+                    "Recall durable facts the client has told the coach. "
+                    "Returns list of {key, value}."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {

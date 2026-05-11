@@ -1,14 +1,15 @@
 """Coach tool registry + per-tool unit tests."""
 import json
+from datetime import UTC, datetime, timedelta
 
-import pytest
-
+from app.models.metrics import HRV, Weight
 from app.services.coach.tools import (
     REGISTRY,
     ToolError,
     dispatch,
     schema_for_llm,
 )
+from app.services.metrics_repo import MetricsRepo
 
 
 def test_schema_for_llm_lists_all_registered_tools():
@@ -51,12 +52,6 @@ async def test_dispatch_wraps_tool_exceptions_as_errors(mock_db, monkeypatch):
     out = await dispatch(mock_db, "boom_tool", {})
     assert "error" in out
     assert "intentional explosion" in out["error"]
-
-
-from datetime import UTC, datetime, timedelta
-
-from app.models.metrics import HRV, Weight
-from app.services.metrics_repo import MetricsRepo
 
 
 async def test_trend_tool_returns_hrv_summary(mock_db):

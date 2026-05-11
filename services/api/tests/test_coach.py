@@ -812,7 +812,7 @@ async def test_thread_reply_runs_agent_and_returns_coach_turn(
         def raise_for_status(self): pass
         def json(self): return chat_response
 
-    async def _fake_chat(*args, **kwargs):
+    async def _fake_chat(*_args, **_kwargs):
         return _MockChatResp()
 
     # Patch at the module level to avoid affecting the test client

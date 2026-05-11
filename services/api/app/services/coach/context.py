@@ -30,14 +30,14 @@ def _values(series: Sequence[dict[str, Any]], value_key: str) -> list[float]:
 
 
 def trend(
-    series: Sequence[dict[str, Any]], *, value_key: str, window_days: int,
+    series: Sequence[dict[str, Any]], *, value_key: str,
 ) -> dict[str, Any]:
-    """Summarize a time-series window.
+    """Summarize a time-series.
 
-    `series` is oldest-first. `slope_per_day` is the simple linear-regression
-    slope assuming one sample per day. None when too few points.
+    `series` is oldest-first; callers pre-slice to the window of interest.
+    `slope_per_day` is the simple linear-regression slope assuming one
+    sample per day. None when too few points.
     """
-    del window_days  # reserved for future windowing inside the helper
     values = _values(series, value_key)
     if not values:
         return {"count": 0, "avg": None, "slope_per_day": None,
@@ -197,10 +197,10 @@ async def build_findings(
     hrv_recent = await metrics_repo.range_hrv(win7_start, win7_end)
     hrv_prior = await metrics_repo.range_hrv(win30_start, win30_end)
     hrv_latest = (snapshot.get("hrv") or {}).get("rmssd_ms")
-    hrv_t7 = trend(hrv_recent, value_key="rmssd_ms", window_days=7)
+    hrv_t7 = trend(hrv_recent, value_key="rmssd_ms")
     hrv_t30 = trend(
         await metrics_repo.range_hrv(now - timedelta(days=30), now),
-        value_key="rmssd_ms", window_days=30,
+        value_key="rmssd_ms",
     )
     hrv_delta = delta(hrv_recent, hrv_prior, value_key="rmssd_ms")
     hrv_anom = anomaly_flag(latest=hrv_latest, baseline_avg=hrv_t30["avg"])
@@ -213,8 +213,8 @@ async def build_findings(
     weight_latest_kg = (
         weight_latest_lb / 2.2046226 if weight_latest_lb is not None else None
     )
-    weight_t7 = trend(weight_recent, value_key="kg", window_days=7)
-    weight_t30 = trend(weight_30, value_key="kg", window_days=30)
+    weight_t7 = trend(weight_recent, value_key="kg")
+    weight_t30 = trend(weight_30, value_key="kg")
     weight_delta = delta(weight_recent, weight_prior, value_key="kg")
     weight_anom = anomaly_flag(
         latest=weight_latest_kg, baseline_avg=weight_t30["avg"],

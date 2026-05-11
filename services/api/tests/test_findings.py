@@ -33,7 +33,7 @@ def _series(values: list[float], *, start: datetime | None = None) -> list[dict]
 
 def test_trend_returns_avg_and_slope_for_simple_series():
     series = _series([60.0, 62.0, 64.0, 66.0, 68.0, 70.0, 72.0])
-    out = trend(series, value_key="value", window_days=7)
+    out = trend(series, value_key="value")
     assert out["count"] == 7
     assert out["avg"] == pytest.approx(66.0, abs=0.01)
     # Slope is "per day": rising 2 units/day across 7 points.
@@ -43,7 +43,7 @@ def test_trend_returns_avg_and_slope_for_simple_series():
 
 
 def test_trend_handles_empty_series():
-    out = trend([], value_key="value", window_days=7)
+    out = trend([], value_key="value")
     assert out == {
         "count": 0, "avg": None, "slope_per_day": None,
         "first": None, "last": None,
@@ -53,7 +53,7 @@ def test_trend_handles_empty_series():
 def test_trend_ignores_missing_values():
     series = _series([60.0, 0.0, 64.0])  # placeholder for missing
     series[1]["value"] = None
-    out = trend(series, value_key="value", window_days=7)
+    out = trend(series, value_key="value")
     assert out["count"] == 2
     assert out["avg"] == pytest.approx(62.0, abs=0.01)
 

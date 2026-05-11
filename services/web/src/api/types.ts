@@ -222,6 +222,32 @@ export interface CoachFoodTotals {
   water_oz?: number;
 }
 
+export interface CoachToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+}
+
+export interface CoachTurn {
+  role: "coach" | "user";
+  text: string;
+  ts: string;
+  tool_calls?: CoachToolCall[] | null;
+  findings_snapshot?: Record<string, unknown> | null;
+}
+
+export interface CoachThread {
+  id: string;
+  started_at: string;
+  last_activity_at: string;
+  surface: string;
+  turns: CoachTurn[];
+}
+
+export interface CoachReplyRequest {
+  text: string;
+}
+
 export interface CoachInsight {
   id: string | null;
   text: string;
@@ -232,6 +258,7 @@ export interface CoachInsight {
   context: Record<string, unknown>;
   trigger: string;
   food_totals?: CoachFoodTotals | null;
+  thread_id?: string | null;
 }
 
 export interface CoachRecentEntry {

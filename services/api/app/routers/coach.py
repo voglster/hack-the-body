@@ -38,6 +38,10 @@ def _oid(s: str) -> ObjectId:
         raise HTTPException(status_code=400, detail=f"invalid id: {s}") from e
 
 
+class ReplyReq(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
 @router.get("/insight")
 async def insight(
     request: Request,
@@ -93,6 +97,32 @@ async def thread_active(request: Request) -> dict[str, Any]:
         "surface": doc.get("surface", "web"),
         "turns": doc["turns"],
     }
+
+
+@router.post("/thread/{thread_id}/reply")
+async def thread_reply(
+    thread_id: str, req: ReplyReq, request: Request,
+) -> dict[str, Any]:
+    """Run one user→coach turn through the chat agent loop and return
+    the new coach turn (text + any tool_calls used)."""
+    from app.services.coach.chat import reply as chat_reply  # noqa: PLC0415
+    from app.services.coach.threads import get_thread  # noqa: PLC0415
+    db = request.app.state.db
+    _oid(thread_id)  # validate id shape, will 400 on bad input
+    if await get_thread(db, thread_id) is None:
+        raise HTTPException(status_code=404, detail="thread not found")
+    settings = request.app.state.settings
+    try:
+        turn = await chat_reply(settings, db, thread_id, user_message=req.text)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"coach LLM unavailable: {type(e).__name__}: {e}",
+        ) from e
+    # Ensure timestamps are JSON-serializable.
+    if isinstance(turn.get("ts"), datetime):
+        turn["ts"] = turn["ts"].isoformat()
+    return turn
 
 
 # ---------- feedback ----------

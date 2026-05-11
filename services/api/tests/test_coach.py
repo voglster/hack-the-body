@@ -781,3 +781,59 @@ async def test_thread_active_returns_most_recent_thread(
     assert isinstance(body["turns"], list)
     assert len(body["turns"]) == 1
     assert body["turns"][0]["role"] == "coach"
+
+
+async def test_thread_reply_runs_agent_and_returns_coach_turn(
+    client, mock_db, fake_ollama_response,
+):
+    """POST /coach/thread/{id}/reply runs the chat driver and returns
+    the new coach turn (text + any tool_calls)."""
+    await _seed(mock_db)
+
+    # First, create a thread by generating a brief.
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+
+    async def _fake_generate(_self, _url, **_kwargs):
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_generate):
+        r = await client.get("/coach/insight", headers=HEADERS)
+    thread_id = r.json()["thread_id"]
+
+    # Mock /api/chat with a single-iteration final response.
+    chat_response = {
+        "message": {"role": "assistant", "content": "Sleep was fine.", "tool_calls": []},
+    }
+    class _MockChatResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return chat_response
+
+    async def _fake_chat(*args, **kwargs):
+        return _MockChatResp()
+
+    # Patch at the module level to avoid affecting the test client
+    with patch("app.services.coach.chat.httpx.AsyncClient") as mock_aclient:
+        # Mock the async context manager
+        mock_instance = mock_aclient.return_value.__aenter__.return_value
+        mock_instance.post = _fake_chat
+        r = await client.post(
+            f"/coach/thread/{thread_id}/reply", headers=HEADERS,
+            json={"text": "tell me about sleep"},
+        )
+
+    assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
+    body = r.json()
+    assert body["role"] == "coach"
+    assert "Sleep was fine" in body["text"]
+
+
+async def test_thread_reply_404_when_thread_missing(client):
+    r = await client.post(
+        "/coach/thread/000000000000000000000000/reply",
+        headers=HEADERS, json={"text": "hi"},
+    )
+    assert r.status_code == 404

@@ -94,8 +94,39 @@ async def _trend(
     series = await repo.range_daily_summary(start, now)
     return _trend_helper(series, value_key="steps")
 
-async def _compare_windows(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
-    raise ToolError("compare_windows not implemented yet")
+async def _compare_windows(
+    db: AsyncDatabase, *, metric: str, recent_days: int, baseline_days: int,
+) -> dict[str, Any]:
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    from app.services.coach.context import delta as _delta_helper  # noqa: PLC0415
+    from app.services.metrics_repo import MetricsRepo  # noqa: PLC0415
+
+    if metric not in {"hrv", "weight", "sleep_score", "steps"}:
+        raise ToolError(f"unknown metric {metric!r}")
+    if baseline_days <= recent_days:
+        raise ToolError("baseline_days must be greater than recent_days")
+    repo = MetricsRepo(db)
+    now = datetime.now(UTC)
+    recent_start = now - timedelta(days=recent_days)
+    baseline_start = now - timedelta(days=baseline_days)
+    baseline_end = recent_start  # prior window ends where recent begins
+    if metric == "hrv":
+        recent = await repo.range_hrv(recent_start, now)
+        prior = await repo.range_hrv(baseline_start, baseline_end)
+        return _delta_helper(recent, prior, value_key="rmssd_ms")
+    if metric == "weight":
+        recent = await repo.range_weight(recent_start, now)
+        prior = await repo.range_weight(baseline_start, baseline_end)
+        return _delta_helper(recent, prior, value_key="kg")
+    if metric == "sleep_score":
+        recent = await repo.range_sleep(recent_start, now)
+        prior = await repo.range_sleep(baseline_start, baseline_end)
+        return _delta_helper(recent, prior, value_key="score")
+    # steps
+    recent = await repo.range_daily_summary(recent_start, now)
+    prior = await repo.range_daily_summary(baseline_start, baseline_end)
+    return _delta_helper(recent, prior, value_key="steps")
 
 async def _food_history(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
     raise ToolError("food_history not implemented yet")

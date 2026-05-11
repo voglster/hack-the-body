@@ -91,3 +91,28 @@ async def test_trend_tool_returns_weight_summary(mock_db):
 async def test_trend_tool_rejects_unknown_metric(mock_db):
     out = await dispatch(mock_db, "trend", {"metric": "bogus", "window_days": 7})
     assert "error" in out
+
+
+async def test_compare_windows_tool_returns_delta(mock_db):
+    repo = MetricsRepo(mock_db)
+    now = datetime.now(UTC)
+    # Last 7 days: 40, prior 30 days: 60 → recent avg lower.
+    # IMPORTANT: shift by 1 hour to avoid sub-second drift between test
+    # insertion and tool query (same pattern as the trend tests).
+    for i in range(7, 0, -1):
+        await repo.insert_hrv(HRV(
+            ts=now - timedelta(days=i) + timedelta(hours=1), rmssd_ms=40.0,
+            source="garmin", source_id=f"h-recent:{i}",
+        ))
+    for i in range(30, 7, -1):
+        await repo.insert_hrv(HRV(
+            ts=now - timedelta(days=i) + timedelta(hours=1), rmssd_ms=60.0,
+            source="garmin", source_id=f"h-prior:{i}",
+        ))
+    out = await dispatch(mock_db, "compare_windows", {
+        "metric": "hrv", "recent_days": 7, "baseline_days": 30,
+    })
+    assert "error" not in out, out
+    assert out["recent_avg"] == 40.0
+    assert out["prior_avg"] == 60.0
+    assert out["abs"] == -20.0

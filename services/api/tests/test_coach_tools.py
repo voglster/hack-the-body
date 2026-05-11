@@ -51,3 +51,43 @@ async def test_dispatch_wraps_tool_exceptions_as_errors(mock_db, monkeypatch):
     out = await dispatch(mock_db, "boom_tool", {})
     assert "error" in out
     assert "intentional explosion" in out["error"]
+
+
+from datetime import UTC, datetime, timedelta
+
+from app.models.metrics import HRV, Weight
+from app.services.metrics_repo import MetricsRepo
+
+
+async def test_trend_tool_returns_hrv_summary(mock_db):
+    repo = MetricsRepo(mock_db)
+    now = datetime.now(UTC)
+    for i in range(7, 0, -1):
+        await repo.insert_hrv(HRV(
+            ts=now - timedelta(days=i),
+            rmssd_ms=50.0 + i,  # 51..57
+            source="garmin", source_id=f"h:{i}",
+        ))
+    out = await dispatch(mock_db, "trend", {"metric": "hrv", "window_days": 7})
+    assert "error" not in out, out
+    assert out["count"] == 7
+    assert out["avg"] is not None
+
+
+async def test_trend_tool_returns_weight_summary(mock_db):
+    repo = MetricsRepo(mock_db)
+    now = datetime.now(UTC)
+    for i in range(7, 0, -1):
+        await repo.insert_weight(Weight(
+            ts=now - timedelta(days=i),
+            kg=108.0,
+            source="garmin", source_id=f"w:{i}",
+        ))
+    out = await dispatch(mock_db, "trend", {"metric": "weight", "window_days": 7})
+    assert out["count"] == 7
+    assert out["avg"] == 108.0
+
+
+async def test_trend_tool_rejects_unknown_metric(mock_db):
+    out = await dispatch(mock_db, "trend", {"metric": "bogus", "window_days": 7})
+    assert "error" in out

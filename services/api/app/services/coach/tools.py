@@ -68,8 +68,31 @@ def schema_for_llm() -> list[dict[str, Any]]:
 
 # --- Tool stubs (filled in by Tasks 5-8) ---------------------------------
 
-async def _trend(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
-    raise ToolError("trend not implemented yet")
+async def _trend(
+    db: AsyncDatabase, *, metric: str, window_days: int,
+) -> dict[str, Any]:
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    from app.services.coach.context import trend as _trend_helper  # noqa: PLC0415
+    from app.services.metrics_repo import MetricsRepo  # noqa: PLC0415
+
+    if metric not in {"hrv", "weight", "sleep_score", "steps"}:
+        raise ToolError(f"unknown metric {metric!r}")
+    repo = MetricsRepo(db)
+    now = datetime.now(UTC)
+    start = now - timedelta(days=window_days)
+    if metric == "hrv":
+        series = await repo.range_hrv(start, now)
+        return _trend_helper(series, value_key="rmssd_ms")
+    if metric == "weight":
+        series = await repo.range_weight(start, now)
+        return _trend_helper(series, value_key="kg")
+    if metric == "sleep_score":
+        series = await repo.range_sleep(start, now)
+        return _trend_helper(series, value_key="score")
+    # steps
+    series = await repo.range_daily_summary(start, now)
+    return _trend_helper(series, value_key="steps")
 
 async def _compare_windows(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG001
     raise ToolError("compare_windows not implemented yet")

@@ -143,3 +143,53 @@ async def test_food_history_tool_handles_bad_date(mock_db):
         "start_date": "not-a-date", "end_date": "2026-04-28",
     })
     assert "error" in out
+
+
+from datetime import date as _date
+
+from app.services.coach.habits import HabitConfig, create_habit, mark_status
+
+
+async def test_habit_status_tool_returns_history(mock_db):
+    hid = await create_habit(mock_db, HabitConfig(
+        name="brush teeth", kind="manual",
+    ))
+    today = _date(2026, 5, 10)
+    await mark_status(mock_db, hid, today, status="done", source="manual")
+    out = await dispatch(mock_db, "habit_status", {
+        "name": "brush teeth", "days_back": 7,
+    })
+    assert "error" not in out, out
+    assert out["name"] == "brush teeth"
+    assert isinstance(out["history"], list)
+    assert any(d["status"] == "done" for d in out["history"])
+
+
+async def test_habit_status_unknown_name(mock_db):
+    out = await dispatch(mock_db, "habit_status", {
+        "name": "nope", "days_back": 7,
+    })
+    assert "error" in out
+
+
+async def test_mark_habit_done_tool_marks_manual_habit(mock_db):
+    hid = await create_habit(mock_db, HabitConfig(
+        name="make the bed", kind="manual",
+    ))
+    out = await dispatch(mock_db, "mark_habit_done", {"name": "make the bed"})
+    assert "error" not in out, out
+    assert out["status"] == "done"
+    # Verify Mongo state.
+    rows = [d async for d in mock_db["habit_status"].find({"habit_id": hid})]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "done"
+    assert rows[0]["source"] == "coach"
+
+
+async def test_mark_habit_done_tool_refuses_auto_habit(mock_db):
+    await create_habit(mock_db, HabitConfig(
+        name="bed by 10", kind="auto", resolver="bed_by_10",
+    ))
+    out = await dispatch(mock_db, "mark_habit_done", {"name": "bed by 10"})
+    assert "error" in out
+    assert "auto" in out["error"].lower()

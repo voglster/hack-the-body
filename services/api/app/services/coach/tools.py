@@ -172,6 +172,61 @@ async def _recall(db: AsyncDatabase, **_kwargs) -> dict[str, Any]:  # noqa: ARG0
     return {"memories": []}  # Slice 4 wires this to a real store.
 
 
+async def _habit_status(
+    db: AsyncDatabase, *, name: str, days_back: int = 7,
+) -> dict[str, Any]:
+    from datetime import UTC, date, datetime, timedelta  # noqa: PLC0415
+
+    from app.services.coach.habits import (  # noqa: PLC0415
+        get_habit_by_name,
+        status_for_day,
+    )
+
+    habit = await get_habit_by_name(db, name)
+    if habit is None:
+        raise ToolError(f"no habit named {name!r}")
+    today = datetime.now(UTC).date()
+    out: list[dict[str, Any]] = []
+    for i in range(days_back):
+        d = today - timedelta(days=i)
+        row = await status_for_day(db, habit["id"], d)
+        out.append({
+            "date": d.isoformat(),
+            "status": row["status"] if row else "unknown",
+            "source": row["source"] if row else None,
+        })
+    return {"name": habit["name"], "kind": habit["kind"], "history": out}
+
+
+async def _mark_habit_done(
+    db: AsyncDatabase, *, name: str, local_date: str | None = None,
+) -> dict[str, Any]:
+    from datetime import UTC, date, datetime  # noqa: PLC0415
+
+    from app.services.coach.habits import (  # noqa: PLC0415
+        get_habit_by_name,
+        mark_status,
+    )
+
+    habit = await get_habit_by_name(db, name)
+    if habit is None:
+        raise ToolError(f"no habit named {name!r}")
+    if habit["kind"] == "auto":
+        raise ToolError(
+            f"{name!r} is an auto habit — its status is derived from data, "
+            "not toggled manually",
+        )
+    if local_date:
+        try:
+            d = date.fromisoformat(local_date)
+        except ValueError as e:
+            raise ToolError(f"bad local_date: {e}") from e
+    else:
+        d = datetime.now(UTC).date()
+    await mark_status(db, habit["id"], d, status="done", source="coach")
+    return {"name": habit["name"], "local_date": d.isoformat(), "status": "done"}
+
+
 REGISTRY.update({
     "trend": {
         "fn": _trend,
@@ -258,6 +313,53 @@ REGISTRY.update({
                     "properties": {
                         "key": {"type": "string", "description": "specific fact key, omit for all"},
                     },
+                },
+            },
+        },
+    },
+    "habit_status": {
+        "fn": _habit_status,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "habit_status",
+                "description": (
+                    "Get the last N days of status for a named habit "
+                    "(returns one entry per day, newest first)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "days_back": {
+                            "type": "integer", "minimum": 1, "maximum": 30,
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+    },
+    "mark_habit_done": {
+        "fn": _mark_habit_done,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "mark_habit_done",
+                "description": (
+                    "Mark a manual habit as done for today (or a specific "
+                    "local_date, YYYY-MM-DD). Refuses to act on auto habits."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "local_date": {
+                            "type": "string",
+                            "description": "YYYY-MM-DD, omit for today",
+                        },
+                    },
+                    "required": ["name"],
                 },
             },
         },

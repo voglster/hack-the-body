@@ -56,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         auth,
         coach,
         foods,
+        habits,
         meals,
         metrics,
         nudges,
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(foods.router)
     app.include_router(meals.router)
     app.include_router(coach.router)
+    app.include_router(habits.router)
     app.include_router(profile.router)
     app.include_router(push.router)
     app.include_router(water.router)

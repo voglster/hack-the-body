@@ -7,6 +7,7 @@ import type { Summary } from "../api/types";
 import { BottomNav, useActiveTab } from "../components/BottomNav";
 import { ActiveWorkoutCard } from "../components/ActiveWorkoutCard";
 import { CoachCard } from "../components/CoachCard";
+import { HabitsCard } from "../components/HabitsCard";
 import { NotificationsCard } from "../components/NotificationsCard";
 import { NudgesCard } from "../components/NudgesCard";
 import { NotificationsSettings } from "../components/NotificationsSettings";
@@ -249,6 +250,7 @@ function MoreTab() {
         <div className="text-xs text-neutral-500 mt-1">Cardio + strength history</div>
       </Link>
       <TargetsCard />
+      <HabitsCard />
       <NotificationsSettings />
       <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4 space-y-2">
         <div className="text-xs uppercase tracking-wide text-neutral-400">Maintenance</div>

@@ -218,3 +218,20 @@ async def test_build_findings_returns_structured_object(mock_db):
     # Local time block present.
     assert "hour" in findings.local
     assert "now" in findings.local
+
+
+async def test_build_findings_includes_active_habits(mock_db):
+    from app.services.coach.habits import HabitConfig, create_habit
+
+    await create_habit(mock_db, HabitConfig(
+        name="make the bed", kind="manual",
+    ))
+    repo = MetricsRepo(mock_db)
+    food_repo = FoodRepo(mock_db)
+    findings = await build_findings(repo, food_repo, targets=None)
+    # New top-level field on Findings.to_dict() and dataclass.
+    assert isinstance(findings.habits, list)
+    names = [h["name"] for h in findings.habits]
+    assert "make the bed" in names
+    bed = next(h for h in findings.habits if h["name"] == "make the bed")
+    assert bed["status"] == "unknown"  # not marked yet

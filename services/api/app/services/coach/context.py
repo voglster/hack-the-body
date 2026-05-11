@@ -119,6 +119,7 @@ class Findings:
     on_track: list[str] = field(default_factory=list)
     attention: list[str] = field(default_factory=list)
     local: dict[str, Any] = field(default_factory=dict)
+    habits: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -249,6 +250,18 @@ async def build_findings(
         local_hour=local_hour,
     )
 
+    from app.services.coach.habits import compose_today  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # noqa: PLC0415
+
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        local_tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        local_tz = ZoneInfo("UTC")
+    local_today_date = day_start.astimezone(local_tz).date()
+    habits_today = await compose_today(metrics_repo.db, local_today_date, tz=local_tz)
+
     return Findings(
         snapshot=snapshot,
         food_totals=food_totals,
@@ -261,4 +274,5 @@ async def build_findings(
             "hour": local_hour,
             "time_of_day": snapshot.get("time_of_day"),
         },
+        habits=habits_today,
     )

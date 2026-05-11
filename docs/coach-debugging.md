@@ -87,7 +87,7 @@ For each clustered failure, ask three questions:
    `"metabolic collapse"`) rather than abstractions (`"don't be
    alarmist"`).
 
-The active rules live in `services/api/app/services/coach.py::SYSTEM_PROMPT`.
+The active rules live in `services/api/app/services/coach/brief.py::SYSTEM_PROMPT`.
 There are tests in `services/api/tests/test_coach.py` (e.g.
 `test_system_prompt_forbids_clinical_alarmism`) that pin the strings —
 if you add a guard-rail you care about, add an assertion so a future
@@ -95,7 +95,7 @@ edit can't quietly drop it.
 
 ## Making the edit
 
-Edit `SYSTEM_PROMPT` in `services/api/app/services/coach.py`. Pattern
+Edit `SYSTEM_PROMPT` in `services/api/app/services/coach/brief.py`. Pattern
 that has worked so far:
 
 - One sentence stating the principle.
@@ -189,12 +189,17 @@ needs more force, vs. a genuinely new pattern.
 
 ## Architecture notes (for new sessions)
 
-The coach lives at `services/api/app/services/coach.py`. Each saved
-insight (`coach_insights` collection) carries:
+The coach lives in a package at `services/api/app/services/coach/`, with
+the main SYSTEM_PROMPT in `brief.py`. Each saved insight (`coach_insights`
+collection) carries:
 
 - `text` — model output
-- `context` — `gather_context()` snapshot (sleep/HRV/weight/steps/local
-  time)
+- `context` — a `Findings.to_dict()` object produced by
+  `services/api/app/services/coach/context.py::build_findings()`. This is
+  a rich pre-digested view (not a raw snapshot) containing the deterministic
+  findings the brief is rendered from: `snapshot` (sleep/HRV/weight/steps),
+  `metrics` (calorie/macro state), `on_track` (boolean per metric),
+  `attention` (flagged anomalies), and `local` (local time info).
 - `food_totals` — calorie/macro/entry counts for the local day
 - `history_snapshot` — the prior coach messages that fed into this
   prompt

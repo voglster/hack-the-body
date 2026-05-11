@@ -1,7 +1,8 @@
-"""Coach package — brief generation, (future) chat agent loop, tools, memory.
+"""Coach package — brief generation, chat agent loop, tools, threads.
 
-For now this is a thin re-export layer over `brief.py` so existing callers
-(router, scheduler, tests) keep working while the package fills out.
+The router and scheduler import everything they need from this top-level
+namespace so that callers don't have to know which submodule a thing
+lives in.
 """
 from app.services.coach.brief import (  # noqa: F401
     RECENT_LIMIT,
@@ -14,4 +15,18 @@ from app.services.coach.brief import (  # noqa: F401
     resolve_day_window,
     save_insight,
     today_food_totals,
+)
+from app.services.coach.chat import MAX_ITERATIONS, reply  # noqa: F401
+from app.services.coach.threads import (  # noqa: F401
+    Turn,
+    append_turn,
+    create_thread,
+    get_active_thread,
+    get_thread,
+)
+from app.services.coach.tools import (  # noqa: F401
+    REGISTRY,
+    ToolError,
+    dispatch,
+    schema_for_llm,
 )

@@ -37,38 +37,51 @@ export function CoachChatPanel() {
     queryFn: () => api.coachThreadActive(),
   });
 
+  // Threads are opened as turn 1 of a brief. If no thread exists today,
+  // submitting a chat message first generates a brief (which opens the
+  // thread), then posts the reply onto it — so the user never has to
+  // think about "start a thread" as a separate step.
   const send = useMutation({
     mutationFn: async (text: string) => {
-      if (!thread) throw new Error("no active thread");
-      return api.coachThreadReply(thread.id, text);
+      let activeId = thread?.id;
+      if (!activeId) {
+        const insight = await api.coachInsight();
+        activeId = insight.thread_id ?? undefined;
+        if (!activeId) throw new Error("brief did not open a thread");
+      }
+      return api.coachThreadReply(activeId, text);
     },
     onSuccess: () => {
       setDraft("");
       void qc.invalidateQueries({ queryKey: ["coach.thread.active"] });
+      void qc.invalidateQueries({ queryKey: ["coach.recent"] });
     },
   });
 
-  if (isLoading) {
-    return <div className="text-xs text-neutral-500">loading thread…</div>;
-  }
-  if (!thread) {
-    return (
-      <div className="text-xs text-neutral-500">
-        no active thread — ask the coach above to start one.
-      </div>
-    );
-  }
+  const turns = thread?.turns ?? [];
 
   return (
     <div className="space-y-3 border-t border-neutral-800 pt-3">
-      <div className="space-y-3 max-h-[40vh] overflow-y-auto">
-        {thread.turns.map((t, i) => (
-          <TurnBubble key={i} turn={t} />
-        ))}
-        {send.isPending && (
-          <div className="text-xs text-neutral-500 italic">coach thinking…</div>
-        )}
+      <div className="text-xs uppercase tracking-wide text-neutral-400">
+        Chat
       </div>
+      {isLoading ? (
+        <div className="text-xs text-neutral-500">loading thread…</div>
+      ) : (
+        <div className="space-y-3 max-h-[40vh] overflow-y-auto">
+          {turns.length === 0 && !send.isPending && (
+            <div className="text-xs text-neutral-500">
+              No conversation yet — ask the coach a question to start one.
+            </div>
+          )}
+          {turns.map((t, i) => (
+            <TurnBubble key={i} turn={t} />
+          ))}
+          {send.isPending && (
+            <div className="text-xs text-neutral-500 italic">coach thinking…</div>
+          )}
+        </div>
+      )}
       <form
         onSubmit={e => { e.preventDefault(); if (draft.trim()) send.mutate(draft.trim()); }}
         className="flex gap-2"
@@ -77,7 +90,7 @@ export function CoachChatPanel() {
           type="text"
           value={draft}
           onChange={e => setDraft(e.target.value)}
-          placeholder="ask the coach…"
+          placeholder={thread ? "ask the coach…" : "ask anything (will start a thread)…"}
           disabled={send.isPending}
           className="flex-1 text-sm px-3 py-2 rounded bg-neutral-800 border border-neutral-700 text-neutral-100 placeholder:text-neutral-500"
         />

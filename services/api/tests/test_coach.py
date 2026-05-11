@@ -749,3 +749,35 @@ async def test_insight_prompt_includes_findings_attention_block(
     assert "on_track" in body["context"]
     assert "attention" in body["context"]
     assert "metrics" in body["context"]
+
+
+async def test_thread_active_returns_most_recent_thread(
+    client, mock_db, fake_ollama_response,
+):
+    """GET /coach/thread/active returns the latest thread with its turns.
+    When no thread exists yet, 404."""
+    # No thread → 404.
+    r = await client.get("/coach/thread/active", headers=HEADERS)
+    assert r.status_code == 404
+
+    # Generate one brief to seed a thread.
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        await client.get("/coach/insight", headers=HEADERS)
+
+    r = await client.get("/coach/thread/active", headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert "id" in body
+    assert isinstance(body["turns"], list)
+    assert len(body["turns"]) == 1
+    assert body["turns"][0]["role"] == "coach"

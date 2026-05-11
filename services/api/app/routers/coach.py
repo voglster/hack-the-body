@@ -76,6 +76,25 @@ async def recent(
     return await recent_insights(request.app.state.db, limit=limit, since=since)
 
 
+@router.get("/thread/active")
+async def thread_active(request: Request) -> dict[str, Any]:
+    """Return the most recent non-closed coach thread with its turns.
+    Used by the FE chat panel to render the conversation under today's brief.
+    """
+    from app.services.coach.threads import get_active_thread  # noqa: PLC0415
+    db = request.app.state.db
+    doc = await get_active_thread(db)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="no active thread")
+    return {
+        "id": str(doc["_id"]),
+        "started_at": doc["started_at"],
+        "last_activity_at": doc["last_activity_at"],
+        "surface": doc.get("surface", "web"),
+        "turns": doc["turns"],
+    }
+
+
 # ---------- feedback ----------
 
 class FeedbackReq(BaseModel):

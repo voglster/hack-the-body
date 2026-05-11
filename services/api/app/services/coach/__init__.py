@@ -17,6 +17,18 @@ from app.services.coach.brief import (  # noqa: F401
     today_food_totals,
 )
 from app.services.coach.chat import MAX_ITERATIONS, reply  # noqa: F401
+from app.services.coach.habits import (  # noqa: F401
+    RESOLVERS,
+    HabitConfig,
+    compose_today,
+    create_habit,
+    get_active_habits,
+    get_habit_by_name,
+    list_habits,
+    mark_status,
+    status_for_day,
+    update_habit,
+)
 from app.services.coach.threads import (  # noqa: F401
     Turn,
     append_turn,

@@ -112,8 +112,8 @@ async def test_insight_returns_text_and_metadata(client, mock_db, fake_ollama_re
     assert body["model"] == "glm-4.7-flash:latest"
     assert body["eval_ms"] == 2000
     assert body["total_ms"] == 4000
-    assert body["context"]["sleep"]["duration_s"] == 27000
-    assert body["context"]["hrv"]["rmssd_ms"] == 33.0
+    assert body["context"]["snapshot"]["sleep"]["duration_s"] == 27000
+    assert body["context"]["snapshot"]["hrv"]["rmssd_ms"] == 33.0
     assert body["trigger"] == "manual"
 
     # The insight should have been persisted to coach_insights.
@@ -191,9 +191,11 @@ async def test_insight_uses_local_day_window_for_food_and_history(
     assert "You haven't eaten anything today" not in prompt
     # The new context fields must be present so the LLM has local-time signal.
     body = r.json()
-    assert "local_now" in body["context"]
-    assert "local_hour" in body["context"]
-    assert "time_of_day" in body["context"]
+    # Findings nests local-time fields under `local`.
+    assert "local" in body["context"]
+    assert "now" in body["context"]["local"]
+    assert "hour" in body["context"]["local"]
+    assert "time_of_day" in body["context"]["local"]
 
 
 async def test_insight_carries_water_total_separate_from_food(
@@ -375,7 +377,7 @@ async def test_insight_persists_full_prompt_inputs(
     assert saved.get("food_totals") is not None
     assert "food_logged_today" in saved["food_totals"]
     assert isinstance(saved.get("history_snapshot"), list)
-    assert saved.get("prompt") and "Latest data:" in saved["prompt"]
+    assert saved.get("prompt") and "Snapshot:" in saved["prompt"]
     assert saved.get("system_prompt") and "no-nonsense" in saved["system_prompt"]
 
     # And the feedback join surfaces them so tools/coach_feedback.py show works.
@@ -679,3 +681,33 @@ async def test_insight_502_on_ollama_failure(client, mock_db):
 
     assert r.status_code == 502
     assert "coach LLM unavailable" in r.json()["detail"]
+
+
+async def test_insight_prompt_includes_findings_attention_block(
+    client, mock_db, fake_ollama_response,
+):
+    """The new pre-digested prompt has explicit `Attention:` / `On track:`
+    blocks computed by Python so the model doesn't have to derive them."""
+    await _seed(mock_db)
+
+    captured: dict = {}
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        captured["payload"] = json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+
+    assert r.status_code == 200
+    prompt = captured["payload"]["prompt"]
+    assert "Attention:" in prompt
+    assert "On track:" in prompt
+    # The saved insight's `context` field carries the full findings dict.
+    body = r.json()
+    assert "on_track" in body["context"]
+    assert "attention" in body["context"]
+    assert "metrics" in body["context"]

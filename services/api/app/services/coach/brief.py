@@ -22,6 +22,7 @@ import httpx
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.services.coach.context import Findings, build_findings
 from app.services.food_repo import FoodRepo
 from app.services.metrics_repo import MetricsRepo
 
@@ -326,22 +327,31 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
     return str(res.inserted_id)
 
 
-def _format_prompt(
-    context: dict[str, Any],
-    food_totals: dict[str, Any] | None,
+def render_brief_prompt(
+    findings: "Findings",
     history: list[dict[str, Any]],
 ) -> str:
-    parts = [SYSTEM_PROMPT, "", f"Client: {USER_PROFILE}", "", "Latest data:"]
-    parts.append(json.dumps(context, indent=2, default=str))
-    if food_totals:
+    parts = [SYSTEM_PROMPT, "", f"Client: {USER_PROFILE}", ""]
+    parts.append("Snapshot:")
+    parts.append(json.dumps(findings.snapshot, indent=2, default=str))
+    parts.append("")
+    parts.append("Metrics (trends + anomalies):")
+    parts.append(json.dumps(findings.metrics, indent=2, default=str))
+    parts.append("")
+    parts.append(f"On track: {', '.join(findings.on_track) or 'none'}")
+    parts.append(f"Attention: {', '.join(findings.attention) or 'none'}")
+    parts.append("")
+    if findings.food_totals:
         parts.append("Today's food totals:")
-        parts.append(json.dumps(food_totals, indent=2, default=str))
+        parts.append(json.dumps(findings.food_totals, indent=2, default=str))
     if history:
-        # Oldest first, so the latest message is right above the response.
         parts.append("Recent coach messages (oldest first):")
         for h in reversed(history):
             ts = h.get("generated_at")
-            ts_s = ts.isoformat(timespec="minutes") if isinstance(ts, datetime) else str(ts)
+            ts_s = (
+                ts.isoformat(timespec="minutes")
+                if isinstance(ts, datetime) else str(ts)
+            )
             parts.append(f"[{h.get('trigger', 'manual')} @ {ts_s}] {h.get('text', '')}")
     return "\n".join(parts)
 
@@ -356,17 +366,14 @@ async def generate_insight(
     targets: dict[str, Any] | None = None,
 ) -> Insight:
     repo = MetricsRepo(db)
-    # Resolve once, share with gather_context AND food_totals so both use
-    # the same local-day window. Previously the scheduler computed food
-    # totals against UTC midnight while gather_context used local midnight,
-    # which sweeps last evening's food into "today" west of UTC.
+    food_repo = FoodRepo(db)
     day_start, day_end = resolve_day_window(day_start, day_end)
-    food_totals = await today_food_totals(FoodRepo(db), day_start, day_end)
-    context = await gather_context(
-        repo, day_start=day_start, day_end=day_end, targets=targets,
+    findings = await build_findings(
+        repo, food_repo,
+        day_start=day_start, day_end=day_end, targets=targets,
     )
     history = await recent_insights(db, since=day_start)
-    prompt = _format_prompt(context, food_totals, history)
+    prompt = render_brief_prompt(findings, history)
     payload = {
         "model": settings.ollama_model,
         "prompt": prompt,
@@ -384,9 +391,9 @@ async def generate_insight(
         eval_ms=int(data.get("eval_duration", 0)) // 1_000_000,
         total_ms=int(data.get("total_duration", 0)) // 1_000_000,
         generated_at=datetime.now(UTC),
-        context=context,
+        context=findings.to_dict(),
         trigger=trigger,
-        food_totals=food_totals,
+        food_totals=findings.food_totals,
         history_snapshot=history,
         prompt=prompt,
         system_prompt=SYSTEM_PROMPT,

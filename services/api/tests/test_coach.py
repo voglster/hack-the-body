@@ -683,6 +683,44 @@ async def test_insight_502_on_ollama_failure(client, mock_db):
     assert "coach LLM unavailable" in r.json()["detail"]
 
 
+async def test_insight_creates_thread_with_brief_as_turn_one(
+    client, mock_db, fake_ollama_response,
+):
+    """Slice 2: every brief opens a new thread, with the brief text as
+    turn 1 (role=coach). The insight row carries a thread_id pointing
+    to that thread."""
+    await _seed(mock_db)
+
+    class _MockResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_ollama_response
+    async def _fake_post(_self, _url, json=None):
+        del json
+        return _MockResp()
+
+    with patch.object(httpx.AsyncClient, "post", _fake_post):
+        r = await client.get("/coach/insight", headers=HEADERS)
+
+    body = r.json()
+    assert body.get("thread_id"), "insight response should carry thread_id"
+
+    # The thread was created with one coach turn equal to the insight text.
+    thread = await mock_db["coach_threads"].find_one(
+        {"_id": __import__("bson").ObjectId(body["thread_id"])},
+    )
+    assert thread is not None
+    assert len(thread["turns"]) == 1
+    assert thread["turns"][0]["role"] == "coach"
+    assert thread["turns"][0]["text"] == body["text"]
+
+    # And the saved insight row has thread_id stored.
+    saved = await mock_db["coach_insights"].find_one(
+        {"_id": __import__("bson").ObjectId(body["id"])},
+    )
+    assert saved["thread_id"] == body["thread_id"]
+
+
 async def test_insight_prompt_includes_findings_attention_block(
     client, mock_db, fake_ollama_response,
 ):

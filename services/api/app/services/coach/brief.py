@@ -96,6 +96,7 @@ class Insight:
     history_snapshot: list[dict[str, Any]] | None = None
     prompt: str | None = None
     system_prompt: str | None = None
+    thread_id: str | None = None  # populated by generate_insight after thread creation
 
 
 def _strip_meta(doc: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -297,6 +298,7 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
         "history_snapshot": insight.history_snapshot,
         "prompt": insight.prompt,
         "system_prompt": insight.system_prompt,
+        "thread_id": insight.thread_id,
     }
     res = await db["coach_insights"].insert_one(doc)
     return str(res.inserted_id)
@@ -373,5 +375,15 @@ async def generate_insight(
         prompt=prompt,
         system_prompt=SYSTEM_PROMPT,
     )
+    # Create a thread with the brief as turn 1 BEFORE saving the insight so
+    # the insight row can store thread_id.
+    from app.services.coach.threads import Turn, create_thread  # noqa: PLC0415
+    thread_id = await create_thread(
+        db,
+        initial_turn=Turn(
+            role="coach", text=insight.text, findings_snapshot=findings.to_dict(),
+        ),
+    )
+    insight.thread_id = thread_id
     insight.id = await save_insight(db, insight)
     return insight

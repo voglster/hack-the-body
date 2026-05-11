@@ -27,6 +27,7 @@ def _serialize(insight: Insight) -> dict[str, Any]:
         # Surfaced so the FE can render a "what the model saw" debug panel
         # — caught a scheduler timezone bug where calories looked wrong.
         "food_totals": insight.food_totals,
+        "thread_id": insight.thread_id,
     }
 
 

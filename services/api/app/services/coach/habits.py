@@ -7,9 +7,11 @@ toggled by the user. `none` habits are just named nudges — no status.
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
@@ -103,3 +105,106 @@ async def status_for_day(
     return await db["habit_status"].find_one(
         {"habit_id": habit_id, "local_date": local_date.isoformat()},
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto resolvers
+# ---------------------------------------------------------------------------
+
+# Each resolver takes (db, local_date, *, tz) and returns a HabitStatusValue
+# string (never None — use "unknown" if the data is missing).
+ResolverFn = Callable[[AsyncDatabase, date], Awaitable[HabitStatusValue]]
+
+BED_CUTOFF_HOUR = 22  # 22:00 local; deliberately not configurable yet
+
+
+async def _bed_by_10_resolver(
+    db: AsyncDatabase, local_date: date, *, tz: ZoneInfo,
+) -> HabitStatusValue:
+    """`done` if sleep onset was at or before 22:00 local on `local_date`."""
+    # The Garmin sleep doc's `ts` is the onset (UTC). We look for any sleep
+    # record whose onset falls between local-noon-of-`local_date` and
+    # local-noon-the-next-day, then compare its local hour to the cutoff.
+    day_start_local = datetime.combine(local_date, time(12, 0), tzinfo=tz)
+    next_day_start_local = day_start_local + timedelta(days=1)
+    start_utc = day_start_local.astimezone(UTC)
+    end_utc = next_day_start_local.astimezone(UTC)
+    doc = await db["metrics_sleep"].find_one(
+        {"ts": {"$gte": start_utc, "$lt": end_utc}},
+        sort=[("ts", 1)],
+    )
+    if doc is None:
+        return "unknown"
+    ts = doc["ts"]
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    onset_local = ts.astimezone(tz)
+    cutoff = datetime.combine(
+        onset_local.date(), time(BED_CUTOFF_HOUR, 0), tzinfo=tz,
+    )
+    return "done" if onset_local <= cutoff else "missed"
+
+
+async def _vitamins_resolver(
+    db: AsyncDatabase, local_date: date, *, tz: ZoneInfo,
+) -> HabitStatusValue:
+    """`done` if any vitamins entry was logged inside the local day."""
+    day_start_local = datetime.combine(local_date, time.min, tzinfo=tz)
+    next_day_local = day_start_local + timedelta(days=1)
+    start_utc = day_start_local.astimezone(UTC)
+    end_utc = next_day_local.astimezone(UTC)
+    doc = await db["meal_entries"].find_one({
+        "food_name": "Vitamins",
+        "ts": {"$gte": start_utc, "$lt": end_utc},
+    })
+    return "done" if doc is not None else "missed"
+
+
+RESOLVERS: dict[str, ResolverFn] = {
+    "bed_by_10": _bed_by_10_resolver,
+    "vitamins": _vitamins_resolver,
+}
+
+
+async def compose_today(
+    db: AsyncDatabase, local_date: date, *, tz: ZoneInfo,
+) -> list[dict[str, Any]]:
+    """Return today's status for every active habit.
+
+    Each item is ``{id, name, kind, status, source, resolver}``:
+    - ``auto`` habits run their resolver (source = "auto").
+    - ``manual`` habits read ``habit_status`` for the day (source = "manual"
+      if set, else "unknown").
+    - ``none`` habits are listed with status "unknown".
+    """
+    habits = await get_active_habits(db)
+    out: list[dict[str, Any]] = []
+    for h in habits:
+        entry: dict[str, Any] = {
+            "id": h["id"],
+            "name": h["name"],
+            "kind": h["kind"],
+            "resolver": h.get("resolver"),
+        }
+        if h["kind"] == "auto":
+            resolver_name = h.get("resolver") or ""
+            fn = RESOLVERS.get(resolver_name)
+            if fn is None:
+                entry["status"] = "unknown"
+                entry["source"] = "auto"
+            else:
+                entry["status"] = await fn(db, local_date, tz=tz)
+                entry["source"] = "auto"
+        elif h["kind"] == "manual":
+            row = await status_for_day(db, h["id"], local_date)
+            if row is None:
+                entry["status"] = "unknown"
+                entry["source"] = "manual"
+            else:
+                entry["status"] = row["status"]
+                entry["source"] = row["source"]
+        else:  # none
+            entry["status"] = "unknown"
+            entry["source"] = "none"
+        out.append(entry)
+    return out

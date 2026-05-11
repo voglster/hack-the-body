@@ -65,3 +65,102 @@ async def test_mark_status_upserts_for_day(mock_db):
 async def test_status_for_day_returns_none_when_unset(mock_db):
     h = await create_habit(mock_db, HabitConfig(name="x", kind="manual"))
     assert await status_for_day(mock_db, h, date(2026, 5, 10)) is None
+
+
+from datetime import timedelta
+from zoneinfo import ZoneInfo
+
+from app.models.metrics import Sleep
+from app.services.coach.habits import (
+    RESOLVERS,
+    compose_today,
+)
+from app.services.metrics_repo import MetricsRepo
+
+
+async def test_bed_by_10_resolver_done_when_onset_before_2200(mock_db):
+    repo = MetricsRepo(mock_db)
+    # Sleep onset at 21:30 Chicago local (= 02:30 UTC the next day).
+    chicago = ZoneInfo("America/Chicago")
+    local_d = date(2026, 5, 10)
+    onset_local = datetime(2026, 5, 10, 21, 30, tzinfo=chicago)
+    await repo.insert_sleep(Sleep(
+        ts=onset_local.astimezone(UTC),
+        duration_s=27000, deep_s=3600, rem_s=5400, light_s=16000, awake_s=2000,
+        score=80, source="garmin", source_id="s:1",
+    ))
+    out = await RESOLVERS["bed_by_10"](mock_db, local_d, tz=chicago)
+    assert out == "done"
+
+
+async def test_bed_by_10_resolver_missed_when_onset_after_2200(mock_db):
+    repo = MetricsRepo(mock_db)
+    chicago = ZoneInfo("America/Chicago")
+    local_d = date(2026, 5, 10)
+    onset_local = datetime(2026, 5, 10, 22, 30, tzinfo=chicago)
+    await repo.insert_sleep(Sleep(
+        ts=onset_local.astimezone(UTC),
+        duration_s=27000, deep_s=3600, rem_s=5400, light_s=16000, awake_s=2000,
+        score=80, source="garmin", source_id="s:2",
+    ))
+    out = await RESOLVERS["bed_by_10"](mock_db, local_d, tz=chicago)
+    assert out == "missed"
+
+
+async def test_bed_by_10_resolver_unknown_when_no_sleep(mock_db):
+    chicago = ZoneInfo("America/Chicago")
+    out = await RESOLVERS["bed_by_10"](mock_db, date(2026, 5, 10), tz=chicago)
+    assert out == "unknown"
+
+
+async def test_vitamins_resolver_done_when_logged_today(mock_db):
+    chicago = ZoneInfo("America/Chicago")
+    local_d = date(2026, 5, 10)
+    # Insert a vitamins meal entry at noon local.
+    noon_local = datetime(2026, 5, 10, 12, 0, tzinfo=chicago)
+    await mock_db["meal_entries"].insert_one({
+        "ts": noon_local.astimezone(UTC),
+        "food_name": "Vitamins", "quantity_g": 1.0, "slot": "supplement",
+        "macros": {},
+    })
+    out = await RESOLVERS["vitamins"](mock_db, local_d, tz=chicago)
+    assert out == "done"
+
+
+async def test_vitamins_resolver_missed_when_not_logged(mock_db):
+    chicago = ZoneInfo("America/Chicago")
+    out = await RESOLVERS["vitamins"](mock_db, date(2026, 5, 10), tz=chicago)
+    assert out == "missed"
+
+
+async def test_compose_today_mixes_auto_manual_and_none(mock_db):
+    chicago = ZoneInfo("America/Chicago")
+    local_d = date(2026, 5, 10)
+    h_auto = await create_habit(mock_db, HabitConfig(
+        name="bed by 10", kind="auto", resolver="bed_by_10",
+    ))
+    h_manual = await create_habit(mock_db, HabitConfig(
+        name="make the bed", kind="manual",
+    ))
+    h_none = await create_habit(mock_db, HabitConfig(
+        name="walk after lunch", kind="none",
+    ))
+    # Manual habit marked done.
+    await mark_status(mock_db, h_manual, local_d, status="done", source="manual")
+    # Bed onset before 22:00 local.
+    repo = MetricsRepo(mock_db)
+    onset = datetime(2026, 5, 10, 21, 0, tzinfo=chicago)
+    await repo.insert_sleep(Sleep(
+        ts=onset.astimezone(UTC),
+        duration_s=27000, deep_s=3600, rem_s=5400, light_s=16000, awake_s=2000,
+        score=80, source="garmin", source_id="s:c",
+    ))
+
+    out = await compose_today(mock_db, local_d, tz=chicago)
+    by_name = {h["name"]: h for h in out}
+    assert by_name["bed by 10"]["status"] == "done"
+    assert by_name["bed by 10"]["source"] == "auto"
+    assert by_name["make the bed"]["status"] == "done"
+    assert by_name["make the bed"]["source"] == "manual"
+    assert by_name["walk after lunch"]["status"] == "unknown"
+    assert by_name["walk after lunch"]["kind"] == "none"

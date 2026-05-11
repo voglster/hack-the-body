@@ -100,3 +100,63 @@ def test_anomaly_flag_custom_threshold():
     assert anomaly_flag(latest=57.0, baseline_avg=60.0) is None
     flag = anomaly_flag(latest=57.0, baseline_avg=60.0, threshold_pct=4.0)
     assert flag is not None and flag["direction"] == "down"
+
+
+from app.services.coach.context import Findings, bucket_metrics
+
+
+def test_findings_dataclass_round_trips_to_dict():
+    f = Findings(
+        snapshot={"sleep": {"score": 80}},
+        food_totals={"calories": 1500, "entries": 3, "food_logged_today": True},
+        targets={"daily_calories": 2200, "daily_protein_g": 180,
+                 "daily_water_oz": None, "step_goal_override": None},
+        metrics={"hrv": {"latest": 33.0, "trend_7d": None, "trend_30d": None,
+                          "delta_7d_vs_30d": None, "anomaly": None}},
+        on_track=["sleep"],
+        attention=["hrv"],
+        local={"now": "07:30", "hour": 7, "time_of_day": "morning"},
+    )
+    d = f.to_dict()
+    assert d["snapshot"]["sleep"]["score"] == 80
+    assert d["on_track"] == ["sleep"]
+    assert d["attention"] == ["hrv"]
+    assert d["local"]["hour"] == 7
+
+
+def test_bucket_metrics_routes_anomalies_to_attention():
+    metrics = {
+        "hrv": {"anomaly": {"direction": "down", "pct": -25.0}},
+        "sleep_score": {"anomaly": None},
+        "weight": {"anomaly": {"direction": "up", "pct": 3.0}},
+    }
+    on_track, attention = bucket_metrics(metrics, food_totals={}, targets={})
+    assert "hrv" in attention
+    assert "weight" in attention
+    assert "sleep_score" in on_track
+
+
+def test_bucket_metrics_flags_food_under_target_after_window_closes():
+    """Calories meaningfully under target with the eating window closed
+    (local_hour >= 19) is an attention item; same shortfall mid-day is not."""
+    food_totals = {"calories": 1200.0, "food_logged_today": True}
+    targets = {"daily_calories": 2200}
+    # Mid-day — pacing is fine.
+    on_track, attention = bucket_metrics(
+        {}, food_totals=food_totals, targets=targets, local_hour=14,
+    )
+    assert "calories" not in attention
+    # Evening — shortfall matters.
+    on_track, attention = bucket_metrics(
+        {}, food_totals=food_totals, targets=targets, local_hour=20,
+    )
+    assert "calories" in attention
+
+
+def test_bucket_metrics_ignores_metrics_without_anomaly_field():
+    """If a metric lacks the 'anomaly' key it's treated as on_track —
+    safe default so a partial findings dict doesn't blow the bucketer up."""
+    metrics = {"steps_today": {"value": 8000}}  # no 'anomaly' key
+    on_track, attention = bucket_metrics(metrics, food_totals={}, targets={})
+    assert "steps_today" in on_track
+    assert attention == []

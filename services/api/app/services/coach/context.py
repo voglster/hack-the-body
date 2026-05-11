@@ -7,6 +7,7 @@ delegates fetching to the existing repos.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -95,3 +96,57 @@ def anomaly_flag(
         "direction": "up" if pct > 0 else "down",
         "pct": round(pct, 3),
     }
+
+
+@dataclass
+class Findings:
+    """Pre-digested context for the coach prompt.
+
+    Structure: deterministic Python computes everything the prompt needs,
+    so the model isn't asked to derive "is this on track?" from raw JSON.
+    """
+    snapshot: dict[str, Any] = field(default_factory=dict)
+    food_totals: dict[str, Any] = field(default_factory=dict)
+    targets: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, dict[str, Any]] = field(default_factory=dict)
+    on_track: list[str] = field(default_factory=list)
+    attention: list[str] = field(default_factory=list)
+    local: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def bucket_metrics(
+    metrics: dict[str, dict[str, Any]],
+    *,
+    food_totals: dict[str, Any],
+    targets: dict[str, Any],
+    local_hour: int | None = None,
+) -> tuple[list[str], list[str]]:
+    """Split metrics + food/target signals into (on_track, attention).
+
+    Rules:
+    - A metric whose `anomaly` field is non-None lands in `attention`.
+    - All other metrics land in `on_track`.
+    - Food: calories under target by >25% lands in `attention` ONLY when
+      the eating window is effectively closed (local_hour >= 19).
+    """
+    on_track: list[str] = []
+    attention: list[str] = []
+    for name, m in metrics.items():
+        if m.get("anomaly"):
+            attention.append(name)
+        else:
+            on_track.append(name)
+    cal_target = targets.get("daily_calories")
+    cal_actual = food_totals.get("calories")
+    if (
+        cal_target
+        and cal_actual is not None
+        and local_hour is not None
+        and local_hour >= 19
+        and cal_actual < cal_target * 0.75
+    ):
+        attention.append("calories")
+    return on_track, attention

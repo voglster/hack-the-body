@@ -11,6 +11,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+# Minimum points needed to fit a regression slope.
+MIN_POINTS_FOR_SLOPE = 2
+# Local hour at which the eating window is considered closed; calorie
+# shortfalls vs target after this matter (mid-day pacing does not).
+EATING_WINDOW_CLOSE_HOUR = 19
+
 
 def _values(series: Sequence[dict[str, Any]], value_key: str) -> list[float]:
     """Extract non-None numeric values, preserving order."""
@@ -38,7 +44,7 @@ def trend(
                 "first": None, "last": None}
     n = len(values)
     avg = sum(values) / n
-    if n < 2:
+    if n < MIN_POINTS_FOR_SLOPE:
         slope = None
     else:
         # Simple linear regression over index 0..n-1.
@@ -146,7 +152,7 @@ def bucket_metrics(
         cal_target
         and cal_actual is not None
         and local_hour is not None
-        and local_hour >= 19
+        and local_hour >= EATING_WINDOW_CLOSE_HOUR
         and cal_actual < cal_target * 0.75
     ):
         attention.append("calories")
@@ -168,7 +174,7 @@ async def build_findings(
     """
     # Imports inside the function to avoid a cycle with brief.py at module
     # load time — context.py is imported by brief.py.
-    from app.services.coach.brief import (
+    from app.services.coach.brief import (  # noqa: PLC0415
         gather_context,
         resolve_day_window,
         today_food_totals,

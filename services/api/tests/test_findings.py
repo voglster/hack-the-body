@@ -4,10 +4,21 @@ Pure functions over plain dicts — no Mongo here. The `build_findings`
 test (later) covers the integration over real repos.
 """
 from datetime import UTC, datetime, timedelta
+from datetime import timedelta as _td
 
 import pytest
 
-from app.services.coach.context import anomaly_flag, delta, trend
+from app.models.metrics import HRV, Sleep, Weight
+from app.services.coach.context import (
+    Findings,
+    anomaly_flag,
+    bucket_metrics,
+    build_findings,
+    delta,
+    trend,
+)
+from app.services.food_repo import FoodRepo
+from app.services.metrics_repo import MetricsRepo
 
 
 def _series(values: list[float], *, start: datetime | None = None) -> list[dict]:
@@ -102,9 +113,6 @@ def test_anomaly_flag_custom_threshold():
     assert flag is not None and flag["direction"] == "down"
 
 
-from app.services.coach.context import Findings, bucket_metrics
-
-
 def test_findings_dataclass_round_trips_to_dict():
     f = Findings(
         snapshot={"sleep": {"score": 80}},
@@ -142,12 +150,12 @@ def test_bucket_metrics_flags_food_under_target_after_window_closes():
     food_totals = {"calories": 1200.0, "food_logged_today": True}
     targets = {"daily_calories": 2200}
     # Mid-day — pacing is fine.
-    on_track, attention = bucket_metrics(
+    _, attention = bucket_metrics(
         {}, food_totals=food_totals, targets=targets, local_hour=14,
     )
     assert "calories" not in attention
     # Evening — shortfall matters.
-    on_track, attention = bucket_metrics(
+    _, attention = bucket_metrics(
         {}, food_totals=food_totals, targets=targets, local_hour=20,
     )
     assert "calories" in attention
@@ -160,14 +168,6 @@ def test_bucket_metrics_ignores_metrics_without_anomaly_field():
     on_track, attention = bucket_metrics(metrics, food_totals={}, targets={})
     assert "steps_today" in on_track
     assert attention == []
-
-
-from datetime import timedelta as _td
-
-from app.models.metrics import HRV, Sleep, Weight
-from app.services.coach.context import build_findings
-from app.services.metrics_repo import MetricsRepo
-from app.services.food_repo import FoodRepo
 
 
 async def test_build_findings_returns_structured_object(mock_db):

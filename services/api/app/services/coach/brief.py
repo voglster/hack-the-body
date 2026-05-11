@@ -303,7 +303,7 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
 
 
 def render_brief_prompt(
-    findings: "Findings",
+    findings: Findings,
     history: list[dict[str, Any]],
 ) -> str:
     parts = [SYSTEM_PROMPT, "", f"Client: {USER_PROFILE}", ""]

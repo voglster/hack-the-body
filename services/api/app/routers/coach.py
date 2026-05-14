@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.auth import require_api_key
 from app.routers.profile import get_user_targets
 from app.services.coach import Insight, generate_insight, recent_insights
+from app.services.coach.brief import KIOSK_SYSTEM_PROMPT
 from app.services.coach_weekly import generate_weekly_review
 
 router = APIRouter(prefix="/coach", dependencies=[Depends(require_api_key)])
@@ -75,9 +76,15 @@ _KIOSK_CACHE_TTL = timedelta(minutes=15)
 
 
 def _kiosk_cache_key(start: datetime | None, end: datetime | None) -> str:
-    s = start.isoformat() if start else ""
-    e = end.isoformat() if end else ""
-    return f"{s}|{e}"
+    def _norm(d: datetime | None) -> str:
+        if d is None:
+            return ""
+        # Normalize to UTC + drop microseconds so identical logical
+        # windows hit the same cache slot regardless of client format.
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=UTC)
+        return d.astimezone(UTC).replace(microsecond=0).isoformat()
+    return f"{_norm(start)}|{_norm(end)}"
 
 
 @router.get("/kiosk")
@@ -93,8 +100,6 @@ async def kiosk(
     app.state.kiosk_cache, keyed by local-day window, for 15 min so
     60s kiosk polling does not hammer the LLM.
     """
-    from app.services.coach.brief import KIOSK_SYSTEM_PROMPT  # noqa: PLC0415
-
     settings = request.app.state.settings
     db = request.app.state.db
 

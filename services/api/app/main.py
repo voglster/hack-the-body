@@ -107,7 +107,14 @@ def _mount_frontend(app: FastAPI) -> None:
         candidate = STATIC_DIR / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(STATIC_DIR / "index.html")
+        # index.html must never be cached — it carries the hashed asset
+        # URLs. Browsers (especially the Pi kiosk's Chromium) holding a
+        # stale index.html keep loading the old JS bundle even after the
+        # container redeploys.
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-store, must-revalidate"},
+        )
 
 
 app = create_app()

@@ -2,7 +2,7 @@ import type {
   Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
   WorkoutDetail,
   ActiveWorkout, TreadmillSample,
-  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, CoachRecentEntry,
+  Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, KioskGlance, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, CoachThread, CoachTurn, SyncStatus, UserTargets,
   WaterToday, VitaminsToday, ParsedFoodItem,
   NudgesResponse, DismissNudgeReq,
@@ -166,7 +166,7 @@ export const api = {
 
   // coach
   coachInsight: () => get<CoachInsight>(`/coach/insight?${dayWindowQuery()}`),
-  coachKiosk: () => get<CoachInsight>(`/coach/kiosk?${dayWindowQuery()}`),
+  coachKiosk: () => get<KioskGlance>(`/coach/kiosk?${dayWindowQuery()}`),
   coachRecent: (limit = 10) => {
     const { start } = localDayBoundsUTC(todayLocalISO());
     return get<CoachRecentEntry[]>(

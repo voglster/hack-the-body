@@ -261,6 +261,15 @@ export interface CoachInsight {
   thread_id?: string | null;
 }
 
+export type KioskUrgency = "clear" | "action" | "urgent";
+
+export interface KioskGlance extends CoachInsight {
+  verb: string;
+  qualifier: string;
+  urgency: KioskUrgency;
+  coach: string;
+}
+
 export interface CoachRecentEntry {
   id: string;
   text: string;

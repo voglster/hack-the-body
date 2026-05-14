@@ -166,6 +166,7 @@ export const api = {
 
   // coach
   coachInsight: () => get<CoachInsight>(`/coach/insight?${dayWindowQuery()}`),
+  coachKiosk: () => get<CoachInsight>(`/coach/kiosk?${dayWindowQuery()}`),
   coachRecent: (limit = 10) => {
     const { start } = localDayBoundsUTC(todayLocalISO());
     return get<CoachRecentEntry[]>(

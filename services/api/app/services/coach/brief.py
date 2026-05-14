@@ -307,8 +307,10 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
 def render_brief_prompt(
     findings: Findings,
     history: list[dict[str, Any]],
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> str:
-    parts = [SYSTEM_PROMPT, "", f"Client: {USER_PROFILE}", ""]
+    parts = [system_prompt, "", f"Client: {USER_PROFILE}", ""]
     parts.append("Snapshot:")
     parts.append(json.dumps(findings.snapshot, indent=2, default=str))
     parts.append("")
@@ -348,6 +350,7 @@ async def generate_insight(
     day_start: datetime | None = None,
     day_end: datetime | None = None,
     targets: dict[str, Any] | None = None,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> Insight:
     repo = MetricsRepo(db)
     food_repo = FoodRepo(db)
@@ -357,7 +360,7 @@ async def generate_insight(
         day_start=day_start, day_end=day_end, targets=targets,
     )
     history = await recent_insights(db, since=day_start)
-    prompt = render_brief_prompt(findings, history)
+    prompt = render_brief_prompt(findings, history, system_prompt=system_prompt)
     payload = {
         "model": settings.ollama_model,
         "prompt": prompt,
@@ -380,7 +383,7 @@ async def generate_insight(
         food_totals=findings.food_totals,
         history_snapshot=history,
         prompt=prompt,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
     )
     # Create a thread with the brief as turn 1 BEFORE saving the insight so
     # the insight row can store thread_id.

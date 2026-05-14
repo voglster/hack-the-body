@@ -72,6 +72,19 @@ SYSTEM_PROMPT = (
     "stands alone. Treat the user as an adult collaborator."
 )
 
+KIOSK_SYSTEM_PROMPT = (
+    "You are writing a single glance-line for an office kiosk display. "
+    "Hard constraints: 160 characters max, one or two short sentences, "
+    "present tense, no greeting, no sign-off, no emoji. "
+    "Lead with the highest-leverage ACTION available right now from the "
+    "`Attention` list. If `Attention` is empty, return one short upbeat "
+    "line acknowledging today is on track (vary the wording vs. "
+    "`recent_coach_messages`). Never scold, never repeat prior closers. "
+    "Use `local.hour` (wall clock) for time-of-day reasoning. Weight is "
+    "in lbs. Respect the 11:00-19:00 eating window: when `local.hour` < "
+    "11 do not mention food."
+)
+
 # How many recent insights to feed into the next prompt. More = better
 # continuity, but tokens grow linearly. 5 fits in <2k tokens easily.
 RECENT_LIMIT = 5

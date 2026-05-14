@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 
 function fallbackLine(): string {
-  return "Coach offline. Glance at the steps + checklist below.";
+  return "Coach offline.";
 }
 
 export function KioskCoachLine() {
@@ -14,17 +14,12 @@ export function KioskCoachLine() {
     retry: 1,
   });
 
-  const trimmed = q.data?.text?.trim() ?? "";
-  const text = trimmed.length > 0 ? trimmed : fallbackLine();
+  const coach = q.data?.coach?.trim() ?? "";
+  const text = coach.length > 0 ? coach : fallbackLine();
 
   return (
-    <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-8">
-      <div className="text-xs uppercase tracking-widest text-neutral-500 mb-3">
-        Coach
-      </div>
-      <div className="text-3xl leading-snug text-white">
-        {text}
-      </div>
+    <section className="text-[5rem] font-normal leading-tight text-neutral-100">
+      {text}
     </section>
   );
 }

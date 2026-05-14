@@ -1,0 +1,18 @@
+[Unit]
+Description=Hack the Body — Pi kiosk MQTT agent
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jvogel
+Group=jvogel
+Environment=PATH=/home/jvogel/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/home/jvogel/htb-pi-agent
+EnvironmentFile=/home/jvogel/htb-pi-agent/.env
+ExecStart=/home/jvogel/.local/bin/uv run --project /home/jvogel/htb-pi-agent htb-pi-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

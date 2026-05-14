@@ -24,3 +24,12 @@ def test_render_uses_kiosk_prompt_when_passed():
     )
     assert out.startswith(KIOSK_SYSTEM_PROMPT)
     assert SYSTEM_PROMPT not in out.split("Client:")[0]
+
+
+def test_kiosk_prompt_is_deadpan_butler_json_contract():
+    """The new kiosk prompt should describe the structured JSON contract
+    (verb / qualifier / urgency / coach) and set the deadpan-butler tone."""
+    assert KIOSK_SYSTEM_PROMPT.startswith("You are a deadpan butler")
+    for field in ("verb", "qualifier", "urgency", "coach"):
+        assert field in KIOSK_SYSTEM_PROMPT
+    assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT

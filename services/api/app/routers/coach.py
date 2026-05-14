@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -120,6 +121,7 @@ async def kiosk(
             settings, db, trigger="kiosk",
             day_start=start, day_end=end, targets=targets,
             system_prompt=KIOSK_SYSTEM_PROMPT,
+            response_format="json",
         )
     except Exception as e:
         raise HTTPException(
@@ -128,6 +130,23 @@ async def kiosk(
         ) from e
 
     payload = _serialize(result)
+    try:
+        parsed = json.loads(result.text)
+        payload["verb"] = str(parsed.get("verb") or "CLEAR").upper()
+        payload["qualifier"] = str(parsed.get("qualifier") or "")
+        urgency = str(parsed.get("urgency") or "clear").lower()
+        if urgency not in ("clear", "action", "urgent"):
+            urgency = "clear"
+        payload["urgency"] = urgency
+        payload["coach"] = str(parsed.get("coach") or "")
+    except (ValueError, AttributeError):
+        # Defensive: if the model didn't emit valid JSON, fall back to a
+        # neutral "clear" glance line with the raw text as the coach
+        # sentence. Better to show *something* than to 500 the kiosk.
+        payload["verb"] = "CLEAR"
+        payload["qualifier"] = ""
+        payload["urgency"] = "clear"
+        payload["coach"] = result.text[:160]
     cache[key] = {"stored_at": now, "payload": payload}
     return payload
 

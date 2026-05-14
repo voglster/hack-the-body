@@ -14,7 +14,8 @@ export function KioskCoachLine() {
     retry: 1,
   });
 
-  const text = q.data?.text?.trim() || fallbackLine();
+  const trimmed = q.data?.text?.trim() ?? "";
+  const text = trimmed.length > 0 ? trimmed : fallbackLine();
 
   return (
     <section className="rounded-2xl border border-neutral-800 bg-neutral-950 p-8">

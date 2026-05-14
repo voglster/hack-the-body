@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from bson import ObjectId
@@ -69,6 +69,62 @@ async def insight(
             detail=f"coach LLM unavailable: {type(e).__name__}: {e}",
         ) from e
     return _serialize(result)
+
+
+_KIOSK_CACHE_TTL = timedelta(minutes=15)
+
+
+def _kiosk_cache_key(start: datetime | None, end: datetime | None) -> str:
+    s = start.isoformat() if start else ""
+    e = end.isoformat() if end else ""
+    return f"{s}|{e}"
+
+
+@router.get("/kiosk")
+async def kiosk(
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+) -> dict[str, Any]:
+    """Glance-line for the office kiosk.
+
+    Same context-builder as /insight, but rendered through
+    KIOSK_SYSTEM_PROMPT (~160 char output). Result is cached on
+    app.state.kiosk_cache, keyed by local-day window, for 15 min so
+    60s kiosk polling does not hammer the LLM.
+    """
+    from app.services.coach.brief import KIOSK_SYSTEM_PROMPT  # noqa: PLC0415
+
+    settings = request.app.state.settings
+    db = request.app.state.db
+
+    cache = getattr(request.app.state, "kiosk_cache", None)
+    if cache is None:
+        cache = {}
+        request.app.state.kiosk_cache = cache
+
+    key = _kiosk_cache_key(start, end)
+    now = datetime.now(UTC)
+    hit = cache.get(key)
+    if hit and (now - hit["stored_at"]) < _KIOSK_CACHE_TTL:
+        return hit["payload"]
+
+    try:
+        targets = await get_user_targets(db)
+        result = await generate_insight(
+            settings, db, trigger="kiosk",
+            day_start=start, day_end=end, targets=targets,
+            system_prompt=KIOSK_SYSTEM_PROMPT,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"coach LLM unavailable: {type(e).__name__}: {e}",
+        ) from e
+
+    payload = _serialize(result)
+    cache[key] = {"stored_at": now, "payload": payload}
+    return payload
 
 
 @router.get("/recent")

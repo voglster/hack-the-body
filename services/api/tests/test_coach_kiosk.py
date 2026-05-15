@@ -117,3 +117,29 @@ async def test_kiosk_falls_back_when_response_is_not_json(client):
     assert body["qualifier"] == ""
     assert body["urgency"] == "clear"
     assert body["coach"] == "just plain text"
+
+
+async def test_recent_excludes_kiosk_trigger_by_default(client, mock_db):
+    """Kiosk insights store raw JSON in `text`; they must not appear in
+    /coach/recent (which the dashboard CoachCard reads) or as history
+    fed to the normal /coach/insight prompt."""
+    from datetime import UTC, datetime
+    await mock_db["coach_insights"].insert_many([
+        {
+            "text": "Solid morning. Keep going.",
+            "model": "x", "eval_ms": 1, "total_ms": 1,
+            "generated_at": datetime.now(UTC),
+            "context": {}, "trigger": "manual",
+        },
+        {
+            "text": '{"verb":"EAT","qualifier":"now","urgency":"urgent","coach":"hi"}',
+            "model": "x", "eval_ms": 1, "total_ms": 1,
+            "generated_at": datetime.now(UTC),
+            "context": {}, "trigger": "kiosk",
+        },
+    ])
+    r = await client.get("/coach/recent?limit=5", headers=HEADERS)
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["trigger"] == "manual"

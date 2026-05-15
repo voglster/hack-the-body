@@ -288,6 +288,7 @@ async def recent_insights(
     limit: int = RECENT_LIMIT,
     *,
     since: datetime | None = None,
+    include_kiosk: bool = False,
 ) -> list[dict[str, Any]]:
     """Return the most recent N insights ordered newest-first, trimmed for prompt size.
 
@@ -296,10 +297,17 @@ async def recent_insights(
     start so yesterday's coach messages don't bleed into today's prompt
     (a real failure mode: an "you haven't eaten yet" message from 11 PM
     yesterday makes the morning coach repeat the same accusation).
+
+    Kiosk-trigger insights are excluded by default. They store a raw JSON
+    string in `text` (verb/qualifier/urgency/coach) which would (a) render
+    as gibberish in the dashboard CoachCard and (b) confuse the normal
+    coach LLM when fed back as "recent coach messages" history.
     """
     query: dict[str, Any] = {}
     if since is not None:
         query["generated_at"] = {"$gte": since}
+    if not include_kiosk:
+        query["trigger"] = {"$ne": "kiosk"}
     cur = db["coach_insights"].find(query).sort("generated_at", -1).limit(limit)
     return [
         {

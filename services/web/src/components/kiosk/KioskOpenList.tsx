@@ -7,6 +7,7 @@ import type {
   MealEntry,
   StepsToday,
   Summary,
+  TodayTotals,
   UserTargets,
   VitaminsToday,
   WaterToday,
@@ -108,6 +109,26 @@ export function stepsItem(
   return null;
 }
 
+export function proteinItem(
+  todayTotals: TodayTotals | undefined,
+  targetG: number,
+  now: Date,
+): OpenItem | null {
+  if (now.getHours() < 11) return null; // eating window not open yet
+  const g = todayTotals?.totals?.protein_g ?? 0;
+  if (g >= targetG) return null;
+  const expectedFrac = expectedFractionAt(now);
+  const haveFrac = g / targetG;
+  const gap = expectedFrac - haveFrac;
+  if (gap <= 0.15) return null;
+  return {
+    key: "protein",
+    label: "PROTEIN",
+    value: `${Math.round(g)} / ${targetG} g`,
+    level: gap > 0.4 ? "urgent" : "attention",
+  };
+}
+
 const DOT_COLOR: Record<OpenItem["level"], string> = {
   attention: "bg-amber-400",
   urgent: "bg-red-500",
@@ -158,9 +179,15 @@ export function KioskOpenList() {
     },
     refetchInterval: 60_000,
   });
+  const totalsQ = useQuery({
+    queryKey: ["today-totals"],
+    queryFn: () => api.todayTotals(),
+    refetchInterval: 60_000,
+  });
 
   const now = new Date();
   const targetOz = targetsQ.data?.daily_water_oz ?? 80;
+  const targetProteinG = targetsQ.data?.daily_protein_g ?? 180;
   const stepGoal = summaryQ.data?.daily_summary?.step_goal ?? null;
   const stepsCount = stepsQ.data?.total ?? 0;
 
@@ -169,6 +196,7 @@ export function KioskOpenList() {
     weighInItem(summaryQ.data, now),
     mealItem(entriesQ.data, now),
     waterItem(waterQ.data, targetOz, now),
+    proteinItem(totalsQ.data, targetProteinG, now),
     stepsItem(stepsCount, stepGoal, now),
   ];
   const open = items.filter((i): i is OpenItem => i !== null);

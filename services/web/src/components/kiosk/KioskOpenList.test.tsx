@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mealItem,
+  proteinItem,
   stepsItem,
   vitaminItem,
   waterItem,
@@ -11,9 +12,22 @@ import { todayLocalISO } from "../../lib/tz";
 import type {
   MealEntry,
   Summary,
+  TodayTotals,
   VitaminsToday,
   WaterToday,
 } from "../../api/types";
+
+function totals(protein_g: number): TodayTotals {
+  return {
+    totals: {
+      calories: 0, protein_g, carbs_g: 0, fat_g: 0,
+      fiber_g: 0, sugar_g: 0, sodium_mg: 0,
+    },
+    by_slot: {} as TodayTotals["by_slot"],
+    supplements: [],
+    entry_count: 0,
+  };
+}
 
 const noon = new Date(2026, 4, 14, 12, 0);
 const earlyMorning = new Date(2026, 4, 14, 7, 0);
@@ -79,6 +93,20 @@ describe("waterItem", () => {
   });
   it("urgent when far behind pace", () => {
     expect(waterItem({ oz: 5 } as WaterToday, 80, afternoon)?.level).toBe("urgent");
+  });
+});
+
+describe("proteinItem", () => {
+  it("null before 11am even if under target", () => {
+    expect(proteinItem(totals(10), 180, earlyMorning)).toBeNull();
+  });
+  it("attention when behind pace at 4pm", () => {
+    // expectedFractionAt(16:00) ~ 0.53; 30/180 ~ 0.17 → gap ~ 0.36 → attention
+    expect(proteinItem(totals(30), 180, afternoon)?.level).toBe("attention");
+  });
+  it("urgent when far behind pace at 4pm", () => {
+    // 5/180 ~ 0.028; gap ~ 0.5 → urgent
+    expect(proteinItem(totals(5), 180, afternoon)?.level).toBe("urgent");
   });
 });
 

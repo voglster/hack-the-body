@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { KioskUrgency } from "../../api/types";
+import { KioskPhaseCard } from "./KioskPhaseCard";
 
 const URGENCY_COLOR: Record<KioskUrgency, string> = {
   clear:   "text-emerald-400",
@@ -21,8 +22,10 @@ export function KioskHero() {
   const qualifier = q.data?.qualifier?.trim() ?? "";
   const urgency: KioskUrgency = q.data?.urgency ?? "clear";
 
-  // Falls back to neutral "CLEAR" when offline so the wall doesn't show
-  // an empty space.
+  if (urgency === "clear") {
+    return <KioskPhaseCard />;
+  }
+
   const displayVerb = verb.length > 0 ? verb : "CLEAR";
   const colorClass = URGENCY_COLOR[urgency];
 

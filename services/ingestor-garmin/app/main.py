@@ -96,14 +96,34 @@ async def _run() -> None:
     async def _scheduled_sync() -> None:
         await _do_sync(settings, db, startup_jitter_s=900)
 
+    async def _scheduled_steps_sync() -> None:
+        # Light pull of today's daily summary so the kiosk catches Garmin
+        # Connect updates within ~30 min instead of next-day. The watch
+        # itself only reaches Connect when the phone's BT bridge syncs,
+        # so this is best-effort: if the phone hasn't synced, the pull
+        # returns the same data as last cycle. Cheap either way.
+        await _do_sync(settings, db, kind="steps")
+
     scheduler.add_job(
         _scheduled_sync,
         CronTrigger.from_crontab(settings.garmin_schedule_cron),
         id="nightly",
     )
+    scheduler.add_job(
+        _scheduled_steps_sync,
+        CronTrigger.from_crontab(
+            settings.garmin_steps_schedule_cron,
+            timezone=settings.garmin_steps_schedule_tz,
+        ),
+        id="intraday_steps",
+    )
     scheduler.start()
-    log.info("scheduler started with cron=%s; polling for on-demand requests",
-             settings.garmin_schedule_cron)
+    log.info(
+        "scheduler started: nightly=%s, steps=%s (%s); polling for on-demand requests",
+        settings.garmin_schedule_cron,
+        settings.garmin_steps_schedule_cron,
+        settings.garmin_steps_schedule_tz,
+    )
 
     await _do_sync(settings, db)
     # Run the treadmill uploader concurrently with the request poller.

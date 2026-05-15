@@ -26,10 +26,16 @@ def test_render_uses_kiosk_prompt_when_passed():
     assert SYSTEM_PROMPT not in out.split("Client:")[0]
 
 
-def test_kiosk_prompt_is_deadpan_butler_json_contract():
-    """The new kiosk prompt should describe the structured JSON contract
-    (verb / qualifier / urgency / coach) and set the deadpan-butler tone."""
-    assert KIOSK_SYSTEM_PROMPT.startswith("You are a deadpan butler")
+def test_kiosk_prompt_is_pit_crew_coach_json_contract():
+    """The kiosk prompt should set the pit-crew/coach voice (second person,
+    no butler/third-person flourishes) and describe the structured JSON
+    contract (verb / qualifier / urgency / coach)."""
+    assert "Jim's coach" in KIOSK_SYSTEM_PROMPT
+    assert "pit crew" in KIOSK_SYSTEM_PROMPT.lower()
+    # Voice guardrails — these phrases are explicitly banned in the prompt
+    # body, so they should appear (in the ban list) rather than be absent.
+    assert "third person" in KIOSK_SYSTEM_PROMPT.lower()
+    assert "butler" in KIOSK_SYSTEM_PROMPT.lower()
     for field in ("verb", "qualifier", "urgency", "coach"):
         assert field in KIOSK_SYSTEM_PROMPT
     assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT

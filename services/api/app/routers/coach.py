@@ -147,6 +147,15 @@ async def kiosk(
         payload["qualifier"] = ""
         payload["urgency"] = "clear"
         payload["coach"] = result.text[:160]
+
+    # Server-side override: if findings.attention is empty, NOTHING needs
+    # to happen right now — the model occasionally invents an action
+    # anyway ("EAT" when calorie target isn't met yet, etc). Force CLEAR.
+    findings_attention = (result.context or {}).get("attention") or []
+    if not findings_attention:
+        payload["verb"] = "CLEAR"
+        payload["qualifier"] = ""
+        payload["urgency"] = "clear"
     cache[key] = {"stored_at": now, "payload": payload}
     return payload
 

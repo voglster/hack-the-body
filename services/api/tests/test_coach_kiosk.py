@@ -91,10 +91,41 @@ async def test_kiosk_parses_structured_json_response(client):
         )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["verb"] == "EAT"
-    assert body["qualifier"] == "1,651 kcal by 7:00 PM"
-    assert body["urgency"] == "urgent"
+    # With empty findings.attention (no DB seed), the server-side override
+    # forces verb to CLEAR — that's tested in a dedicated test below. Here
+    # we just verify the JSON parsing path surfaces the coach sentence.
     assert body["coach"].startswith("Lunch happened")
+
+
+async def test_kiosk_forces_clear_when_findings_attention_empty(client):
+    """Even when the LLM hallucinates an action verb, if findings.attention
+    is empty (nothing actually needs doing right now) the server overrides
+    to CLEAR. Prevents 'EAT' from showing on the wall after the user has
+    logged plenty of food but is under their calorie target."""
+    counter = [0]
+    structured = {
+        "model": "glm-4.7-flash:latest",
+        "response": (
+            '{"verb": "EAT", "qualifier": "200 kcal short", '
+            '"urgency": "urgent", '
+            '"coach": "Calories logged. Steps remain low."}'
+        ),
+        "eval_count": 10,
+        "eval_duration": 1_000_000_000,
+        "total_duration": 2_000_000_000,
+    }
+    with patch.object(httpx.AsyncClient, "post", _make_fake_post(structured, counter)):
+        r = await client.get(
+            "/coach/kiosk?start=2026-05-14T08:00:00Z&end=2026-05-15T08:00:00Z",
+            headers=HEADERS,
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["verb"] == "CLEAR"
+    assert body["qualifier"] == ""
+    assert body["urgency"] == "clear"
+    # Coach line is preserved — the override only nukes the verb.
+    assert body["coach"].startswith("Calories logged")
 
 
 async def test_kiosk_falls_back_when_response_is_not_json(client):

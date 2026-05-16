@@ -292,6 +292,22 @@ export interface UserTargets {
   updated_at?: string;
 }
 
+/** Ephemeral "what's the coach should know about today" note. Resets
+ *  at local midnight via the server-computed `is_today` flag — when
+ *  false, the stored note is yesterday's and `text` is returned empty. */
+export interface DayNote {
+  text: string;
+  local_date: string | null;
+  is_today: boolean;
+  set_at: string | null;
+}
+
+/** Long-lived stance / goals the coach reads on every generation. */
+export interface CoachNote {
+  text: string;
+  updated_at: string | null;
+}
+
 export type CoachFeedbackRating = "up" | "down";
 
 export interface CoachFeedback {

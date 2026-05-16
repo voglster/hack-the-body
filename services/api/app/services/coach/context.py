@@ -120,6 +120,12 @@ class Findings:
     attention: list[str] = field(default_factory=list)
     local: dict[str, Any] = field(default_factory=dict)
     habits: list[dict[str, Any]] = field(default_factory=list)
+    # Free-form notes the user maintains via /profile/day-note and
+    # /profile/coach-note. Both are None when unset; the prompt renderer
+    # omits the corresponding block entirely so an empty profile leaves
+    # no trace in the prompt.
+    day_note: str | None = None
+    coach_note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -263,6 +269,12 @@ async def build_findings(
     local_today_date = day_start.astimezone(local_tz).date()
     habits_today = await compose_today(metrics_repo.db, local_today_date, tz=local_tz)
 
+    # User-maintained notes — None when unset / day-rolled (the helpers
+    # apply the local-date dedupe themselves).
+    from app.routers.profile import get_coach_note, get_day_note  # noqa: PLC0415
+    day_note = await get_day_note(metrics_repo.db)
+    coach_note = await get_coach_note(metrics_repo.db)
+
     return Findings(
         snapshot=snapshot,
         food_totals=food_totals,
@@ -276,4 +288,6 @@ async def build_findings(
             "time_of_day": snapshot.get("time_of_day"),
         },
         habits=habits_today,
+        day_note=day_note,
+        coach_note=coach_note,
     )

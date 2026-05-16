@@ -338,10 +338,10 @@ async def test_insight_includes_targets_in_prompt(client, mock_db, fake_ollama_r
 
 async def test_system_prompt_allows_action_optional():
     """User feedback: not every reply needs an action. SYSTEM_PROMPT
-    must let the model skip the action when nothing's off-track."""
+    must let the model skip the action when Attention is empty."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "off-track" in lowered or "off track" in lowered
-    assert "do not invent action" in lowered
+    assert "attention" in lowered
+    assert "do not invent an action" in lowered or "do not invent action" in lowered
 
 
 async def test_insight_persists_full_prompt_inputs(
@@ -378,7 +378,7 @@ async def test_insight_persists_full_prompt_inputs(
     assert "food_logged_today" in saved["food_totals"]
     assert isinstance(saved.get("history_snapshot"), list)
     assert saved.get("prompt") and "Snapshot:" in saved["prompt"]
-    assert saved.get("system_prompt") and "no-nonsense" in saved["system_prompt"]
+    assert saved.get("system_prompt") and "pit crew" in saved["system_prompt"].lower()
 
     # And the feedback join surfaces them so tools/coach_feedback.py show works.
     await client.post(
@@ -486,9 +486,13 @@ async def test_system_prompt_requires_varied_positive_close():
     lowered = SYSTEM_PROMPT.lower()
     assert "vary" in lowered or "varied" in lowered
     # At least one example phrasing should be present so the model has
-    # concrete options to draw from.
-    assert "keep it rolling" in lowered or "keep going" in lowered or \
-           "keep stacking" in lowered
+    # concrete options to draw from. The pit-crew voice's CLEAR-state
+    # examples live in BRIEF_TAIL / KIOSK_TAIL.
+    assert (
+        "all green" in lowered
+        or "on pace" in lowered
+        or "easy afternoon" in lowered
+    )
 
 
 async def test_system_prompt_forbids_clinical_alarmism():

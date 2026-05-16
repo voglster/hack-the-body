@@ -7,6 +7,7 @@ import type { Summary } from "../api/types";
 import { BottomNav, useActiveTab } from "../components/BottomNav";
 import { ActiveWorkoutCard } from "../components/ActiveWorkoutCard";
 import { CoachCard } from "../components/CoachCard";
+import { CoachNotesCard } from "../components/CoachNotesCard";
 import { HabitsCard } from "../components/HabitsCard";
 import { NotificationsCard } from "../components/NotificationsCard";
 import { NudgesCard } from "../components/NudgesCard";
@@ -142,6 +143,7 @@ function TodayTab({ onOpenTrend }: { onOpenTrend?: (focus: TrendFocus) => void }
         onOpenTrends={onOpenTrend ? () => onOpenTrend("steps") : undefined}
       />
       <CoachCard />
+      <CoachNotesCard />
       <WaterCard />
       <VitaminsCard />
       {/* Hides itself once granted; only shows in 'off' or 'denied'.

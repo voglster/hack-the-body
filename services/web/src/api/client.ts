@@ -4,6 +4,7 @@ import type {
   ActiveWorkout, TreadmillSample,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, KioskGlance, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, CoachThread, CoachTurn, SyncStatus, UserTargets,
+  DayNote, CoachNote,
   WaterToday, VitaminsToday, ParsedFoodItem,
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
@@ -106,6 +107,33 @@ export const api = {
       if (r.status === 401) handleUnauthorized();
       if (!r.ok) throw new Error(`PUT failed: ${r.status} ${await r.text().catch(() => "")}`);
       return (await r.json()) as UserTargets;
+    });
+  },
+
+  // profile / coach notes — both feed the coach prompt (day-note resets
+  // at local midnight, coach-note is long-lived).
+  getDayNote: () => get<DayNote>("/profile/day-note"),
+  putDayNote: (text: string) => {
+    return fetch(`${BASE}/profile/day-note`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ text }),
+    }).then(async r => {
+      if (r.status === 401) handleUnauthorized();
+      if (!r.ok) throw new Error(`PUT failed: ${r.status} ${await r.text().catch(() => "")}`);
+      return (await r.json()) as DayNote;
+    });
+  },
+  getCoachNote: () => get<CoachNote>("/profile/coach-note"),
+  putCoachNote: (text: string) => {
+    return fetch(`${BASE}/profile/coach-note`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ text }),
+    }).then(async r => {
+      if (r.status === 401) handleUnauthorized();
+      if (!r.ok) throw new Error(`PUT failed: ${r.status} ${await r.text().catch(() => "")}`);
+      return (await r.json()) as CoachNote;
     });
   },
 

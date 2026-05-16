@@ -338,10 +338,18 @@ async def test_insight_includes_targets_in_prompt(client, mock_db, fake_ollama_r
 
 async def test_system_prompt_allows_action_optional():
     """User feedback: not every reply needs an action. SYSTEM_PROMPT
-    must let the model skip the action when Attention is empty."""
+    must let the model skip the action when Attention is empty. The
+    positive framing is 'find something substantive to observe instead
+    of inventing an action' — previously this was 'do not invent an
+    action', which was the kind of negative phrasing the refactor
+    moved away from."""
     lowered = SYSTEM_PROMPT.lower()
     assert "attention" in lowered
-    assert "do not invent an action" in lowered or "do not invent action" in lowered
+    assert (
+        "instead of inventing" in lowered
+        or "find something substantive" in lowered
+        or "substantive observation" in lowered
+    )
 
 
 async def test_insight_persists_full_prompt_inputs(
@@ -378,7 +386,8 @@ async def test_insight_persists_full_prompt_inputs(
     assert "food_logged_today" in saved["food_totals"]
     assert isinstance(saved.get("history_snapshot"), list)
     assert saved.get("prompt") and "Snapshot:" in saved["prompt"]
-    assert saved.get("system_prompt") and "pit crew" in saved["system_prompt"].lower()
+    sys_p_lower = (saved.get("system_prompt") or "").lower()
+    assert sys_p_lower and ("pit-crew" in sys_p_lower or "pit crew" in sys_p_lower)
 
     # And the feedback join surfaces them so tools/coach_feedback.py show works.
     await client.post(
@@ -400,8 +409,12 @@ async def test_system_prompt_directs_model_to_attention_block():
     assert "attention" in lowered
     assert "on track" in lowered or "on-track" in lowered
     # Positive instruction: only address the named attention items.
-    assert "only address" in lowered or "name only attention" in lowered \
+    assert (
+        "only address" in lowered
         or "address only" in lowered
+        or "speak only to" in lowered
+        or "speak only to items on attention" in lowered
+    )
 
 
 async def test_system_prompt_requires_weight_in_lbs():
@@ -487,21 +500,35 @@ async def test_system_prompt_requires_varied_positive_close():
     a phrase that already appeared in recent coach messages — without
     that explicit guard, the model defaults to the safest example."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "vary" in lowered or "varied" in lowered or "invent a new" in lowered
+    assert (
+        "variety" in lowered
+        or "vary" in lowered
+        or "varied" in lowered
+        or "invent a fresh" in lowered
+        or "invent a new" in lowered
+    )
     # Anti-parroting guard: must reference recent messages as a
     # don't-reuse source. Pre-2026-05-16 the prompt gave example phrases
     # which the model copy-pasted — those examples were stripped.
     assert "recent coach messages" in lowered or "do not reuse" in lowered
 
 
-async def test_system_prompt_forbids_clinical_alarmism():
-    """The string-level guard is the cheapest way to verify the new
-    anti-alarmism guardrails landed in the prompt — if a future edit
-    drops them, this test fails loudly."""
+async def test_system_prompt_calibrates_intensity_positively():
+    """Earlier prompt iterations carried a long ban-list ("catabolic",
+    "starving", "metabolic collapse", "scolding", "lectures") to keep
+    the coach from alarmism. Those negative tokens were
+    counter-productive — the pink-elephant effect anchored the model
+    on the very concepts we wanted to suppress.
+
+    The current prompt achieves the same outcome with a positive
+    audience-calibration line ("healthy adult athlete", "a Tuesday,
+    not a crisis") plus the pit-crew persona. This test guards that
+    positive framing rather than the obsolete ban-list."""
     lowered = SYSTEM_PROMPT.lower()
-    for forbidden_concept in ("catabolic", "starving", "metabolic collapse"):
-        assert forbidden_concept in lowered, f"missing guard against {forbidden_concept!r}"
-    assert "scold" in lowered or "lecture" in lowered or "do not use phrases" in lowered
+    assert "healthy adult" in lowered
+    assert "not a crisis" in lowered or "tuesday, not a crisis" in lowered
+    # The pit-crew register itself is the anti-alarmism guard.
+    assert "pit-crew" in lowered or "pit crew" in lowered
 
 
 async def test_feedback_round_trip(client, mock_db, fake_ollama_response):

@@ -1,5 +1,8 @@
+import re
+
 from app.services.coach.brief import (
-    COACH_CORE,
+    BRIEF_SYSTEM_PROMPT,
+    COACH_VOICE,
     KIOSK_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     render_brief_prompt,
@@ -24,89 +27,118 @@ def test_render_uses_kiosk_prompt_when_passed():
         _empty_findings(), history=[], system_prompt=KIOSK_SYSTEM_PROMPT,
     )
     assert out.startswith(KIOSK_SYSTEM_PROMPT)
-    assert SYSTEM_PROMPT not in out.split("Client:")[0]
+    # Sanity: the brief-only framing isn't in the kiosk render either.
+    assert "dashboard daily debrief" not in out.split("Client:")[0].lower()
 
 
-def test_kiosk_prompt_is_pit_crew_coach_json_contract():
-    """The kiosk prompt should set the pit-crew/coach voice (second person,
-    no butler/third-person flourishes) and describe the structured JSON
-    contract (verb / qualifier / urgency / coach)."""
+# ---------- back-compat: SYSTEM_PROMPT is the brief prompt ----------
+
+def test_system_prompt_is_brief_alias():
+    """`SYSTEM_PROMPT` is the legacy import name. It must point at the
+    brief surface so existing imports (chat.py, scheduler, tests) keep
+    working after the refactor."""
+    assert SYSTEM_PROMPT == BRIEF_SYSTEM_PROMPT
+
+
+# ---------- kiosk prompt: positive shape spec ----------
+
+def test_kiosk_prompt_describes_glance_line_surface_positively():
+    """The kiosk prompt should set the pit-crew/coach voice and describe
+    its surface and JSON contract in positive terms — what the output
+    IS, not a list of forbidden tokens."""
     assert "Jim's coach" in KIOSK_SYSTEM_PROMPT
-    assert "pit crew" in KIOSK_SYSTEM_PROMPT.lower()
-    # Voice guardrails — these phrases are explicitly banned in the prompt
-    # body, so they should appear (in the ban list) rather than be absent.
-    assert "third person" in KIOSK_SYSTEM_PROMPT.lower()
-    assert "butler" in KIOSK_SYSTEM_PROMPT.lower()
+    # Positive surface identity.
+    lowered = KIOSK_SYSTEM_PROMPT.lower()
+    assert "pit-crew" in lowered or "pit crew" in lowered
+    assert "kiosk" in lowered or "glance-line" in lowered
+    # JSON contract.
     for field in ("verb", "qualifier", "urgency", "coach"):
         assert field in KIOSK_SYSTEM_PROMPT
     assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT
+    # One-sentence shape spec (positive: "exactly ONE sentence, 6-12 words").
+    assert "one sentence" in lowered
+    assert "6-12 words" in lowered
 
 
-# ---------- shared-core composition ----------
-
-def test_both_prompts_share_coach_core():
-    """KIOSK_SYSTEM_PROMPT and SYSTEM_PROMPT must derive from the same
-    COACH_CORE. Without this, voice fixes drift between surfaces — exactly
-    the situation that left the main coach as 'no-nonsense' while the
-    kiosk was already 'pit crew'."""
-    assert COACH_CORE in KIOSK_SYSTEM_PROMPT
-    assert COACH_CORE in SYSTEM_PROMPT
+def test_kiosk_prompt_carries_glance_line_examples():
+    """The kiosk's defining shape — a short fact+action sentence — is
+    taught by example. The four canonical examples live here, not in
+    any shared core (otherwise the brief surface anchors on them too)."""
+    # At least the protein/walk examples should be present verbatim.
+    assert "Protein's holding" in KIOSK_SYSTEM_PROMPT
+    assert "Walk 10 after lunch" in KIOSK_SYSTEM_PROMPT
 
 
-def test_only_tails_differ():
-    """The two surfaces should differ ONLY in their output-format tail —
-    JSON vs prose. Structurally, this means each prompt is exactly
-    COACH_CORE plus a small surface-specific suffix."""
-    assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT
-    assert "STRICT JSON" not in SYSTEM_PROMPT
-    assert "Output prose" in SYSTEM_PROMPT
-    assert "Output prose" not in KIOSK_SYSTEM_PROMPT
+# ---------- brief prompt: positive prose spec, distinct from kiosk ----------
+
+def test_brief_prompt_describes_debrief_surface_positively():
+    """The brief surface is a daily debrief. Its prompt should name that
+    role positively rather than defining itself as 'not the kiosk'."""
+    lowered = BRIEF_SYSTEM_PROMPT.lower()
+    assert "dashboard" in lowered or "debrief" in lowered
+    assert "Jim's coach" in BRIEF_SYSTEM_PROMPT
+    # Multi-sentence length spec — taught by saying "prose, 2-4 sentences".
+    assert "2-4 sentences" in lowered or "2 to 4 sentences" in lowered
 
 
-def test_brief_surface_is_not_a_glance_line():
-    """Regression guard 2026-05-16: the first BRIEF_TAIL pass collapsed
-    to one-liner output on CLEAR days, making the dashboard coach feel
-    identical to the kiosk glance-line. The brief surface MUST require
-    multi-sentence output with substance, even when Attention is empty.
-    """
-    lowered = SYSTEM_PROMPT.lower()
-    # Multi-sentence requirement somewhere in the brief instructions.
-    assert (
-        "2 to 4 sentences" in lowered
-        or "2-4 sentences" in lowered
-        or "multi-sentence" in lowered
-        or "not a one-liner" in lowered
+def test_brief_prompt_carries_prose_examples():
+    """The brief is also taught by example — multi-sentence reads that
+    lead with a data observation. Without these the model defaults to
+    the shortest acceptable output and collapses to a glance-line."""
+    # Each example is multi-sentence (contains a period followed by space + capital).
+    examples = re.findall(r'"([^"]{40,}?)"', BRIEF_SYSTEM_PROMPT)
+    long_examples = [e for e in examples if len(e) >= 80]
+    assert len(long_examples) >= 2, (
+        f"expected ≥2 prose examples, got {long_examples}"
     )
-    # Explicit anti-collapse rule for CLEAR days — without this the
-    # model treats CLEAR as "say less" instead of "say something the
-    # kiosk can't fit."
-    assert "do not collapse" in lowered or "not your job" in lowered \
-        or "kiosk's job" in lowered or "use it" in lowered
+    for ex in long_examples[:2]:
+        # Each example has more than one sentence-ending period.
+        assert ex.count(". ") + ex.count(".\n") >= 1
 
 
-def test_brief_surface_demands_data_observations():
-    """The brief surface should require observations *from the data*
-    (trends, numbers, patterns), not generic closers — that's the gap
-    between the dashboard coach and the kiosk glance-line."""
-    lowered = SYSTEM_PROMPT.lower()
-    assert "trend" in lowered or "pattern" in lowered
-    # And specific numbers, not vague claims.
-    assert "specific number" in lowered or "from metrics" in lowered \
-        or "with its number" in lowered
+def test_brief_and_kiosk_examples_do_not_cross_contaminate():
+    """The four kiosk one-liner examples must live in the kiosk prompt
+    only. The previous refactor left them in COACH_CORE, where they
+    anchored the brief surface and made it produce kiosk-shaped output
+    — that's the exact bug this refactor was meant to fix."""
+    kiosk_examples = [
+        "Protein's holding",
+        "Walk 10 after lunch",
+        "Hydration's behind",
+        "Front-load protein",
+    ]
+    for ex in kiosk_examples:
+        assert ex in KIOSK_SYSTEM_PROMPT
+        assert ex not in BRIEF_SYSTEM_PROMPT
+
+
+def test_voice_is_shared_but_format_is_not():
+    """The shared block is COACH_VOICE — persona, second-person voice,
+    Attention handling, notes, units. Format/shape lives in each
+    surface. The pit-crew identity must be in BOTH renders; the
+    surface-specific framings must NOT cross."""
+    assert COACH_VOICE in BRIEF_SYSTEM_PROMPT
+    assert COACH_VOICE in KIOSK_SYSTEM_PROMPT
+    # Format guidance does not cross.
+    assert "STRICT JSON" not in BRIEF_SYSTEM_PROMPT
+    assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT
+    assert "2-4 sentences" in BRIEF_SYSTEM_PROMPT or "2 to 4 sentences" in BRIEF_SYSTEM_PROMPT
+    assert "2-4 sentences" not in KIOSK_SYSTEM_PROMPT
 
 
 def test_main_prompt_inherits_pit_crew_voice():
-    """The main brief prompt must carry the same pit-crew voice the
-    kiosk uses — second person, no butler. This was the bug pre-refactor:
-    SYSTEM_PROMPT was still 'no-nonsense health coach'."""
-    assert "Jim's coach" in SYSTEM_PROMPT
-    assert "pit crew" in SYSTEM_PROMPT.lower()
-    assert "third person" in SYSTEM_PROMPT.lower()
+    """The main brief prompt must carry the pit-crew voice. Pre-refactor
+    this was 'no-nonsense health coach' which drifted away from the
+    kiosk's voice; now both surfaces import COACH_VOICE."""
+    assert "Jim's coach" in BRIEF_SYSTEM_PROMPT
+    lowered = BRIEF_SYSTEM_PROMPT.lower()
+    assert "pit-crew" in lowered or "pit crew" in lowered
+    assert "second person" in lowered
 
 
 # ---------- day-note + coach-note prompt injection ----------
 #
-# The CORE prompt itself references "Today's note" and "Standing profile"
+# The voice block itself references "Today's note" and "Standing profile"
 # in its guidance section. Tests look for the renderer's injection marker
 # "from Jim:\n" which only appears when the renderer actually injects a
 # populated block, so we don't confuse guidance with payload.
@@ -124,8 +156,8 @@ def _findings_with_notes(*, day=None, coach=None) -> Findings:
 
 
 def test_render_omits_note_blocks_when_unset():
-    """No note set → no injection block. The CORE still mentions the
-    concepts as guidance, but no payload is emitted."""
+    """No note set → no injection block. The voice block still mentions
+    the concepts as guidance, but no payload is emitted."""
     out = render_brief_prompt(_empty_findings(), history=[])
     assert _DAY_MARKER not in out
     assert _COACH_MARKER not in out
@@ -136,7 +168,6 @@ def test_render_injects_day_note_when_set():
     out = render_brief_prompt(f, history=[])
     assert _DAY_MARKER in out
     assert "dinner out tonight" in out
-    # Standing profile block should still be absent (only coach_note drives it).
     assert _COACH_MARKER not in out
     # Note must appear BEFORE the Client: line so it reads like context
     # the coach was given before the data dump.
@@ -163,14 +194,14 @@ def test_render_injects_both_notes_independently():
     assert out.index(_COACH_MARKER) < out.index(_DAY_MARKER)
 
 
-def test_core_describes_note_handling():
-    """COACH_CORE must teach the model how to USE the notes — defer to
+def test_voice_describes_note_handling():
+    """COACH_VOICE must teach the model how to USE the notes — defer to
     stated intent (day note), treat low calories as neutral when the
-    standing profile frames Jim as cutting. Without this, the notes get
+    standing profile frames Jim as cutting. Without this the notes get
     plumbed but ignored."""
-    lowered = COACH_CORE.lower()
+    lowered = COACH_VOICE.lower()
     assert "today's note" in lowered or "day note" in lowered
     assert "standing profile" in lowered or "coach note" in lowered
-    # Behavioral guidance — at minimum, "defer to" stated intent OR
-    # "treat being under target as neutral".
+    # Behavioral guidance: defer to stated intent OR treat under-target
+    # as neutral.
     assert "defer" in lowered or "neutral" in lowered or "fine" in lowered

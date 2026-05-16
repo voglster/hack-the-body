@@ -12,7 +12,7 @@ Storage: separate docs in `user_profile`, keyed by `_id`:
 VAPID push keys live under `_id="vapid"` — same collection, different
 lifecycle (app-managed secret, never user-edited).
 
-Both `day_note` and `coach_note` feed the shared `COACH_CORE` block in
+Both `day_note` and `coach_note` feed the shared `COACH_VOICE` block in
 the prompt, so they reach the kiosk glance-line AND the main coach
 identically.
 """

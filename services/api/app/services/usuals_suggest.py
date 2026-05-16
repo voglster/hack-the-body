@@ -135,7 +135,12 @@ def _strip_fences(text: str) -> str:
 async def _call_ollama(
     settings: Any, user_prompt: str,
 ) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=settings.coach_timeout_s) as client:
+    # glm-4.7-flash with thinking on takes 60–120s for nontrivial prompts —
+    # disable thinking (`think=False`) so this returns in a few seconds.
+    # Bumped timeout well past coach_timeout_s as a safety net in case
+    # we swap models later.
+    timeout_s = max(getattr(settings, "usuals_suggest_timeout_s", 0) or 0, 120.0)
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
         r = await client.post(
             f"{settings.ollama_url}/api/chat",
             json={
@@ -146,6 +151,7 @@ async def _call_ollama(
                 ],
                 "format": "json",
                 "stream": False,
+                "think": False,
             },
         )
         r.raise_for_status()
@@ -204,8 +210,11 @@ async def suggest_usuals(
     try:
         raw = await _call_ollama(settings, user_prompt)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("usuals_suggest: ollama call failed: %s", exc)
-        return {"suggestions": [], "generated_at": now.isoformat(), "error": str(exc)}
+        logger.exception("usuals_suggest: ollama call failed: %r", exc)
+        return {
+            "suggestions": [], "generated_at": now.isoformat(),
+            "error": f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__,
+        }
 
     raw_suggestions = raw.get("suggestions") or []
     if not isinstance(raw_suggestions, list):

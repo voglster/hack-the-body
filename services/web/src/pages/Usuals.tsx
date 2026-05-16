@@ -539,11 +539,36 @@ function UsualEditor({ draft, onChange, onCancel, onSave, saving }: {
   );
 }
 
+const BUILD_SLOT_ORDER: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
+
+function shiftDay(iso: string, deltaDays: number): string {
+  // iso is local-tz YYYY-MM-DD — keep it as a local date so shifts don't
+  // jump tz boundaries.
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  dt.setDate(dt.getDate() + deltaDays);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function prettyDayLabel(iso: string): string {
+  const today = todayLocalISO();
+  if (iso === today) return "Today";
+  if (iso === shiftDay(today, -1)) return "Yesterday";
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  return dt.toLocaleDateString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+  });
+}
+
 function BuildFromDay({ onClose, onPick }: {
   onClose: () => void;
   onPick: (entries: MealEntry[]) => void;
 }) {
-  const [day, setDay] = useState<string>(todayLocalISO());
+  const [day, setDay] = useState<string>(shiftDay(todayLocalISO(), -1));
   const dayEntries = useQuery({
     queryKey: ["meals.entries", day],
     queryFn: () => api.todayEntries(day),
@@ -562,6 +587,35 @@ function BuildFromDay({ onClose, onPick }: {
     e => e.food_name !== "Water" && e.food_name !== "Vitamins",
   );
 
+  const grouped = useMemo(() => {
+    const out = new Map<MealSlot, MealEntry[]>();
+    for (const s of BUILD_SLOT_ORDER) out.set(s, []);
+    for (const e of list) out.get(e.slot)?.push(e);
+    return out;
+  }, [list]);
+
+  const setDayAndReset = (next: string) => {
+    setDay(next);
+    setPicked(new Set());
+  };
+  const onPrev = () => setDayAndReset(shiftDay(day, -1));
+  const onNext = () => {
+    const today = todayLocalISO();
+    if (day < today) setDayAndReset(shiftDay(day, 1));
+  };
+  const onPickWholeSlot = (slot: MealSlot) => {
+    const slotIds = (grouped.get(slot) ?? []).map(e => e.id);
+    setPicked(prev => {
+      const next = new Set(prev);
+      const allOn = slotIds.every(id => next.has(id));
+      if (allOn) slotIds.forEach(id => next.delete(id));
+      else slotIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const atToday = day >= todayLocalISO();
+
   return (
     <div className="fixed inset-0 z-40 bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="w-full max-w-lg max-h-[92vh] overflow-auto bg-neutral-950 border border-neutral-800 sm:rounded-xl rounded-t-xl p-4 space-y-3">
@@ -575,45 +629,88 @@ function BuildFromDay({ onClose, onPick }: {
             ✕
           </button>
         </div>
-        <label className="block space-y-1">
-          <span className="text-xs text-neutral-500">day</span>
-          <input
-            type="date" value={day}
-            max={todayLocalISO()}
-            onChange={e => { setDay(e.target.value); setPicked(new Set()); }}
-            className="w-full px-3 py-3 rounded bg-neutral-900 border border-neutral-800 text-base"
-          />
-        </label>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPrev}
+            className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 min-h-[44px] min-w-[44px] text-base"
+            aria-label="previous day"
+          >
+            ‹
+          </button>
+          <div className="flex-1 flex flex-col items-center">
+            <input
+              type="date" value={day}
+              max={todayLocalISO()}
+              onChange={e => setDayAndReset(e.target.value)}
+              className="bg-transparent text-center text-base px-2 py-1 rounded"
+              aria-label="day"
+            />
+            <div className="text-xs text-neutral-500 -mt-1">{prettyDayLabel(day)}</div>
+          </div>
+          <button
+            onClick={onNext}
+            disabled={atToday}
+            className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 min-h-[44px] min-w-[44px] text-base disabled:opacity-30"
+            aria-label="next day"
+          >
+            ›
+          </button>
+        </div>
+
         {list.length === 0 ? (
           <div className="text-sm text-neutral-500">Nothing loggable on this day.</div>
         ) : (
-          <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
-            {list.map(e => {
-              const on = picked.has(e.id);
+          <div className="space-y-3">
+            {BUILD_SLOT_ORDER.map(slot => {
+              const slotList = grouped.get(slot) ?? [];
+              if (slotList.length === 0) return null;
+              const slotIds = slotList.map(e => e.id);
+              const allOn = slotIds.every(id => picked.has(id));
               return (
-                <li key={e.id}>
-                  <button
-                    onClick={() => toggle(e.id)}
-                    className={`w-full text-left px-3 py-3 text-sm min-h-[44px] ${on ? "bg-emerald-900/30" : "active:bg-neutral-800/60"}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{e.food_name}</div>
-                        <div className="text-xs text-neutral-500">
-                          {e.slot} · {Math.round(e.quantity_g)}g
-                        </div>
-                      </div>
-                      <span className={`text-lg ${on ? "text-emerald-300" : "text-neutral-600"}`}>
-                        {on ? "✓" : "○"}
-                      </span>
+                <section key={slot}>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">
+                      {SLOT_LABEL[slot]}
                     </div>
-                  </button>
-                </li>
+                    <button
+                      onClick={() => onPickWholeSlot(slot)}
+                      className="text-[11px] text-neutral-500 active:text-emerald-300 px-1"
+                    >
+                      {allOn ? "clear" : "select all"}
+                    </button>
+                  </div>
+                  <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
+                    {slotList.map(e => {
+                      const on = picked.has(e.id);
+                      return (
+                        <li key={e.id}>
+                          <button
+                            onClick={() => toggle(e.id)}
+                            className={`w-full text-left px-3 py-3 text-sm min-h-[44px] ${on ? "bg-emerald-900/30" : "active:bg-neutral-800/60"}`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-medium truncate">{e.food_name}</div>
+                                <div className="text-xs text-neutral-500">
+                                  {Math.round(e.quantity_g)}g
+                                </div>
+                              </div>
+                              <span className={`text-lg ${on ? "text-emerald-300" : "text-neutral-600"}`}>
+                                {on ? "✓" : "○"}
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
               );
             })}
-          </ul>
+          </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex gap-2 sticky bottom-0 pt-2 bg-neutral-950">
           <button
             onClick={() => onPick(list.filter(e => picked.has(e.id)))}
             disabled={picked.size === 0}

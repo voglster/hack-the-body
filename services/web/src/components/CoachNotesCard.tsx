@@ -11,7 +11,7 @@
  * "saved 2 min ago" line is the contract.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
 
@@ -37,6 +37,8 @@ export function DayNoteCard() {
 
   const [day, setDay] = useState<string>("");
   const [daySeeded, setDaySeeded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (dayNoteQ.data && !daySeeded) {
@@ -45,17 +47,39 @@ export function DayNoteCard() {
     }
   }, [dayNoteQ.data, daySeeded]);
 
+  useEffect(() => {
+    if (editing && taRef.current) {
+      taRef.current.focus();
+      const len = taRef.current.value.length;
+      taRef.current.setSelectionRange(len, len);
+    }
+  }, [editing]);
+
   const saveDay = useMutation({
     mutationFn: (text: string) => api.putDayNote(text),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["profile.day-note"] }),
   });
 
-  const handleDayBlur = () => {
+  const commit = () => {
     const trimmed = day.trim();
     if (trimmed !== (dayNoteQ.data?.text ?? "")) {
       saveDay.mutate(trimmed);
     }
+    setEditing(false);
   };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setDay(dayNoteQ.data?.text ?? "");
+      setEditing(false);
+    }
+  };
+
+  const current = dayNoteQ.data?.text ?? "";
 
   return (
     <div className="rounded-2xl bg-neutral-900/50 border border-neutral-800 p-4">
@@ -70,18 +94,36 @@ export function DayNoteCard() {
           {saveDay.isPending ? "saving…" : `saved ${relativeAgo(dayNoteQ.data?.set_at)}`}
         </span>
       </div>
-      <input
-        id="day-note"
-        type="text"
-        value={day}
-        onChange={(e) => setDay(e.target.value)}
-        onBlur={handleDayBlur}
-        placeholder="dinner out tonight, eating late on purpose"
-        maxLength={500}
-        className="w-full bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
-      />
+      {editing ? (
+        <textarea
+          id="day-note"
+          ref={taRef}
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+          placeholder="dinner out tonight, eating late on purpose"
+          maxLength={500}
+          rows={3}
+          className="w-full bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none resize-y whitespace-pre-wrap"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="w-full text-left bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-sm min-h-[2.5rem] hover:border-neutral-700 focus:border-neutral-600 focus:outline-none whitespace-pre-wrap"
+        >
+          {current ? (
+            <span className="text-neutral-100">{current}</span>
+          ) : (
+            <span className="text-neutral-600">dinner out tonight, eating late on purpose</span>
+          )}
+        </button>
+      )}
       <p className="text-[10px] text-neutral-600 mt-1">
-        Resets at midnight. The coach reads this on every generation.
+        {editing
+          ? "Enter to save · Shift+Enter for newline · Esc to cancel"
+          : "Click to edit. Resets at midnight. The coach reads this on every generation."}
       </p>
     </div>
   );

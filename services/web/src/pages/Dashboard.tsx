@@ -7,7 +7,7 @@ import type { Summary } from "../api/types";
 import { BottomNav, useActiveTab } from "../components/BottomNav";
 import { ActiveWorkoutCard } from "../components/ActiveWorkoutCard";
 import { CoachCard } from "../components/CoachCard";
-import { CoachNotesCard } from "../components/CoachNotesCard";
+import { DayNoteCard, StandingProfileCard } from "../components/CoachNotesCard";
 import { HabitsCard } from "../components/HabitsCard";
 import { NotificationsCard } from "../components/NotificationsCard";
 import { NudgesCard } from "../components/NudgesCard";
@@ -143,7 +143,7 @@ function TodayTab({ onOpenTrend }: { onOpenTrend?: (focus: TrendFocus) => void }
         onOpenTrends={onOpenTrend ? () => onOpenTrend("steps") : undefined}
       />
       <CoachCard />
-      <CoachNotesCard />
+      <DayNoteCard />
       <WaterCard />
       <VitaminsCard />
       {/* Hides itself once granted; only shows in 'off' or 'denied'.
@@ -251,6 +251,7 @@ function MoreTab() {
         </div>
         <div className="text-xs text-neutral-500 mt-1">Cardio + strength history</div>
       </Link>
+      <StandingProfileCard />
       <TargetsCard />
       <HabitsCard />
       <NotificationsSettings />

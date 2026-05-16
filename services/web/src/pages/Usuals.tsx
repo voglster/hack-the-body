@@ -467,10 +467,8 @@ function UsualEditor({ draft, onChange, onCancel, onSave, saving }: {
     void (async () => {
       const resolved = await Promise.all(missing.map(async i => {
         try {
-          // Hack: there's no food-by-id endpoint exposed in the client;
-          // fall back to a search using empty results — best-effort only.
-          const list = await api.searchFoods(i.food_id, 1);
-          return { food_id: i.food_id, name: list[0]?.name ?? `food ${i.food_id.slice(-4)}` };
+          const food = await api.foodById(i.food_id);
+          return { food_id: i.food_id, name: food.name };
         } catch {
           return { food_id: i.food_id, name: `food ${i.food_id.slice(-4)}` };
         }

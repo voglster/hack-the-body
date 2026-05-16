@@ -143,6 +143,8 @@ export const api = {
     get<Food[]>(`/foods/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   foodByBarcode: (barcode: string) =>
     get<Food>(`/foods/barcode/${encodeURIComponent(barcode)}`),
+  foodById: (food_id: string) =>
+    get<Food>(`/foods/${encodeURIComponent(food_id)}`),
   createFood: (food: Partial<Food>) => post<Food>("/foods", food),
   parseFoodText: (text: string) =>
     post<{ items: ParsedFoodItem[] }>("/foods/parse", { text }),

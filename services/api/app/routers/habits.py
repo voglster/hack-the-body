@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, date, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
@@ -16,6 +16,7 @@ from app.services.coach.habits import (
     HABIT_ACTIONS,
     RESOLVERS,
     HabitConfig,
+    clear_status,
     compose_today,
     create_habit,
     list_habits,
@@ -199,4 +200,39 @@ async def post_status(
         # dashboard) can show "✓ Vitamins logged" vs "already done today"
         # without an extra round-trip.
         "action": result.get("action"),
+    }
+
+
+@router.delete("/{habit_id_or_name}/status")
+async def delete_status(
+    habit_id_or_name: str, request: Request,
+    local_date: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    """Reset today's habit status AND undo its on-done side effect.
+
+    Intended for testing / wiring up automations — when Jim is hooking
+    up an IKEA remote and wants a clean slate between test presses. For
+    the Vitamins habit this also deletes today's Vitamins meal_entry so
+    the dashboard card and nudge state flip back to "not yet today."
+    Idempotent — calling it twice in a row is safe.
+    """
+    db = request.app.state.db
+    habit_id = await _resolve_habit_id(db, habit_id_or_name)
+    tz = _resolve_tz()
+    if local_date:
+        try:
+            d = date.fromisoformat(local_date)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, detail=f"bad local_date: {e}",
+            ) from e
+    else:
+        d = datetime.now(UTC).astimezone(tz).date()
+    result = await clear_status(db, habit_id, d, tz=tz)
+    return {
+        "habit_id": habit_id,
+        "habit_ref": habit_id_or_name,
+        "local_date": d.isoformat(),
+        "status_cleared": result["status_cleared"],
+        "reversal": result.get("reversal"),
     }

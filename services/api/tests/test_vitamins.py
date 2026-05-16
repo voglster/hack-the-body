@@ -173,3 +173,68 @@ async def test_mark_status_unknown_valid_objectid_404(client):
         headers=HEADERS, json={"status": "done"},
     )
     assert r.status_code == 404
+
+
+# ---------- reset endpoint (test/wiring helper) ----------
+
+async def test_delete_status_clears_today(client, mock_db):
+    """DELETE /habits/Vitamins/status resets today: removes the
+    habit_status row AND deletes the Vitamins meal_entry (via the
+    reversal action), so the next press starts from a clean slate."""
+    # Mark done first to set up the state to clear.
+    await client.post(
+        "/habits/Vitamins/status", headers=HEADERS, json={"status": "done"},
+    )
+    assert await mock_db["meal_entries"].count_documents(
+        {"food_name": "Vitamins"},
+    ) == 1
+
+    r = await client.delete("/habits/Vitamins/status", headers=HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status_cleared"] is True
+    assert body["reversal"]["deleted"] == 1
+
+    # Side-effect undone.
+    assert await mock_db["meal_entries"].count_documents(
+        {"food_name": "Vitamins"},
+    ) == 0
+    # /vitamins/today flips back too.
+    r = await client.get("/vitamins/today", headers=HEADERS)
+    assert r.json()["logged"] is False
+
+
+async def test_delete_status_is_idempotent(client):
+    """Calling DELETE twice in a row is safe — the second call returns
+    `status_cleared: False` (nothing to clear) and the reversal action
+    is a no-op deletion (`deleted: 0`)."""
+    await client.post(
+        "/habits/Vitamins/status", headers=HEADERS, json={"status": "done"},
+    )
+    r1 = await client.delete("/habits/Vitamins/status", headers=HEADERS)
+    assert r1.status_code == 200
+    r2 = await client.delete("/habits/Vitamins/status", headers=HEADERS)
+    assert r2.status_code == 200
+    assert r2.json()["status_cleared"] is False
+    assert r2.json()["reversal"]["deleted"] == 0
+
+
+async def test_delete_status_round_trip_via_name(client, mock_db):
+    """Press → reset → press cycle, the IKEA-remote test loop. The full
+    sequence using the name-based path stays consistent end-to-end."""
+    for _ in range(3):
+        await client.post(
+            "/habits/Vitamins/status", headers=HEADERS, json={"status": "done"},
+        )
+        assert await mock_db["meal_entries"].count_documents(
+            {"food_name": "Vitamins"},
+        ) == 1
+        await client.delete("/habits/vitamins/status", headers=HEADERS)
+        assert await mock_db["meal_entries"].count_documents(
+            {"food_name": "Vitamins"},
+        ) == 0
+
+
+async def test_delete_status_unknown_name_404(client):
+    r = await client.delete("/habits/no-such-habit/status", headers=HEADERS)
+    assert r.status_code == 404

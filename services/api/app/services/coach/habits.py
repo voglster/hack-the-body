@@ -136,6 +136,39 @@ async def status_for_day(
     )
 
 
+async def clear_status(
+    db: AsyncDatabase,
+    habit_id: str,
+    local_date: date,
+    *,
+    tz: ZoneInfo | None = None,
+) -> dict[str, Any]:
+    """Reset today's habit_status AND undo the on-done side effect.
+
+    Intended for testing / wiring up automations — when Jim is hooking
+    up the IKEA remote and wants a clean slate after a test press. Pairs
+    with `mark_status` symmetrically: every registered HABIT_ACTION can
+    define a matching reversal in HABIT_ACTION_REVERSALS that's run
+    here. Reversals MUST also be idempotent per local day so calling
+    DELETE twice in a row is safe.
+    """
+    status_res = await db["habit_status"].delete_one(
+        {"habit_id": habit_id, "local_date": local_date.isoformat()},
+    )
+    reversal_result: dict[str, Any] | None = None
+    if tz is not None:
+        habit_doc = await db["habits"].find_one({"_id": ObjectId(habit_id)})
+        action_name = (habit_doc or {}).get("on_done_action")
+        if action_name:
+            fn = HABIT_ACTION_REVERSALS.get(action_name)
+            if fn is not None:
+                reversal_result = await fn(db, local_date, tz=tz)
+    return {
+        "status_cleared": status_res.deleted_count > 0,
+        "reversal": reversal_result,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Auto resolvers
 # ---------------------------------------------------------------------------
@@ -269,6 +302,33 @@ async def _log_vitamins_action(
 
 HABIT_ACTIONS: dict[str, ActionFn] = {
     "log_vitamins": _log_vitamins_action,
+}
+
+
+async def _unlog_vitamins_action(
+    db: AsyncDatabase, local_date: date, *, tz: ZoneInfo,
+) -> dict[str, Any] | None:
+    """Undo today's vitamins logging — delete all Vitamins meal_entries
+    inside the local-day window. Idempotent: a second call simply returns
+    `deleted: 0` instead of erroring."""
+    day_start_local = datetime.combine(local_date, time.min, tzinfo=tz)
+    next_day_local = day_start_local + timedelta(days=1)
+    start_utc = day_start_local.astimezone(UTC)
+    end_utc = next_day_local.astimezone(UTC)
+    res = await db["meal_entries"].delete_many({
+        "food_name": "Vitamins",
+        "ts": {"$gte": start_utc, "$lt": end_utc},
+    })
+    return {"kind": "unlog_vitamins", "deleted": res.deleted_count}
+
+
+# Parallel to HABIT_ACTIONS — every registered "on done" action that has
+# a sensible "undo today's effect" pairing belongs here. The DELETE
+# /habits/{name_or_id}/status endpoint runs the reversal. An action
+# without a registered reversal still deletes the habit_status row;
+# its side-effect just isn't unwound.
+HABIT_ACTION_REVERSALS: dict[str, ActionFn] = {
+    "log_vitamins": _unlog_vitamins_action,
 }
 
 

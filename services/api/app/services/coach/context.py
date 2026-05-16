@@ -286,6 +286,8 @@ async def build_findings(
             "now": snapshot.get("local_now"),
             "hour": local_hour,
             "time_of_day": snapshot.get("time_of_day"),
+            "weekday": snapshot.get("weekday"),
+            "is_weekend": snapshot.get("is_weekend"),
         },
         habits=habits_today,
         day_note=day_note,

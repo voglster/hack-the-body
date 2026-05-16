@@ -80,6 +80,13 @@ COACH_VOICE = (
     "- Use `local.hour` (wall clock) for time-of-day reasoning. "
     "Eating window is 11:00-19:00 local. Before 11:00 Jim is "
     "fasting — talk about the day ahead, not eating now.\n"
+    "- Use `local.weekday` and `local.is_weekend` for day-of-week "
+    "framing. Saturday and Sunday are NOT workdays — do not say "
+    '"after work", "before your meeting", "between calls", or '
+    "anchor actions to a workday rhythm on weekends. Pick a "
+    "weekend-shaped anchor instead (after coffee, this morning, "
+    "before dinner, this afternoon). On weekdays, work-day "
+    "anchors are fine.\n"
     "- Weight is reported in lbs (`weight.lb`).\n"
     "- `food_logged_today` is the source of truth for whether there "
     "is food on the books today.\n"
@@ -226,6 +233,9 @@ _TIME_OF_DAY_BUCKETS: tuple[tuple[int, str], ...] = (
 )
 
 
+_SATURDAY = 5  # Python's datetime.weekday(): Mon=0..Sun=6.
+
+
 def _time_of_day(hour: int) -> str:
     for cutoff, label in _TIME_OF_DAY_BUCKETS:
         if hour < cutoff:
@@ -326,11 +336,26 @@ async def gather_context(
     local_minute = int((local_seconds % 3600) // 60)
     local_now = f"{local_hour:02d}:{local_minute:02d}"
 
+    # Weekday derived from the local-day start so Saturday-evening UTC
+    # doesn't read as Sunday-local (or vice versa) — same fix as the
+    # local_hour drift, applied to day-of-week framing.
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        local_tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        local_tz = UTC
+    local_date = day_start.astimezone(local_tz).date()
+    weekday = local_date.strftime("%A")
+    # weekday(): Mon=0..Fri=4, Sat=5, Sun=6.
+    is_weekend = local_date.weekday() >= _SATURDAY
+
     out: dict[str, Any] = {
         "now_utc": now_utc.isoformat(timespec="minutes"),
         "local_now": local_now,
         "local_hour": local_hour,
         "time_of_day": _time_of_day(local_hour),
+        "weekday": weekday,
+        "is_weekend": is_weekend,
         "local_day_start_utc": day_start.isoformat(timespec="minutes"),
         "sleep": sleep,
         "hrv": hrv,

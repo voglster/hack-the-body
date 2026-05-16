@@ -8,6 +8,7 @@ import type {
   WaterToday, VitaminsToday, ParsedFoodItem,
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
+  UsualSuggestionsResponse,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -282,4 +283,9 @@ export const api = {
   logTemplate: (template_id: string, slot?: MealSlot) =>
     post<{ template: string; entries: MealEntry[] }>(`/meals/templates/${template_id}/log`, slot ? { slot } : {}),
   deleteTemplate: (template_id: string) => del(`/meals/templates/${template_id}`),
+  suggestUsuals: () => post<UsualSuggestionsResponse>("/meals/templates/suggest", {}),
+  dismissUsualSuggestion: (signature: string) =>
+    post<{ signature: string; dismissed_until: string }>(
+      "/meals/templates/suggest/dismiss", { signature },
+    ),
 };

@@ -251,6 +251,18 @@ function MoreTab() {
         </div>
         <div className="text-xs text-neutral-500 mt-1">Cardio + strength history</div>
       </Link>
+      <Link
+        to="/usuals"
+        className="block rounded-xl bg-neutral-900 border border-neutral-800 p-4 active:bg-neutral-900/60"
+      >
+        <div className="flex items-center justify-between">
+          <span className="font-medium">🍱 Usuals</span>
+          <span className="text-neutral-600">›</span>
+        </div>
+        <div className="text-xs text-neutral-500 mt-1">
+          Manage meal bundles · LLM suggests new ones from your log
+        </div>
+      </Link>
       <StandingProfileCard />
       <TargetsCard />
       <HabitsCard />

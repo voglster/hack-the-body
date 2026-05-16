@@ -204,6 +204,20 @@ export interface MealTemplate {
   items: MealTemplateItem[];
 }
 
+export interface UsualSuggestion {
+  name: string;
+  slot: MealSlot;
+  items: MealTemplateItem[];
+  rationale: string;
+  signature: string;
+}
+
+export interface UsualSuggestionsResponse {
+  suggestions: UsualSuggestion[];
+  generated_at: string;
+  error?: string;
+}
+
 export interface SyncStatusEntry {
   last_ok: { source: string; status: string; started_at: string; finished_at: string | null;
              counts: Record<string, number>; error: string | null } | null;

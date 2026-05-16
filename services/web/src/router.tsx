@@ -3,6 +3,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { RootRedirect } from "./components/RootRedirect";
 import { Dashboard } from "./pages/Dashboard";
 import { Kiosk } from "./pages/Kiosk";
+import { UsualsPage } from "./pages/Usuals";
 import { WorkoutPage } from "./pages/Workout";
 import { WorkoutList } from "./pages/WorkoutList";
 import { WorkoutDetail } from "./pages/WorkoutDetail";
@@ -15,5 +16,6 @@ export const router = createBrowserRouter([
   { path: "/workout", element: <WorkoutPage /> },
   { path: "/workouts", element: <WorkoutList /> },
   { path: "/workouts/:sourceId", element: <WorkoutDetail /> },
+  { path: "/usuals", element: <UsualsPage /> },
   { path: "/:tab", element: <Dashboard /> },
 ]);

@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
+from app.config import get_settings
 from app.models.food import MealEntry, MealSlot, MealTemplate
 from app.services.food_repo import FoodRepo, macros_for_quantity
+from app.services.usuals_suggest import dismiss_signature, suggest_usuals
 
 
 def _resolve_window(
@@ -204,6 +206,30 @@ async def delete_template(template_id: str, request: Request):
 class LogTemplateReq(BaseModel):
     slot: MealSlot | None = None
     ts: datetime | None = None
+
+
+# ---------- suggestions ----------
+
+class DismissSuggestionReq(BaseModel):
+    signature: str
+
+
+@router.post("/templates/suggest")
+async def suggest_templates(request: Request):
+    """LLM-suggested 'usual' meals from the last 30 days of log data.
+
+    Defined *before* `/templates/{template_id}/log` so the literal
+    'suggest' path doesn't get captured as a template_id.
+    """
+    settings = request.app.state.settings if hasattr(
+        request.app.state, "settings",
+    ) else get_settings()
+    return await suggest_usuals(settings, request.app.state.db)
+
+
+@router.post("/templates/suggest/dismiss")
+async def dismiss_suggestion(req: DismissSuggestionReq, request: Request):
+    return await dismiss_signature(request.app.state.db, req.signature)
 
 
 @router.post("/templates/{template_id}/log", status_code=201)

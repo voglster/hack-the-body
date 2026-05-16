@@ -25,6 +25,12 @@ async def lifespan(app: FastAPI):
     app.state.mongo_client = make_client(settings)
     app.state.db = get_db(app.state.mongo_client, settings)
     await ensure_collections(app.state.db)
+    # Seed canonical habits (idempotent) so the dashboard's VitaminsCard
+    # and the HA IKEA-remote automation have a habit_id to target on a
+    # fresh DB. Backfills `on_done_action` on a pre-existing Vitamins
+    # habit too — see `ensure_default_habits` for the contract.
+    from app.services.coach.habits import ensure_default_habits
+    await ensure_default_habits(app.state.db)
     tz = os.environ.get("TZ")
     scheduler = build_scheduler(settings, app.state.db, timezone=tz)
     scheduler.start()

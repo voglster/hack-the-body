@@ -243,7 +243,25 @@ export const api = {
 
   // vitamins
   vitaminsToday: () => get<VitaminsToday>(`/vitamins/today?${dayWindowQuery()}`),
-  logVitamins: () => post<MealEntry>("/vitamins/log", {}),
+  /**
+   * Mark today's vitamins done via the generic habit endpoint.
+   *
+   * The "Vitamins" habit is auto-seeded on first server startup with
+   * `on_done_action: "log_vitamins"`, so this single call also creates
+   * the meal_entry (idempotent per local day — second/third clicks
+   * within the same day no-op cleanly).
+   *
+   * Looks the habit up by name on each call rather than caching the id
+   * client-side, so the FE doesn't have to know about provisioning or
+   * worry about renames. One extra round-trip is cheap for a once-a-day
+   * action.
+   */
+  markVitaminsTaken: async (): Promise<unknown> => {
+    const habits = await get<Habit[]>("/habits");
+    const vit = habits.find((h) => h.name === "Vitamins");
+    if (!vit) throw new Error("Vitamins habit not found on server");
+    return post<unknown>(`/habits/${vit.id}/status`, { status: "done" });
+  },
 
   // nudges
   fetchNudges: () => get<NudgesResponse>("/nudges"),

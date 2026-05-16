@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
 from app.services.coach.habits import (
+    HABIT_ACTIONS,
     RESOLVERS,
     HabitConfig,
     compose_today,
@@ -44,6 +45,7 @@ class CreateHabitReq(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     kind: Literal["auto", "manual", "none"]
     resolver: str | None = None
+    on_done_action: str | None = None
 
 
 class PatchHabitReq(BaseModel):
@@ -51,6 +53,7 @@ class PatchHabitReq(BaseModel):
     active: bool | None = None
     kind: Literal["auto", "manual", "none"] | None = None
     resolver: str | None = None
+    on_done_action: str | None = None
 
 
 class StatusReq(BaseModel):
@@ -76,11 +79,23 @@ async def create(req: CreateHabitReq, request: Request) -> dict[str, Any]:
                 detail=f"unknown resolver {req.resolver!r}; "
                        f"available: {sorted(RESOLVERS.keys())}",
             )
+    if req.on_done_action and req.on_done_action not in HABIT_ACTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown on_done_action {req.on_done_action!r}; "
+                   f"available: {sorted(HABIT_ACTIONS.keys())}",
+        )
     hid = await create_habit(
         request.app.state.db,
-        HabitConfig(name=req.name, kind=req.kind, resolver=req.resolver),
+        HabitConfig(
+            name=req.name, kind=req.kind, resolver=req.resolver,
+            on_done_action=req.on_done_action,
+        ),
     )
-    return {"id": hid, "name": req.name, "kind": req.kind, "active": True}
+    return {
+        "id": hid, "name": req.name, "kind": req.kind, "active": True,
+        "on_done_action": req.on_done_action,
+    }
 
 
 @router.get("/today")
@@ -104,6 +119,15 @@ async def patch(
         patch_doc["kind"] = req.kind
     if req.resolver is not None:
         patch_doc["resolver"] = req.resolver
+    if req.on_done_action is not None:
+        if req.on_done_action and req.on_done_action not in HABIT_ACTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown on_done_action {req.on_done_action!r}; "
+                       f"available: {sorted(HABIT_ACTIONS.keys())}",
+            )
+        # Allow empty string to clear the action.
+        patch_doc["on_done_action"] = req.on_done_action or None
     if not patch_doc:
         raise HTTPException(status_code=400, detail="nothing to patch")
     await update_habit(request.app.state.db, habit_id, patch_doc)
@@ -129,8 +153,15 @@ async def post_status(
             ) from e
     else:
         d = datetime.now(UTC).astimezone(tz).date()
-    await mark_status(
+    result = await mark_status(
         request.app.state.db, habit_id, d,
-        status=req.status, source="manual",
+        status=req.status, source="manual", tz=tz,
     )
-    return {"habit_id": habit_id, "local_date": d.isoformat(), "status": req.status}
+    return {
+        "habit_id": habit_id, "local_date": d.isoformat(),
+        "status": req.status,
+        # Surface the side-effect outcome so callers (HA automation, the
+        # dashboard) can show "✓ Vitamins logged" vs "already done today"
+        # without an extra round-trip.
+        "action": result.get("action"),
+    }

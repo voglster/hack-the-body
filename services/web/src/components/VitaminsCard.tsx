@@ -66,7 +66,7 @@ export function VitaminsCard() {
   };
 
   const log = useMutation({
-    mutationFn: api.logVitamins,
+    mutationFn: api.markVitaminsTaken,
     onSuccess: invalidateAll,
   });
   const editEntry = useMutation({

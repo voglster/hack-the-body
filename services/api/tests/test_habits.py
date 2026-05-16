@@ -26,8 +26,12 @@ async def test_create_and_list_habits(mock_db):
         name="make the bed", kind="manual",
     ))
     rows = await list_habits(mock_db)
-    names = sorted(r["name"] for r in rows)
-    assert names == ["bed by 10", "make the bed"]
+    names = {r["name"] for r in rows}
+    # The fixture also seeds canonical habits (e.g. "Vitamins") — assert
+    # presence rather than exact-equality so adding new seeds doesn't
+    # break this test.
+    assert "bed by 10" in names
+    assert "make the bed" in names
     # Each row has expected fields:
     assert all("active" in r and "kind" in r for r in rows)
     assert h1 != h2

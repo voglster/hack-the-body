@@ -133,3 +133,43 @@ async def test_ensure_default_habits_backfills_action(mock_db):
     doc = await mock_db["habits"].find_one({"name": "Vitamins"})
     assert doc is not None
     assert doc.get("on_done_action") == "log_vitamins"
+
+
+# ---------- name-as-id resolution ----------
+
+async def test_mark_vitamins_done_by_name(client, mock_db):
+    """The status endpoint accepts the habit's name in the path, so HA
+    configs don't have to hardcode an opaque ObjectId that changes if
+    the DB is rebuilt."""
+    r = await client.post(
+        "/habits/Vitamins/status", headers=HEADERS, json={"status": "done"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "done"
+    entries = await mock_db["meal_entries"].count_documents({"food_name": "Vitamins"})
+    assert entries == 1
+
+
+async def test_mark_vitamins_done_by_name_case_insensitive(client):
+    """HA users won't preserve case religiously — `/habits/vitamins/status`
+    should land on the same habit as `/habits/Vitamins/status`."""
+    r = await client.post(
+        "/habits/vitamins/status", headers=HEADERS, json={"status": "done"},
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_mark_status_unknown_name_404(client):
+    r = await client.post(
+        "/habits/no-such-habit/status", headers=HEADERS, json={"status": "done"},
+    )
+    assert r.status_code == 404
+
+
+async def test_mark_status_unknown_valid_objectid_404(client):
+    """A well-formed but non-existent ObjectId must 404, not 500."""
+    r = await client.post(
+        "/habits/000000000000000000000000/status",
+        headers=HEADERS, json={"status": "done"},
+    )
+    assert r.status_code == 404

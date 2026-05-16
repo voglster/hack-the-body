@@ -33,6 +33,36 @@ def _oid(s: str) -> ObjectId:
         raise HTTPException(status_code=400, detail=f"invalid id: {s}") from e
 
 
+async def _resolve_habit_id(db, ref: str) -> str:
+    """Resolve a path param that may be an ObjectId OR a habit name.
+
+    Names are stable across DB resets and readable in HA configs, while
+    ObjectIds are convenient for programmatic callers. ObjectIds are 24
+    hex chars, so they don't collide with reasonable habit names like
+    "Vitamins" — if `ref` parses as an ObjectId we treat it as one;
+    otherwise we look up by exact name first, then case-insensitive.
+    404s if neither hits.
+    """
+    # Verify the row actually exists so we 404 (not 500) on a
+    # well-formed but non-existent id.
+    if ObjectId.is_valid(ref) and await db["habits"].find_one(
+        {"_id": ObjectId(ref)},
+    ) is not None:
+        return ref
+    doc = await db["habits"].find_one({"name": ref})
+    if doc is None:
+        # URL-friendly case-insensitive fallback so /habits/vitamins/status
+        # also works — HA users will not match case religiously.
+        doc = await db["habits"].find_one(
+            {"name": {"$regex": f"^{ref}$", "$options": "i"}},
+        )
+    if doc is None:
+        raise HTTPException(
+            status_code=404, detail=f"habit not found: {ref!r}",
+        )
+    return str(doc["_id"])
+
+
 def _resolve_tz() -> ZoneInfo:
     tz_name = os.environ.get("TZ") or "UTC"
     try:
@@ -138,11 +168,14 @@ async def patch(
     return doc
 
 
-@router.post("/{habit_id}/status")
+@router.post("/{habit_id_or_name}/status")
 async def post_status(
-    habit_id: str, req: StatusReq, request: Request,
+    habit_id_or_name: str, req: StatusReq, request: Request,
 ) -> dict[str, Any]:
-    _oid(habit_id)
+    db = request.app.state.db
+    # Accept either the mongo ObjectId or the habit's name so HA configs
+    # can use the stable, human-readable name (`/habits/Vitamins/status`).
+    habit_id = await _resolve_habit_id(db, habit_id_or_name)
     tz = _resolve_tz()
     if req.local_date:
         try:
@@ -154,11 +187,13 @@ async def post_status(
     else:
         d = datetime.now(UTC).astimezone(tz).date()
     result = await mark_status(
-        request.app.state.db, habit_id, d,
+        db, habit_id, d,
         status=req.status, source="manual", tz=tz,
     )
     return {
-        "habit_id": habit_id, "local_date": d.isoformat(),
+        "habit_id": habit_id,
+        "habit_ref": habit_id_or_name,
+        "local_date": d.isoformat(),
         "status": req.status,
         # Surface the side-effect outcome so callers (HA automation, the
         # dashboard) can show "✓ Vitamins logged" vs "already done today"

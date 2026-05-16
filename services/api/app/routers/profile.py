@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
+from app.services.audit import record_change
 
 router = APIRouter(prefix="/profile", dependencies=[Depends(require_api_key)])
 
@@ -106,9 +107,11 @@ async def put_targets(req: Targets, request: Request) -> dict[str, Any]:
 
     Spelled this way so an ad-hoc curl that sets one field doesn't wipe
     the others — semantically closer to PATCH, but kept on PUT to match
-    the existing FE which always sends the full body.
+    the existing FE which always sends the full body. Every accepted PUT
+    appends an audit_log row so prior values are always recoverable.
     """
     db = request.app.state.db
+    before = _serialize(await db["user_profile"].find_one({"_id": TARGETS_KEY}))
     update = req.model_dump(exclude_unset=True)
     update["updated_at"] = datetime.now(UTC)
     await db["user_profile"].update_one(
@@ -116,7 +119,12 @@ async def put_targets(req: Targets, request: Request) -> dict[str, Any]:
         {"$set": update},
         upsert=True,
     )
-    return _serialize(await db["user_profile"].find_one({"_id": TARGETS_KEY}))
+    after = _serialize(await db["user_profile"].find_one({"_id": TARGETS_KEY}))
+    await record_change(
+        db, entity="user_profile.targets", entity_id=TARGETS_KEY,
+        op="update", before=before, after=after,
+    )
+    return after
 
 
 async def get_user_targets(db) -> dict[str, Any]:
@@ -160,11 +168,18 @@ async def get_day_note_route(request: Request) -> dict[str, Any]:
 @router.put("/day-note")
 async def put_day_note(req: DayNoteReq, request: Request) -> dict[str, Any]:
     db = request.app.state.db
+    before = _serialize_day_note(
+        await db["user_profile"].find_one({"_id": DAY_NOTE_KEY}),
+    )
     text = req.text.strip()
     if not text:
         # Empty body == delete. Saves a round-trip and matches what the
         # browser sends when the user clears the input and blurs.
         await db["user_profile"].delete_one({"_id": DAY_NOTE_KEY})
+        await record_change(
+            db, entity="user_profile.day_note", entity_id=DAY_NOTE_KEY,
+            op="delete", before=before, after=None,
+        )
         return _serialize_day_note(None)
     await db["user_profile"].update_one(
         {"_id": DAY_NOTE_KEY},
@@ -175,15 +190,27 @@ async def put_day_note(req: DayNoteReq, request: Request) -> dict[str, Any]:
         }},
         upsert=True,
     )
-    return _serialize_day_note(
+    after = _serialize_day_note(
         await db["user_profile"].find_one({"_id": DAY_NOTE_KEY}),
     )
+    await record_change(
+        db, entity="user_profile.day_note", entity_id=DAY_NOTE_KEY,
+        op="update", before=before, after=after,
+    )
+    return after
 
 
 @router.delete("/day-note")
 async def delete_day_note(request: Request) -> dict[str, Any]:
     db = request.app.state.db
+    before = _serialize_day_note(
+        await db["user_profile"].find_one({"_id": DAY_NOTE_KEY}),
+    )
     await db["user_profile"].delete_one({"_id": DAY_NOTE_KEY})
+    await record_change(
+        db, entity="user_profile.day_note", entity_id=DAY_NOTE_KEY,
+        op="delete", before=before, after=None,
+    )
     return _serialize_day_note(None)
 
 
@@ -229,18 +256,30 @@ async def get_coach_note_route(request: Request) -> dict[str, Any]:
 @router.put("/coach-note")
 async def put_coach_note(req: CoachNoteReq, request: Request) -> dict[str, Any]:
     db = request.app.state.db
+    before = _serialize_coach_note(
+        await db["user_profile"].find_one({"_id": COACH_NOTE_KEY}),
+    )
     text = req.text.strip()
     if not text:
         await db["user_profile"].delete_one({"_id": COACH_NOTE_KEY})
+        await record_change(
+            db, entity="user_profile.coach_note", entity_id=COACH_NOTE_KEY,
+            op="delete", before=before, after=None,
+        )
         return _serialize_coach_note(None)
     await db["user_profile"].update_one(
         {"_id": COACH_NOTE_KEY},
         {"$set": {"text": text, "updated_at": datetime.now(UTC)}},
         upsert=True,
     )
-    return _serialize_coach_note(
+    after = _serialize_coach_note(
         await db["user_profile"].find_one({"_id": COACH_NOTE_KEY}),
     )
+    await record_change(
+        db, entity="user_profile.coach_note", entity_id=COACH_NOTE_KEY,
+        op="update", before=before, after=after,
+    )
+    return after
 
 
 async def get_coach_note(db) -> str | None:

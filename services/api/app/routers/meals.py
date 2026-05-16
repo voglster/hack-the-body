@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.auth import require_api_key
 from app.config import get_settings
 from app.models.food import MealEntry, MealSlot, MealTemplate
+from app.services.audit import record_change
 from app.services.food_repo import FoodRepo, macros_for_quantity
 from app.services.usuals_suggest import dismiss_signature, suggest_usuals
 
@@ -188,7 +189,19 @@ async def today_totals(
 
 @router.post("/templates", status_code=201)
 async def create_template(t: MealTemplate, request: Request):
-    return await _repo(request).upsert_template(t)
+    repo = _repo(request)
+    # upsert keys on name, so a same-name post is an update — capture the
+    # prior snapshot to make audit history honest about edits vs creates.
+    existing = await request.app.state.db["meal_templates"].find_one({"name": t.name})
+    before = _template_doc_to_dict(existing)
+    saved = await repo.upsert_template(t)
+    op = "update" if existing else "create"
+    await record_change(
+        request.app.state.db,
+        entity="meal_template", entity_id=saved["id"],
+        op=op, before=before, after=saved,
+    )
+    return saved
 
 
 @router.get("/templates")
@@ -198,9 +211,26 @@ async def list_templates(request: Request):
 
 @router.delete("/templates/{template_id}", status_code=204)
 async def delete_template(template_id: str, request: Request):
-    ok = await _repo(request).delete_template(template_id)
+    repo = _repo(request)
+    before = await repo.get_template(template_id)
+    ok = await repo.delete_template(template_id)
     if not ok:
         raise HTTPException(status_code=404, detail="template not found")
+    await record_change(
+        request.app.state.db,
+        entity="meal_template", entity_id=template_id,
+        op="delete", before=before, after=None,
+    )
+
+
+def _template_doc_to_dict(doc: dict | None) -> dict | None:
+    """Mirror FoodRepo._doc_to_dict for the audit snapshot — strip mongo
+    `_id`, expose `id` as a string, leave everything else as-is."""
+    if doc is None:
+        return None
+    out = {**doc, "id": str(doc["_id"])}
+    out.pop("_id", None)
+    return out
 
 
 class LogTemplateReq(BaseModel):

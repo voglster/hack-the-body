@@ -22,7 +22,7 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates", "coach_insights",
                        "push_subscriptions", "parse_feedback",
-                       "strength_sets"]
+                       "strength_sets", "audit_log"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:
@@ -62,6 +62,21 @@ async def ensure_collections(db: AsyncDatabase) -> None:
     await db["strength_sets"].create_index(
         [("exercise_template_id", 1), ("ts", -1)],
         name="strength_sets_exercise_ts",
+    )
+    # Audit log: time-ordered scans per-entity ("show me the targets
+    # history") + per-field queries ("every change to daily_calories").
+    await db["audit_log"].create_index(
+        [("entity", 1), ("entity_id", 1), ("ts", -1)],
+        name="audit_entity_ts",
+    )
+    await db["audit_log"].create_index(
+        [("entity", 1), ("changed_paths", 1), ("ts", -1)],
+        name="audit_entity_changed_paths",
+        sparse=True,
+    )
+    await db["audit_log"].create_index(
+        [("actor", 1), ("ts", -1)],
+        name="audit_actor_ts",
     )
 
 

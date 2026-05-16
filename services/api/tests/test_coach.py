@@ -481,18 +481,17 @@ async def test_gather_context_converts_weight_to_lbs(mock_db):
 
 
 async def test_system_prompt_requires_varied_positive_close():
-    """User feedback 2026-04-27: the 'On track.' closer is repetitive.
-    The prompt must require varied, positive phrasing on on-track replies."""
+    """User feedback 2026-04-27 + 2026-05-16: the model parrots example
+    phrases verbatim ("Steps, protein, sleep all green." repeated across
+    runs). The prompt must require variety AND explicitly forbid reusing
+    a phrase that already appeared in recent coach messages — without
+    that explicit guard, the model defaults to the safest example."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "vary" in lowered or "varied" in lowered
-    # At least one example phrasing should be present so the model has
-    # concrete options to draw from. The pit-crew voice's CLEAR-state
-    # examples live in BRIEF_TAIL / KIOSK_TAIL.
-    assert (
-        "all green" in lowered
-        or "on pace" in lowered
-        or "easy afternoon" in lowered
-    )
+    assert "vary" in lowered or "varied" in lowered or "invent a new" in lowered
+    # Anti-parroting guard: must reference recent messages as a
+    # don't-reuse source. Pre-2026-05-16 the prompt gave example phrases
+    # which the model copy-pasted — those examples were stripped.
+    assert "recent coach messages" in lowered or "do not reuse" in lowered
 
 
 async def test_system_prompt_forbids_clinical_alarmism():

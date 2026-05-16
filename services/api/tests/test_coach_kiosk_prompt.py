@@ -63,6 +63,38 @@ def test_only_tails_differ():
     assert "Output prose" not in KIOSK_SYSTEM_PROMPT
 
 
+def test_brief_surface_is_not_a_glance_line():
+    """Regression guard 2026-05-16: the first BRIEF_TAIL pass collapsed
+    to one-liner output on CLEAR days, making the dashboard coach feel
+    identical to the kiosk glance-line. The brief surface MUST require
+    multi-sentence output with substance, even when Attention is empty.
+    """
+    lowered = SYSTEM_PROMPT.lower()
+    # Multi-sentence requirement somewhere in the brief instructions.
+    assert (
+        "2 to 4 sentences" in lowered
+        or "2-4 sentences" in lowered
+        or "multi-sentence" in lowered
+        or "not a one-liner" in lowered
+    )
+    # Explicit anti-collapse rule for CLEAR days — without this the
+    # model treats CLEAR as "say less" instead of "say something the
+    # kiosk can't fit."
+    assert "do not collapse" in lowered or "not your job" in lowered \
+        or "kiosk's job" in lowered or "use it" in lowered
+
+
+def test_brief_surface_demands_data_observations():
+    """The brief surface should require observations *from the data*
+    (trends, numbers, patterns), not generic closers — that's the gap
+    between the dashboard coach and the kiosk glance-line."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "trend" in lowered or "pattern" in lowered
+    # And specific numbers, not vague claims.
+    assert "specific number" in lowered or "from metrics" in lowered \
+        or "with its number" in lowered
+
+
 def test_main_prompt_inherits_pit_crew_voice():
     """The main brief prompt must carry the same pit-crew voice the
     kiosk uses — second person, no butler. This was the bug pre-refactor:

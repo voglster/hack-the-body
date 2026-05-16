@@ -35,19 +35,29 @@ async def test_put_then_get_round_trip(client):
     assert r.json()["daily_water_oz"] == 128
 
 
-async def test_partial_update_replaces_unset_fields_with_null(client):
-    """PUT semantics: the body is the new full state. If a field is
-    omitted from the JSON body, pydantic defaults it to None, which is
-    'no target' — that's intentional so the user can clear a metric by
-    leaving its input blank."""
+async def test_partial_put_leaves_unset_fields_untouched(client):
+    """PUT semantics: only fields explicitly present in the body are
+    written. Omitted fields are left untouched. To clear a field, send
+    it explicitly as `null`. (FE always sends the full body, but ad-hoc
+    curl callers shouldn't accidentally wipe siblings.)"""
     await client.put(
         "/profile/targets", headers=HEADERS,
         json={"daily_calories": 2200, "daily_protein_g": 180},
     )
-    # Now only set calories — protein_g should clear back to None.
+    # Update only calories — protein_g stays put.
     await client.put(
         "/profile/targets", headers=HEADERS,
         json={"daily_calories": 2300},
+    )
+    r = await client.get("/profile/targets", headers=HEADERS)
+    body = r.json()
+    assert body["daily_calories"] == 2300
+    assert body["daily_protein_g"] == 180
+
+    # Explicit null clears.
+    await client.put(
+        "/profile/targets", headers=HEADERS,
+        json={"daily_protein_g": None},
     )
     r = await client.get("/profile/targets", headers=HEADERS)
     body = r.json()

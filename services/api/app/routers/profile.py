@@ -100,8 +100,16 @@ async def get_targets(request: Request) -> dict[str, Any]:
 
 @router.put("/targets")
 async def put_targets(req: Targets, request: Request) -> dict[str, Any]:
+    """Partial-friendly PUT: only fields explicitly provided in the body
+    are written. Omitted fields are left untouched. To clear a field,
+    send it explicitly as `null`.
+
+    Spelled this way so an ad-hoc curl that sets one field doesn't wipe
+    the others — semantically closer to PATCH, but kept on PUT to match
+    the existing FE which always sends the full body.
+    """
     db = request.app.state.db
-    update = req.model_dump()
+    update = req.model_dump(exclude_unset=True)
     update["updated_at"] = datetime.now(UTC)
     await db["user_profile"].update_one(
         {"_id": TARGETS_KEY},

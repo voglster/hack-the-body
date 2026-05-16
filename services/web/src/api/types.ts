@@ -204,16 +204,45 @@ export interface MealTemplate {
   items: MealTemplateItem[];
 }
 
-export interface UsualSuggestion {
-  name: string;
-  slot: MealSlot;
-  items: MealTemplateItem[];
-  rationale: string;
-  signature: string;
+export interface UsualSuggestionItem {
+  food_id: string;
+  food_name: string;
+  quantity_g: number;
 }
 
+export interface UsualNewSuggestion {
+  kind: "new";
+  signature: string;
+  name: string;
+  slot: MealSlot;
+  items: UsualSuggestionItem[];
+  occurrences: number;
+  total_days_with_slot: number;
+  confidence: number;
+  rationale: string;
+}
+
+export interface UsualAugmentSuggestion {
+  kind: "augment";
+  signature: string;
+  name: string;
+  slot: MealSlot;
+  items: UsualSuggestionItem[];
+  occurrences: number;
+  total_days_with_slot: number;
+  confidence: number;
+  rationale: string;
+  template_id: string;
+  template_name: string;
+  add_food_ids: string[];
+  add_food_names: string[];
+}
+
+export type UsualSuggestion = UsualNewSuggestion | UsualAugmentSuggestion;
+
 export interface UsualSuggestionsResponse {
-  suggestions: UsualSuggestion[];
+  new: UsualNewSuggestion[];
+  augment: UsualAugmentSuggestion[];
   generated_at: string;
   error?: string;
 }

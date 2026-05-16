@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type {
   Food, MealEntry, MealSlot, MealTemplate, MealTemplateItem,
-  UsualSuggestion,
+  UsualAugmentSuggestion, UsualNewSuggestion, UsualSuggestion,
 } from "../api/types";
 import { todayLocalISO } from "../lib/tz";
 
@@ -71,20 +71,60 @@ export function UsualsPage() {
     onSuccess: (data) => qc.setQueryData(["meals.suggest"], data),
   });
 
-  const onSaveSuggestion = (s: UsualSuggestion) => {
+  const onSaveNewSuggestion = (s: UsualNewSuggestion) => {
     saveTemplate.mutate({
       name: s.name,
       default_slot: s.slot,
       items: s.items.map(it => ({
-        food_id: it.food_id, quantity_g: it.quantity_g, food_name: "",
+        food_id: it.food_id, quantity_g: it.quantity_g,
+        food_name: it.food_name,
       })),
     });
   };
 
+  const onSaveAugmentSuggestion = (s: UsualAugmentSuggestion) => {
+    // Look up the existing template, then upsert by same name with the
+    // merged items list (existing items + new ones at their suggested qty).
+    const existing = templates.data?.find(t => t.id === s.template_id);
+    if (!existing) return;
+    const existingIds = new Set(existing.items.map(i => i.food_id));
+    const additions = s.items
+      .filter(it => s.add_food_ids.includes(it.food_id) && !existingIds.has(it.food_id))
+      .map(it => ({ food_id: it.food_id, quantity_g: it.quantity_g }));
+    saveTemplate.mutate({
+      name: existing.name,
+      default_slot: existing.default_slot,
+      items: [
+        ...existing.items.map(i => ({ food_id: i.food_id, quantity_g: i.quantity_g })),
+        ...additions,
+      ].map((i): DraftItem => ({ ...i, food_name: "" })),
+    });
+  };
+
   const onTweakSuggestion = (s: UsualSuggestion) => {
-    // Editor resolves food names lazily on mount via the search API
+    if (s.kind === "augment") {
+      const existing = templates.data?.find(t => t.id === s.template_id);
+      const baseItems: DraftItem[] = existing
+        ? existing.items.map(i => ({
+            food_id: i.food_id, quantity_g: i.quantity_g, food_name: "",
+          }))
+        : [];
+      const additions: DraftItem[] = s.items
+        .filter(it => s.add_food_ids.includes(it.food_id))
+        .map(it => ({
+          food_id: it.food_id, quantity_g: it.quantity_g,
+          food_name: it.food_name,
+        }));
+      setDraft({
+        id: existing?.id,
+        name: existing?.name ?? s.template_name,
+        default_slot: s.slot,
+        items: [...baseItems, ...additions],
+      });
+      return;
+    }
     const items: DraftItem[] = s.items.map(it => ({
-      food_id: it.food_id, quantity_g: it.quantity_g, food_name: "",
+      food_id: it.food_id, quantity_g: it.quantity_g, food_name: it.food_name,
     }));
     setDraft({ name: s.name, default_slot: s.slot, items });
   };
@@ -125,8 +165,10 @@ export function UsualsPage() {
             ? (suggestions.error instanceof Error ? suggestions.error.message : String(suggestions.error))
             : suggestions.data?.error ?? null
         }
-        suggestions={suggestions.data?.suggestions ?? []}
-        onSave={onSaveSuggestion}
+        newSuggestions={suggestions.data?.new ?? []}
+        augmentSuggestions={suggestions.data?.augment ?? []}
+        onSaveNew={onSaveNewSuggestion}
+        onSaveAugment={onSaveAugmentSuggestion}
         onTweak={onTweakSuggestion}
         onDismiss={(sig) => { dismissSuggestion.mutate(sig); }}
         onRefresh={() => { refreshSuggestions.mutate(); }}
@@ -265,20 +307,24 @@ function UsualRow({ template, onEdit, onDelete, busy }: {
 }
 
 function SuggestionsSection({
-  loading, error, suggestions, onSave, onTweak, onDismiss, onRefresh, saving,
+  loading, error, newSuggestions, augmentSuggestions,
+  onSaveNew, onSaveAugment, onTweak, onDismiss, onRefresh, saving,
 }: {
   loading: boolean;
   error: string | null;
-  suggestions: UsualSuggestion[];
-  onSave: (s: UsualSuggestion) => void;
+  newSuggestions: UsualNewSuggestion[];
+  augmentSuggestions: UsualAugmentSuggestion[];
+  onSaveNew: (s: UsualNewSuggestion) => void;
+  onSaveAugment: (s: UsualAugmentSuggestion) => void;
   onTweak: (s: UsualSuggestion) => void;
   onDismiss: (sig: string) => void;
   onRefresh: () => void;
   saving: boolean;
 }) {
+  const total = newSuggestions.length + augmentSuggestions.length;
   return (
-    <section>
-      <div className="flex items-baseline justify-between mb-2">
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between">
         <h2 className="text-sm uppercase tracking-wide text-neutral-400">
           Suggested usuals
         </h2>
@@ -287,69 +333,119 @@ function SuggestionsSection({
           disabled={loading}
           className="text-xs text-neutral-500 active:text-neutral-200 disabled:opacity-40"
         >
-          {loading ? "thinking…" : "refresh"}
+          {loading ? "scanning…" : "refresh"}
         </button>
       </div>
       {error && (
-        <div className="text-xs text-amber-300 mb-2">
-          Couldn't reach the suggester: {error}
+        <div className="text-xs text-amber-300">
+          Suggester error: {error}
         </div>
       )}
-      {loading && suggestions.length === 0 && (
+      {loading && total === 0 && (
         <div className="text-sm text-neutral-500 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
           Looking at the last 30 days…
         </div>
       )}
-      {!loading && suggestions.length === 0 && !error && (
+      {!loading && total === 0 && !error && (
         <div className="text-sm text-neutral-500 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
           No new patterns spotted. Try again in a few days, or build one manually.
         </div>
       )}
-      <ul className="space-y-2">
-        {suggestions.map(s => (
-          <li
-            key={s.signature}
-            className="rounded-lg border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-medium truncate">{s.name}</div>
-                <div className="text-xs text-neutral-500">
-                  {SLOT_LABEL[s.slot]} · {s.items.length} items
-                </div>
-              </div>
-              <span className="text-[10px] uppercase tracking-wide text-emerald-300/70">
-                suggested
-              </span>
-            </div>
-            {s.rationale && (
-              <div className="text-xs text-neutral-400 italic">{s.rationale}</div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => onSave(s)}
-                disabled={saving}
-                className="px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 text-white text-sm min-h-[44px] disabled:opacity-50"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => onTweak(s)}
-                className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 text-sm min-h-[44px]"
-              >
-                Tweak
-              </button>
-              <button
-                onClick={() => onDismiss(s.signature)}
-                className="px-3 py-2 rounded text-neutral-500 active:text-neutral-200 text-sm min-h-[44px]"
-              >
-                Dismiss
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {augmentSuggestions.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-amber-400/70 mb-1">
+            tweaks to existing usuals
+          </div>
+          <ul className="space-y-2">
+            {augmentSuggestions.map(s => (
+              <SuggestionCard
+                key={s.signature}
+                title={`Add ${s.add_food_names.join(", ")} to ${s.template_name}`}
+                subline={`${SLOT_LABEL[s.slot]} · adds ${s.add_food_names.length} item${s.add_food_names.length === 1 ? "" : "s"}`}
+                rationale={s.rationale}
+                accent="amber"
+                onSave={() => onSaveAugment(s)}
+                onTweak={() => onTweak(s)}
+                onDismiss={() => onDismiss(s.signature)}
+                saving={saving}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+      {newSuggestions.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-emerald-400/70 mb-1">
+            new usuals
+          </div>
+          <ul className="space-y-2">
+            {newSuggestions.map(s => (
+              <SuggestionCard
+                key={s.signature}
+                title={s.name}
+                subline={`${SLOT_LABEL[s.slot]} · ${s.items.length} items`}
+                rationale={s.rationale}
+                accent="emerald"
+                onSave={() => onSaveNew(s)}
+                onTweak={() => onTweak(s)}
+                onDismiss={() => onDismiss(s.signature)}
+                saving={saving}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
+  );
+}
+
+function SuggestionCard({ title, subline, rationale, accent, onSave, onTweak, onDismiss, saving }: {
+  title: string;
+  subline: string;
+  rationale: string;
+  accent: "emerald" | "amber";
+  onSave: () => void;
+  onTweak: () => void;
+  onDismiss: () => void;
+  saving: boolean;
+}) {
+  const ring = accent === "amber"
+    ? "border-amber-800/40 bg-amber-950/20"
+    : "border-emerald-800/40 bg-emerald-950/20";
+  const cta = accent === "amber"
+    ? "bg-amber-700 active:bg-amber-800"
+    : "bg-emerald-700 active:bg-emerald-800";
+  return (
+    <li className={`rounded-lg border p-3 space-y-2 ${ring}`}>
+      <div className="min-w-0">
+        <div className="font-medium">{title}</div>
+        <div className="text-xs text-neutral-500">{subline}</div>
+      </div>
+      {rationale && (
+        <div className="text-xs text-neutral-400 italic">{rationale}</div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className={`px-3 py-2 rounded text-white text-sm min-h-[44px] disabled:opacity-50 ${cta}`}
+        >
+          Save
+        </button>
+        <button
+          onClick={onTweak}
+          className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-700 text-sm min-h-[44px]"
+        >
+          Tweak
+        </button>
+        <button
+          onClick={onDismiss}
+          className="px-3 py-2 rounded text-neutral-500 active:text-neutral-200 text-sm min-h-[44px]"
+        >
+          Dismiss
+        </button>
+      </div>
+    </li>
   );
 }
 

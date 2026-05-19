@@ -210,6 +210,7 @@ class Insight:
     prompt: str | None = None
     system_prompt: str | None = None
     thread_id: str | None = None  # populated by generate_insight after thread creation
+    anchors: dict[str, str] | None = None  # named placeholders in `text` for rendering
 
 
 def _strip_meta(doc: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -412,6 +413,7 @@ async def recent_insights(
             # for any rendered insight, not just the freshly-generated one.
             "food_totals": doc.get("food_totals"),
             "context": doc.get("context"),
+            "anchors": doc.get("anchors"),
         }
         async for doc in cur
     ]
@@ -438,6 +440,7 @@ async def save_insight(db: AsyncDatabase, insight: Insight) -> str:
         "prompt": insight.prompt,
         "system_prompt": insight.system_prompt,
         "thread_id": insight.thread_id,
+        "anchors": insight.anchors,
     }
     res = await db["coach_insights"].insert_one(doc)
     return str(res.inserted_id)

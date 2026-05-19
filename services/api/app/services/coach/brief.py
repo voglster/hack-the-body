@@ -503,7 +503,7 @@ async def generate_insight(
     day_end: datetime | None = None,
     targets: dict[str, Any] | None = None,
     system_prompt: str = SYSTEM_PROMPT,
-    response_format: str | None = None,
+    response_format: str | None = "json",
 ) -> Insight:
     repo = MetricsRepo(db)
     food_repo = FoodRepo(db)
@@ -527,8 +527,25 @@ async def generate_insight(
         r = await c.post(f"{settings.ollama_url}/api/generate", json=payload)
         r.raise_for_status()
         data = r.json()
+    raw_text = (data.get("response") or "").strip()
+    parsed_text = raw_text
+    parsed_anchors: dict[str, str] = {}
+    try:
+        parsed = json.loads(raw_text)
+        if isinstance(parsed, dict):
+            t = parsed.get("text")
+            if isinstance(t, str) and t.strip():
+                parsed_text = t.strip()
+            a = parsed.get("anchors")
+            if isinstance(a, dict):
+                parsed_anchors = {
+                    str(k): str(v) for k, v in a.items()
+                    if isinstance(k, str) and isinstance(v, str)
+                }
+    except (ValueError, TypeError):
+        pass
     insight = Insight(
-        text=(data.get("response") or "").strip(),
+        text=parsed_text,
         model=settings.ollama_model,
         eval_ms=int(data.get("eval_duration", 0)) // 1_000_000,
         total_ms=int(data.get("total_duration", 0)) // 1_000_000,
@@ -539,6 +556,7 @@ async def generate_insight(
         history_snapshot=history,
         prompt=prompt,
         system_prompt=system_prompt,
+        anchors=parsed_anchors,
     )
     # Create a thread with the brief as turn 1 BEFORE saving the insight so
     # the insight row can store thread_id.

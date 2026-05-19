@@ -139,6 +139,14 @@ async def kiosk(
             urgency = "clear"
         payload["urgency"] = urgency
         payload["coach"] = str(parsed.get("coach") or "")
+        anchors = parsed.get("anchors") or {}
+        if isinstance(anchors, dict):
+            payload["anchors"] = {
+                str(k): str(v) for k, v in anchors.items()
+                if isinstance(k, str) and isinstance(v, str)
+            }
+        else:
+            payload["anchors"] = {}
     except (ValueError, AttributeError):
         # Defensive: if the model didn't emit valid JSON, fall back to a
         # neutral "clear" glance line with the raw text as the coach
@@ -147,6 +155,7 @@ async def kiosk(
         payload["qualifier"] = ""
         payload["urgency"] = "clear"
         payload["coach"] = result.text[:160]
+        payload["anchors"] = {}
 
     # Server-side override: if findings.attention is empty, NOTHING needs
     # to happen right now — the model occasionally invents an action

@@ -150,6 +150,33 @@ async def test_kiosk_falls_back_when_response_is_not_json(client):
     assert body["coach"] == "just plain text"
 
 
+@pytest.mark.asyncio
+async def test_kiosk_serializes_anchors_field(client, monkeypatch):
+    from datetime import UTC, datetime
+    from app.services.coach.brief import Insight
+
+    fake_json = (
+        '{"verb": "WIND DOWN", "qualifier": "20 min left", '
+        '"urgency": "action", "coach": "Lights out at {{lights_out}}.", '
+        '"anchors": {"lights_out": "2026-05-19T22:00:00-05:00"}}'
+    )
+    stub = Insight(
+        text=fake_json, model="m", eval_ms=0, total_ms=0,
+        generated_at=datetime.now(UTC), context={"attention": ["lights_out"]},
+        trigger="kiosk",
+    )
+
+    async def fake_gen(*a, **kw):
+        return stub
+
+    monkeypatch.setattr("app.routers.coach.generate_insight", fake_gen)
+    r = await client.get("/coach/kiosk", headers={"X-API-Key": "test-key"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["anchors"] == {"lights_out": "2026-05-19T22:00:00-05:00"}
+    assert body["coach"] == "Lights out at {{lights_out}}."
+
+
 async def test_recent_excludes_kiosk_trigger_by_default(client, mock_db):
     """Kiosk insights store raw JSON in `text`; they must not appear in
     /coach/recent (which the dashboard CoachCard reads) or as history

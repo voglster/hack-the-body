@@ -121,3 +121,49 @@ async def test_ack_latest_returns_null_when_nothing_eligible(client, mock_db):
     assert r.status_code == 200
     body = r.json()
     assert body == {"id": None, "acked_at": None}
+
+
+@pytest.mark.asyncio
+async def test_history_marks_acked_and_filters_by_surface(mock_db):
+    start, _end = resolve_day_window(None, None)
+    web_acked = Insight(
+        text="seen", model="m", eval_ms=0, total_ms=0,
+        generated_at=start + timedelta(hours=1), context={}, trigger="manual",
+        acked_at=datetime.now(UTC),
+    )
+    web_fresh = Insight(
+        text="new", model="m", eval_ms=0, total_ms=0,
+        generated_at=start + timedelta(hours=2), context={}, trigger="manual",
+    )
+    kiosk_only = Insight(
+        text="k", model="m", eval_ms=0, total_ms=0,
+        generated_at=start + timedelta(hours=3), context={}, trigger="kiosk",
+    )
+    for i in (web_acked, web_fresh, kiosk_only):
+        i.id = await save_insight(mock_db, i)
+
+    rows = await recent_insights(mock_db, since=start, surface="manual")
+    texts = {r["text"]: r for r in rows}
+    assert "k" not in texts
+    assert texts["seen"]["acked"] is True
+    assert texts["new"]["acked"] is False
+
+    krows = await recent_insights(mock_db, since=start, surface="kiosk")
+    assert len(krows) == 1
+    assert krows[0]["text"] == "k"
+
+
+def test_render_brief_prompt_flags_acked_messages():
+    from app.services.coach.brief import render_brief_prompt
+    from app.services.coach.context import Findings
+    history = [
+        {"trigger": "manual", "text": "old nudge", "acked": True,
+         "generated_at": datetime.now(UTC)},
+        {"trigger": "manual", "text": "fresh nudge", "acked": False,
+         "generated_at": datetime.now(UTC)},
+    ]
+    findings = Findings()
+    prompt = render_brief_prompt(findings, history)
+    assert "[acked]" in prompt or "acknowledged" in prompt
+    assert "old nudge" in prompt
+    assert "fresh nudge" in prompt

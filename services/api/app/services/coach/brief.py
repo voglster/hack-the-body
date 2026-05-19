@@ -405,6 +405,7 @@ async def recent_insights(
     *,
     since: datetime | None = None,
     include_kiosk: bool = False,
+    surface: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return the most recent N insights ordered newest-first, trimmed for prompt size.
 
@@ -418,11 +419,18 @@ async def recent_insights(
     string in `text` (verb/qualifier/urgency/coach) which would (a) render
     as gibberish in the dashboard CoachCard and (b) confuse the normal
     coach LLM when fed back as "recent coach messages" history.
+
+    `surface`, when given (e.g. "manual" or "kiosk"), restricts to that
+    trigger. This is how web and kiosk histories stay independent in the
+    coach prompt; without it, kiosk acks would never reach kiosk generation
+    and vice versa.
     """
     query: dict[str, Any] = {}
     if since is not None:
         query["generated_at"] = {"$gte": since}
-    if not include_kiosk:
+    if surface is not None:
+        query["trigger"] = surface
+    elif not include_kiosk:
         query["trigger"] = {"$ne": "kiosk"}
     cur = db["coach_insights"].find(query).sort("generated_at", -1).limit(limit)
     return [
@@ -437,6 +445,7 @@ async def recent_insights(
             "context": doc.get("context"),
             "anchors": doc.get("anchors"),
             "acked_at": doc.get("acked_at"),
+            "acked": doc.get("acked_at") is not None,
         }
         async for doc in cur
     ]
@@ -514,7 +523,16 @@ def render_brief_prompt(
                 ts.isoformat(timespec="minutes")
                 if isinstance(ts, datetime) else str(ts)
             )
-            parts.append(f"[{h.get('trigger', 'manual')} @ {ts_s}] {h.get('text', '')}")
+            tag = "acked" if h.get("acked") else "unacked"
+            parts.append(
+                f"[{h.get('trigger', 'manual')} @ {ts_s}] [{tag}] {h.get('text', '')}",
+            )
+        parts.append("")
+        parts.append(
+            "Items tagged [acked] were explicitly read by Jim — do not "
+            "restate them; build on or move past them. Items tagged "
+            "[unacked] may be refined if still the most important thing.",
+        )
     return "\n".join(parts)
 
 
@@ -536,7 +554,8 @@ async def generate_insight(
         repo, food_repo,
         day_start=day_start, day_end=day_end, targets=targets,
     )
-    history = await recent_insights(db, since=day_start)
+    history_surface = "kiosk" if trigger == "kiosk" else "manual"
+    history = await recent_insights(db, since=day_start, surface=history_surface)
     prompt = render_brief_prompt(findings, history, system_prompt=system_prompt)
     payload: dict[str, Any] = {
         "model": settings.ollama_model,

@@ -302,6 +302,8 @@ export interface CoachInsight {
   trigger: string;
   food_totals?: CoachFoodTotals | null;
   thread_id?: string | null;
+  anchors?: Record<string, string> | null;
+  acked_at?: string | null;
 }
 
 export type KioskUrgency = "clear" | "action" | "urgent";
@@ -320,6 +322,8 @@ export interface CoachRecentEntry {
   trigger: string;
   food_totals?: CoachFoodTotals | null;
   context?: Record<string, unknown> | null;
+  anchors?: Record<string, string> | null;
+  acked_at?: string | null;
 }
 
 export interface UserTargets {

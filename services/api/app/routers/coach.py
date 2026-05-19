@@ -287,6 +287,10 @@ async def ack_insight(request: Request, insight_id: str) -> dict[str, Any]:
     await db["coach_insights"].update_one(
         {"_id": oid}, {"$set": {"acked_at": now}},
     )
+    if doc.get("trigger") == "kiosk":
+        cache = getattr(request.app.state, "kiosk_cache", None)
+        if cache is not None:
+            cache.clear()
     updated = await db["coach_insights"].find_one({"_id": oid}, {"acked_at": 1})
     return {"id": insight_id, "acked_at": updated["acked_at"]}
 
@@ -328,7 +332,11 @@ async def ack_kiosk_latest(
     start: Annotated[datetime | None, Query()] = None,
     end: Annotated[datetime | None, Query()] = None,
 ) -> dict[str, Any]:
-    return await _ack_latest_for(request.app.state.db, "kiosk", start, end)
+    result = await _ack_latest_for(request.app.state.db, "kiosk", start, end)
+    cache = getattr(request.app.state, "kiosk_cache", None)
+    if cache is not None:
+        cache.clear()
+    return result
 
 
 @router.delete("/insights")

@@ -153,6 +153,25 @@ async def test_history_marks_acked_and_filters_by_surface(mock_db):
     assert krows[0]["text"] == "k"
 
 
+@pytest.mark.asyncio
+async def test_ack_kiosk_latest_clears_kiosk_cache(client, mock_db):
+    # Reach the app via the client's ASGI transport to seed the cache.
+    app = client._transport.app  # noqa: SLF001 — test-only access
+    app.state.kiosk_cache = {"|": {"stored_at": datetime.now(UTC), "payload": {}}}
+    start, _end = resolve_day_window(None, None)
+    kiosk = Insight(
+        text="k", model="m", eval_ms=0, total_ms=0,
+        generated_at=start + timedelta(hours=1), context={}, trigger="kiosk",
+    )
+    kiosk.id = await save_insight(mock_db, kiosk)
+    r = await client.post(
+        "/coach/ack/kiosk-latest",
+        headers={"X-API-Key": "test-key"},
+    )
+    assert r.status_code == 200
+    assert app.state.kiosk_cache == {}
+
+
 def test_render_brief_prompt_flags_acked_messages():
     from app.services.coach.brief import render_brief_prompt
     from app.services.coach.context import Findings

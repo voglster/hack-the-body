@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { CoachChatPanel } from "./CoachChatPanel";
+import { CoachText } from "./CoachText";
 import type { CoachFeedbackRating, CoachFoodTotals, CoachInsight, CoachRecentEntry } from "../api/types";
 
 interface DisplayMsg {
@@ -10,6 +11,8 @@ interface DisplayMsg {
   text: string;
   meta: string;
   food_totals?: CoachFoodTotals | null;
+  anchors?: Record<string, string> | null;
+  acked_at?: string | null;
 }
 
 function pickDisplay(
@@ -22,6 +25,8 @@ function pickDisplay(
       text: fresh.text,
       meta: `${fresh.model} · ${(fresh.total_ms / 1000).toFixed(1)}s · ${new Date(fresh.generated_at).toLocaleTimeString()}`,
       food_totals: fresh.food_totals,
+      anchors: fresh.anchors ?? null,
+      acked_at: fresh.acked_at ?? null,
     };
   }
   if (latest) {
@@ -30,6 +35,8 @@ function pickDisplay(
       text: latest.text,
       meta: `${latest.trigger} · ${new Date(latest.generated_at).toLocaleString()}`,
       food_totals: latest.food_totals,
+      anchors: latest.anchors ?? null,
+      acked_at: latest.acked_at ?? null,
     };
   }
   return null;
@@ -58,13 +65,52 @@ function ModelInputs({ food_totals }: { food_totals?: CoachFoodTotals | null }) 
   );
 }
 
+function AckRow({
+  insightId,
+  ackedAt,
+}: {
+  insightId: string;
+  ackedAt: string | null;
+}) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => api.coachAck(insightId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["coach.recent"] });
+    },
+  });
+  if (ackedAt) {
+    return (
+      <div className="text-[11px] text-neutral-500 pt-1">
+        acknowledged at {new Date(ackedAt).toLocaleTimeString()}
+      </div>
+    );
+  }
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        className="text-xs px-3 py-1.5 rounded bg-neutral-800 active:bg-neutral-700 disabled:opacity-50"
+        aria-label="acknowledge coach message"
+      >
+        {mutation.isPending ? "acking…" : "✓ got it"}
+      </button>
+    </div>
+  );
+}
+
 function CoachBody({ display, error }: { display: DisplayMsg | null; error: Error | null }) {
   if (display) {
     return (
       <>
-        <div className="text-sm whitespace-pre-wrap leading-relaxed">{display.text}</div>
+        <div className="text-sm whitespace-pre-wrap leading-relaxed">
+          <CoachText text={display.text} anchors={display.anchors} />
+        </div>
         <div className="text-[10px] text-neutral-500">{display.meta}</div>
         <ModelInputs food_totals={display.food_totals} />
+        {display.id && <AckRow insightId={display.id} ackedAt={display.acked_at ?? null} />}
         {display.id && <FeedbackRow key={display.id} insightId={display.id} />}
       </>
     );
@@ -74,7 +120,7 @@ function CoachBody({ display, error }: { display: DisplayMsg | null; error: Erro
   }
   return (
     <div className="text-sm text-neutral-500">
-      tap “ask coach” for a quick read on your last 24 hours.
+      tap "ask coach" for a quick read on your last 24 hours.
     </div>
   );
 }

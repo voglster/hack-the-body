@@ -230,6 +230,25 @@ export const api = {
     post<CoachTurn>(`/coach/thread/${threadId}/reply`, { text }),
   coachFeedback: (insight_id: string, rating: CoachFeedbackRating, note?: string) =>
     post<CoachFeedback>(`/coach/insights/${insight_id}/feedback`, { rating, note: note ?? null }),
+  coachAck: (insight_id: string) =>
+    post<{ id: string; acked_at: string | null }>(
+      `/coach/insights/${insight_id}/ack`,
+      {},
+    ),
+  coachAckWebLatest: () => {
+    const { start, end } = localDayBoundsUTC(todayLocalISO());
+    return post<{ id: string | null; acked_at: string | null }>(
+      `/coach/ack/web-latest?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      {},
+    );
+  },
+  coachAckKioskLatest: () => {
+    const { start, end } = localDayBoundsUTC(todayLocalISO());
+    return post<{ id: string | null; acked_at: string | null }>(
+      `/coach/ack/kiosk-latest?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      {},
+    );
+  },
 
   // habits
   habitsList: () => get<Habit[]>("/habits"),

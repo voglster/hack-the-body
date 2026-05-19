@@ -113,7 +113,7 @@ async def test_ack_kiosk_latest_picks_kiosk_only(client, mock_db):
 
 
 @pytest.mark.asyncio
-async def test_ack_latest_returns_null_when_nothing_eligible(client, mock_db):
+async def test_ack_latest_returns_null_when_nothing_eligible(client):
     r = await client.post(
         "/coach/ack/web-latest",
         headers={"X-API-Key": "test-key"},
@@ -156,7 +156,7 @@ async def test_history_marks_acked_and_filters_by_surface(mock_db):
 @pytest.mark.asyncio
 async def test_ack_kiosk_latest_clears_kiosk_cache(client, mock_db):
     # Reach the app via the client's ASGI transport to seed the cache.
-    app = client._transport.app  # noqa: SLF001 — test-only access
+    app = client._transport.app  # type: ignore[attr-defined]
     app.state.kiosk_cache = {"|": {"stored_at": datetime.now(UTC), "payload": {}}}
     start, _end = resolve_day_window(None, None)
     kiosk = Insight(
@@ -173,8 +173,8 @@ async def test_ack_kiosk_latest_clears_kiosk_cache(client, mock_db):
 
 
 def test_render_brief_prompt_flags_acked_messages():
-    from app.services.coach.brief import render_brief_prompt
-    from app.services.coach.context import Findings
+    from app.services.coach.brief import render_brief_prompt  # noqa: PLC0415
+    from app.services.coach.context import Findings  # noqa: PLC0415
     history = [
         {"trigger": "manual", "text": "old nudge", "acked": True,
          "generated_at": datetime.now(UTC)},

@@ -152,8 +152,9 @@ async def test_kiosk_falls_back_when_response_is_not_json(client):
 
 @pytest.mark.asyncio
 async def test_kiosk_serializes_anchors_field(client, monkeypatch):
-    from datetime import UTC, datetime
-    from app.services.coach.brief import Insight
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from app.services.coach.brief import Insight  # noqa: PLC0415
 
     fake_json = (
         '{"verb": "WIND DOWN", "qualifier": "20 min left", '
@@ -166,7 +167,7 @@ async def test_kiosk_serializes_anchors_field(client, monkeypatch):
         trigger="kiosk",
     )
 
-    async def fake_gen(*a, **kw):
+    async def fake_gen(*_a, **_kw):
         return stub
 
     monkeypatch.setattr("app.routers.coach.generate_insight", fake_gen)

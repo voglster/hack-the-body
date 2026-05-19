@@ -30,6 +30,8 @@ def _serialize(insight: Insight) -> dict[str, Any]:
         # — caught a scheduler timezone bug where calories looked wrong.
         "food_totals": insight.food_totals,
         "thread_id": insight.thread_id,
+        "anchors": insight.anchors or {},
+        "acked_at": insight.acked_at,
     }
 
 

@@ -215,6 +215,62 @@ async def test_edit_entry_quantity_recomputes_macros(client):
     assert fixed["macros"]["protein_g"] == 30
 
 
+async def test_edit_entry_macros_override(client):
+    # Real-world case: parser logged "1 banana = 200 kcal" but you ate a small
+    # one. Quantity-as-grams is fine; you just want to dial calories down.
+    food = await _create_food(
+        client, name="Banana",
+        per_serving={"calories": 100, "protein_g": 1, "carbs_g": 25, "fat_g": 0},
+    )
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 100, "slot": "snack"},
+    )
+    entry_id = r.json()["id"]
+
+    r = await client.patch(
+        f"/meals/entries/{entry_id}", headers=HEADERS,
+        json={"macros": {"calories": 75, "carbs_g": 18}},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["macros"]["calories"] == 75
+    assert body["macros"]["carbs_g"] == 18
+    # Unspecified fields are preserved from the existing snapshot.
+    assert body["macros"]["protein_g"] == 1
+    assert body["macros"]["fat_g"] == 0
+    # Quantity untouched.
+    assert body["quantity_g"] == 100
+
+
+async def test_edit_entry_macros_override_with_quantity(client):
+    # When both are sent, macros override the freshly-recomputed values
+    # for the fields they specify, leaving the rest of the recompute intact.
+    food = await _create_food(
+        client, name="Protein Bar", serving_g=50.0,
+        per_serving={"calories": 200, "protein_g": 20, "carbs_g": 20, "fat_g": 6},
+    )
+    r = await client.post(
+        "/meals/entries", headers=HEADERS,
+        json={"food_id": food["id"], "quantity_g": 50, "slot": "snack"},
+    )
+    entry_id = r.json()["id"]
+
+    r = await client.patch(
+        f"/meals/entries/{entry_id}", headers=HEADERS,
+        json={"quantity_g": 100, "macros": {"calories": 350}},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["quantity_g"] == 100
+    # Override wins for calories…
+    assert body["macros"]["calories"] == 350
+    # …but other fields scale as usual against the new quantity.
+    assert body["macros"]["protein_g"] == 40
+    assert body["macros"]["carbs_g"] == 40
+    assert body["macros"]["fat_g"] == 12
+
+
 async def test_edit_entry_quantity_rejects_zero(client):
     food = await _create_food(client)
     r = await client.post(

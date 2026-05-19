@@ -6,7 +6,7 @@ import type { Food, MealEntry, MealSlot, MealTemplate } from "../api/types";
 import { slotTimestampUTC, todayLocalISO } from "../lib/tz";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { DayNav } from "./DayNav";
-import { EntryTimeEditor } from "./EntryTimeEditor";
+import { EntryTimeEditor, type EntryEditPatch } from "./EntryTimeEditor";
 import { MacroProgressCard } from "./MacroProgressCard";
 import { PasteFood } from "./PasteFood";
 
@@ -51,7 +51,7 @@ export function TodayMeals() {
   });
 
   const editEntry = useMutation({
-    mutationFn: (args: { id: string; patch: { ts?: string; slot?: MealSlot } }) =>
+    mutationFn: (args: { id: string; patch: EntryEditPatch }) =>
       api.editEntry(args.id, args.patch),
     onSuccess: () => {
       // Water totals share the meal_entries table.
@@ -180,7 +180,7 @@ function EditorPane({ editing, dayEntries, busy, onCancel, onRenameFood, onSave 
   busy: boolean;
   onCancel: () => void;
   onRenameFood: (food_id: string, name: string) => Promise<void>;
-  onSave: (id: string, patch: { ts?: string; slot?: MealSlot }) => void;
+  onSave: (id: string, patch: EntryEditPatch) => void;
 }) {
   if (!editing) return null;
   return (

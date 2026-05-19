@@ -183,7 +183,20 @@ export const api = {
     ts?: string;
   }) => post<MealEntry>("/meals/entries", req),
   deleteEntry: (entry_id: string) => del(`/meals/entries/${entry_id}`),
-  editEntry: (entry_id: string, patch: { ts?: string; slot?: MealSlot; quantity_g?: number }) => {
+  editEntry: (entry_id: string, patch: {
+    ts?: string;
+    slot?: MealSlot;
+    quantity_g?: number;
+    macros?: Partial<{
+      calories: number | null;
+      protein_g: number | null;
+      carbs_g: number | null;
+      fat_g: number | null;
+      fiber_g: number | null;
+      sugar_g: number | null;
+      sodium_mg: number | null;
+    }>;
+  }) => {
     return fetch(`${BASE}/meals/entries/${entry_id}`, {
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),

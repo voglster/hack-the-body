@@ -13,6 +13,28 @@ import type { MealEntry, MealSlot } from "../api/types";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
 
+export type MacrosPatch = Partial<{
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+}>;
+
+export type EntryEditPatch = {
+  ts?: string;
+  slot?: MealSlot;
+  quantity_g?: number;
+  macros?: MacrosPatch;
+};
+
+type MacroKey = "calories" | "protein_g" | "carbs_g" | "fat_g";
+const MACRO_KEYS: { key: MacroKey; label: string; step: string }[] = [
+  { key: "calories", label: "kcal", step: "1" },
+  { key: "protein_g", label: "protein", step: "0.1" },
+  { key: "carbs_g", label: "carbs", step: "0.1" },
+  { key: "fat_g", label: "fat", step: "0.1" },
+];
+
 const START_HOUR = 4;   // earliest scrubbable time (slightly before breakfast)
 const END_HOUR = 24;    // exclusive — midnight
 const SNAP_MIN = 15;
@@ -24,9 +46,13 @@ function isValidServings(s: string): boolean {
 }
 
 function buildPatch(
-  entry: MealEntry, t: Date, slot: MealSlot, servingsStr: string,
-): { ts: string; slot: MealSlot; quantity_g?: number } {
-  const patch: { ts: string; slot: MealSlot; quantity_g?: number } = {
+  entry: MealEntry,
+  t: Date,
+  slot: MealSlot,
+  servingsStr: string,
+  macrosStr: Record<MacroKey, string>,
+): EntryEditPatch {
+  const patch: EntryEditPatch = {
     ts: t.toISOString(),
     slot,
   };
@@ -46,7 +72,28 @@ function buildPatch(
       }
     }
   }
+  const macroOverride: MacrosPatch = {};
+  let macrosDirty = false;
+  for (const { key } of MACRO_KEYS) {
+    const raw = macrosStr[key];
+    const current = entry.macros?.[key] ?? null;
+    const parsed = raw === "" ? null : parseFloat(raw);
+    const next = parsed != null && Number.isFinite(parsed) ? round2(parsed) : null;
+    const same =
+      (next == null && current == null) ||
+      (next != null && current != null && Math.abs(next - current) < 0.05);
+    if (!same) {
+      macroOverride[key] = next;
+      macrosDirty = true;
+    }
+  }
+  if (macrosDirty) patch.macros = macroOverride;
   return patch;
+}
+
+function macroDisplay(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "";
+  return String(round2(v));
 }
 
 function QuantityField({
@@ -140,7 +187,7 @@ export function EntryTimeEditor({
 }: {
   entry: MealEntry;
   dayEntries: MealEntry[];
-  onSave: (patch: { ts: string; slot: MealSlot; quantity_g?: number }) => void;
+  onSave: (patch: EntryEditPatch) => void;
   onCancel: () => void;
   onRenameFood?: (food_id: string, name: string) => Promise<void>;
   busy: boolean;
@@ -157,6 +204,12 @@ export function EntryTimeEditor({
   const [servingsStr, setServingsStr] = useState<string>(
     () => String(round2(entry.servings ?? entry.quantity_g / 100)),
   );
+  const [macrosStr, setMacrosStr] = useState<Record<MacroKey, string>>(() => ({
+    calories: macroDisplay(entry.macros?.calories),
+    protein_g: macroDisplay(entry.macros?.protein_g),
+    carbs_g: macroDisplay(entry.macros?.carbs_g),
+    fat_g: macroDisplay(entry.macros?.fat_g),
+  }));
   const trackRef = useRef<HTMLDivElement>(null);
 
   const minsNow = toMinutesFromStart(t);
@@ -280,6 +333,35 @@ export function EntryTimeEditor({
         busy={busy}
       />
 
+      {/* Macros override */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase tracking-wide text-neutral-400">macros</span>
+          <span className="text-[11px] text-neutral-500">
+            override per-entry · blank = unknown
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {MACRO_KEYS.map(({ key, label, step }) => (
+            <label key={key} className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-neutral-500">
+                {label}
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step={step}
+                value={macrosStr[key]}
+                disabled={busy}
+                onChange={e => setMacrosStr(m => ({ ...m, [key]: e.target.value }))}
+                className="w-full px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base tabular-nums"
+                aria-label={label}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* Slot chips */}
       <div className="flex flex-wrap gap-2">
         {SLOTS.map(s => (
@@ -350,7 +432,7 @@ export function EntryTimeEditor({
 
       <div className="flex gap-2">
         <button
-          onClick={() => onSave(buildPatch(entry, t, slot, servingsStr))}
+          onClick={() => onSave(buildPatch(entry, t, slot, servingsStr, macrosStr))}
           disabled={busy || !isValidServings(servingsStr)}
           className="flex-1 px-3 py-3 rounded bg-emerald-700 active:bg-emerald-800 text-white text-base font-medium disabled:opacity-50 min-h-[44px]"
         >

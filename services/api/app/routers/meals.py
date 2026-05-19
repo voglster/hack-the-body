@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
 from app.config import get_settings
-from app.models.food import MealEntry, MealSlot, MealTemplate
+from app.models.food import Macros, MealEntry, MealSlot, MealTemplate
 from app.services.audit import record_change
 from app.services.food_repo import FoodRepo, macros_for_quantity
 from app.services.usuals_suggest import dismiss_signature, suggest_usuals
@@ -104,35 +104,49 @@ class EditEntryReq(BaseModel):
     ts: datetime | None = None
     slot: MealSlot | None = None
     quantity_g: float | None = Field(default=None, gt=0)
+    macros: Macros | None = None
 
 
 @router.patch("/entries/{entry_id}")
 async def edit_entry(entry_id: str, req: EditEntryReq, request: Request):
-    """Edit an entry's time, slot, and/or quantity.
+    """Edit an entry's time, slot, quantity, and/or macros.
 
     Time-series collections require a delete+reinsert, so the returned id
     will differ from the original. When `quantity_g` is provided, macros
     and the derived `servings` field are recomputed against the food's
-    per-serving record.
+    per-serving record. When `macros` is provided, the supplied fields
+    override the (recomputed or existing) snapshot — useful for fixing a
+    bad parse where the underlying food's macros are correct in general
+    but wrong for this specific entry.
     """
-    if req.ts is None and req.slot is None and req.quantity_g is None:
-        raise HTTPException(status_code=400, detail="ts, slot, or quantity_g required")
+    if (req.ts is None and req.slot is None
+            and req.quantity_g is None and req.macros is None):
+        raise HTTPException(
+            status_code=400, detail="ts, slot, quantity_g, or macros required",
+        )
     repo = _repo(request)
     extra: dict = {}
-    if req.quantity_g is not None:
+    existing: dict | None = None
+    if req.quantity_g is not None or req.macros is not None:
         existing = await repo.get_entry(entry_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="entry not found")
+    base_macros: dict | None = None
+    if req.quantity_g is not None:
         food = await repo.get_food(existing["food_id"])
         if not food:
             raise HTTPException(status_code=400, detail="food behind entry no longer exists")
-        macros = macros_for_quantity(food, req.quantity_g)
+        base_macros = macros_for_quantity(food, req.quantity_g).model_dump()
         serving_g = float(food.get("serving_g") or 100.0)
-        extra = {
-            "quantity_g": req.quantity_g,
-            "servings": req.quantity_g / serving_g,
-            "macros": macros.model_dump(),
-        }
+        extra["quantity_g"] = req.quantity_g
+        extra["servings"] = req.quantity_g / serving_g
+    elif req.macros is not None:
+        base_macros = dict(existing.get("macros") or {})
+    if req.macros is not None and base_macros is not None:
+        overrides = {k: v for k, v in req.macros.model_dump().items() if v is not None}
+        base_macros = {**base_macros, **overrides}
+    if base_macros is not None:
+        extra["macros"] = base_macros
     out = await repo.update_entry_time(
         entry_id, new_ts=req.ts, new_slot=req.slot, extra_fields=extra or None,
     )

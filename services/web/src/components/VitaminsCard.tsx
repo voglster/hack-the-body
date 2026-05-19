@@ -12,8 +12,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api } from "../api/client";
-import type { MealEntry, MealSlot } from "../api/types";
-import { EntryTimeEditor } from "./EntryTimeEditor";
+import type { MealEntry } from "../api/types";
+import { EntryTimeEditor, type EntryEditPatch } from "./EntryTimeEditor";
 
 const RECENT_MS = 5 * 60 * 1000;
 
@@ -70,7 +70,7 @@ export function VitaminsCard() {
     onSuccess: invalidateAll,
   });
   const editEntry = useMutation({
-    mutationFn: (args: { id: string; patch: { ts?: string; slot?: MealSlot } }) =>
+    mutationFn: (args: { id: string; patch: EntryEditPatch }) =>
       api.editEntry(args.id, args.patch),
     onSuccess: invalidateAll,
   });

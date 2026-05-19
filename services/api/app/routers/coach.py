@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.auth import require_api_key
 from app.routers.profile import get_user_targets
 from app.services.coach import Insight, generate_insight, recent_insights
-from app.services.coach.brief import KIOSK_SYSTEM_PROMPT
+from app.services.coach.brief import KIOSK_SYSTEM_PROMPT, resolve_day_window
 from app.services.coach_weekly import generate_weekly_review
 
 router = APIRouter(prefix="/coach", dependencies=[Depends(require_api_key)])
@@ -272,6 +272,63 @@ async def submit_feedback(
         "note": doc["note"],
         "created_at": doc["created_at"],
     }
+
+
+@router.post("/insights/{insight_id}/ack")
+async def ack_insight(request: Request, insight_id: str) -> dict[str, Any]:
+    db = request.app.state.db
+    oid = _oid(insight_id)
+    doc = await db["coach_insights"].find_one({"_id": oid})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="insight not found")
+    if doc.get("acked_at") is not None:
+        return {"id": insight_id, "acked_at": doc["acked_at"]}
+    now = datetime.now(UTC)
+    await db["coach_insights"].update_one(
+        {"_id": oid}, {"$set": {"acked_at": now}},
+    )
+    updated = await db["coach_insights"].find_one({"_id": oid}, {"acked_at": 1})
+    return {"id": insight_id, "acked_at": updated["acked_at"]}
+
+
+async def _ack_latest_for(
+    db, trigger: str, day_start: datetime | None, day_end: datetime | None,
+) -> dict[str, Any]:
+    start, end = resolve_day_window(day_start, day_end)
+    doc = await db["coach_insights"].find_one(
+        {
+            "trigger": trigger,
+            "generated_at": {"$gte": start, "$lt": end},
+        },
+        sort=[("generated_at", -1)],
+    )
+    if doc is None:
+        return {"id": None, "acked_at": None}
+    if doc.get("acked_at") is not None:
+        return {"id": str(doc["_id"]), "acked_at": doc["acked_at"]}
+    now = datetime.now(UTC)
+    await db["coach_insights"].update_one(
+        {"_id": doc["_id"]}, {"$set": {"acked_at": now}},
+    )
+    return {"id": str(doc["_id"]), "acked_at": now}
+
+
+@router.post("/ack/web-latest")
+async def ack_web_latest(
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+) -> dict[str, Any]:
+    return await _ack_latest_for(request.app.state.db, "manual", start, end)
+
+
+@router.post("/ack/kiosk-latest")
+async def ack_kiosk_latest(
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+) -> dict[str, Any]:
+    return await _ack_latest_for(request.app.state.db, "kiosk", start, end)
 
 
 @router.delete("/insights")

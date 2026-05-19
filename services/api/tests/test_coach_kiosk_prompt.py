@@ -116,12 +116,18 @@ def test_voice_is_shared_but_format_is_not():
     """The shared block is COACH_VOICE — persona, second-person voice,
     Attention handling, notes, units. Format/shape lives in each
     surface. The pit-crew identity must be in BOTH renders; the
-    surface-specific framings must NOT cross."""
+    surface-specific framings must NOT cross.
+
+    Both surfaces now emit STRICT JSON (brief: {text, anchors};
+    kiosk: {verb, qualifier, urgency, coach, anchors}) but their
+    shape rules remain distinct.
+    """
     assert COACH_VOICE in BRIEF_SYSTEM_PROMPT
     assert COACH_VOICE in KIOSK_SYSTEM_PROMPT
-    # Format guidance does not cross.
-    assert "STRICT JSON" not in BRIEF_SYSTEM_PROMPT
+    # Both surfaces use JSON output — each with its own schema.
+    assert "STRICT JSON" in BRIEF_SYSTEM_PROMPT
     assert "STRICT JSON" in KIOSK_SYSTEM_PROMPT
+    # Brief shape rules (prose length) stay in the brief only.
     assert "2-4 sentences" in BRIEF_SYSTEM_PROMPT or "2 to 4 sentences" in BRIEF_SYSTEM_PROMPT
     assert "2-4 sentences" not in KIOSK_SYSTEM_PROMPT
 

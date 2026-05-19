@@ -134,6 +134,13 @@ KIOSK_SYSTEM_PROMPT = (
     + "Invent the phrase fresh each time — do not echo recent coach "
     + "messages.\n"
     + "\n"
+    + "  anchors    — optional dict mapping placeholder name → ISO-8601 "
+    + "timestamp. Use placeholders like {{lights_out}} inside the `coach` "
+    + "field for any specific time reference; never write 'in N minutes'. "
+    + "Example: \"coach\": \"Lights out at {{lights_out}} — 20 minutes left.\", "
+    + "\"anchors\": {\"lights_out\": \"2026-05-19T22:00:00-05:00\"}. If no "
+    + "time is referenced, omit or send {}.\n"
+    + "\n"
     + "Return JSON only."
 )
 
@@ -176,7 +183,21 @@ BRIEF_SYSTEM_PROMPT = (
     + "Surface one substantive observation from the data — a 7d vs "
     + "30d trend shift, a streak, a recovery pattern. That "
     + "observation is the brief's reason to exist on a clear day; "
-    + "the kiosk already covers the glance-line."
+    + "the kiosk already covers the glance-line.\n"
+    + "\n"
+    + "Output STRICT JSON: { \"text\": <the brief, 2-4 sentences>, "
+    + "\"anchors\": { <name>: <ISO-8601 timestamp with timezone offset> } }. "
+    + "No markdown, no preamble.\n"
+    + "\n"
+    + "When you reference a specific time (a deadline, a meal window, a "
+    + "lights-out target, the next workout), do NOT write 'in 47 minutes' "
+    + "or 'in two hours' — those go stale by the time Jim reads them. "
+    + "Instead, use a placeholder like {{lights_out}} inside `text` and add "
+    + "the absolute timestamp under `anchors` with the same name. The "
+    + "browser substitutes it live. Example:\n"
+    + "  { \"text\": \"Lights out at {{lights_out}} keeps the streak alive.\",\n"
+    + "    \"anchors\": { \"lights_out\": \"2026-05-19T22:00:00-05:00\" } }\n"
+    + "Never write 'in N minutes' or 'N hours from now'. Always anchor."
 )
 
 # Back-compat aliases. `SYSTEM_PROMPT` is what the rest of the codebase

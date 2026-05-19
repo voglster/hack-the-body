@@ -3,7 +3,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.coach.brief import Insight, recent_insights, save_insight
+from app.services.coach.brief import (
+    BRIEF_SYSTEM_PROMPT,
+    KIOSK_SYSTEM_PROMPT,
+    Insight,
+    recent_insights,
+    save_insight,
+)
 
 
 @pytest.mark.asyncio
@@ -67,3 +73,14 @@ async def test_generate_insight_falls_back_when_json_invalid(mock_db, settings):
         insight = await generate_insight(settings, mock_db, trigger="manual")
     assert insight.text == "not json at all just prose"
     assert insight.anchors in ({}, None)
+
+
+def test_brief_prompt_documents_anchors_contract():
+    assert "{{lights_out}}" in BRIEF_SYSTEM_PROMPT or "{{name}}" in BRIEF_SYSTEM_PROMPT
+    assert "anchors" in BRIEF_SYSTEM_PROMPT
+    assert "in N minutes" in BRIEF_SYSTEM_PROMPT or "Never write" in BRIEF_SYSTEM_PROMPT
+
+
+def test_kiosk_prompt_documents_anchors_field():
+    assert "anchors" in KIOSK_SYSTEM_PROMPT
+    assert "{{" in KIOSK_SYSTEM_PROMPT  # at least one placeholder example

@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 
+from app.services.coach.phase import _parse_hhmm
+
 HabitKind = Literal["auto", "manual", "none"]
 HabitStatusValue = Literal["done", "skipped", "missed", "unknown"]
 
@@ -177,16 +179,17 @@ async def clear_status(
 # string (never None — use "unknown" if the data is missing).
 ResolverFn = Callable[[AsyncDatabase, date], Awaitable[HabitStatusValue]]
 
-BED_CUTOFF_HOUR = 22  # 22:00 local; deliberately not configurable yet
-
-
 async def _bed_by_10_resolver(
     db: AsyncDatabase, local_date: date, *, tz: ZoneInfo,
 ) -> HabitStatusValue:
-    """`done` if sleep onset was at or before 22:00 local on `local_date`."""
+    """`done` if sleep onset was at or before lights_out_local on `local_date`.
+
+    The cutoff is read from `user_profile.targets.lights_out_local`
+    (default "22:00" when not configured).
+    """
     # The Garmin sleep doc's `ts` is the onset (UTC). We look for any sleep
     # record whose onset falls between local-noon-of-`local_date` and
-    # local-noon-the-next-day, then compare its local hour to the cutoff.
+    # local-noon-the-next-day, then compare its local time to the cutoff.
     day_start_local = datetime.combine(local_date, time(12, 0), tzinfo=tz)
     next_day_start_local = day_start_local + timedelta(days=1)
     start_utc = day_start_local.astimezone(UTC)
@@ -201,8 +204,11 @@ async def _bed_by_10_resolver(
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=UTC)
     onset_local = ts.astimezone(tz)
+    targets_doc = await db["user_profile"].find_one({"_id": "targets"}) or {}
+    lights_out_str = targets_doc.get("lights_out_local") or "22:00"
+    cutoff_time = _parse_hhmm(lights_out_str)
     cutoff = datetime.combine(
-        onset_local.date(), time(BED_CUTOFF_HOUR, 0), tzinfo=tz,
+        onset_local.date(), cutoff_time, tzinfo=tz,
     )
     return "done" if onset_local <= cutoff else "missed"
 

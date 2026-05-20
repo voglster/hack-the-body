@@ -131,6 +131,29 @@ async def test_vitamins_resolver_missed_when_not_logged(mock_db):
     assert out == "missed"
 
 
+async def test_bedtime_habit_cutoff_uses_lights_out_local(mock_db):
+    """When lights_out_local is set to 23:00, a 22:45 sleep onset should be
+    `done` (it would be `missed` under the old hardcoded 22:00 cutoff)."""
+    repo = MetricsRepo(mock_db)
+    chicago = ZoneInfo("America/Chicago")
+    local_d = date(2026, 5, 10)
+    # Set a non-default cutoff in user_profile.
+    await mock_db["user_profile"].update_one(
+        {"_id": "targets"},
+        {"$set": {"lights_out_local": "23:00"}},
+        upsert=True,
+    )
+    # Sleep onset at 22:45 — after old 22:00 cutoff, but before new 23:00 cutoff.
+    onset_local = datetime(2026, 5, 10, 22, 45, tzinfo=chicago)
+    await repo.insert_sleep(Sleep(
+        ts=onset_local.astimezone(UTC),
+        duration_s=27000, deep_s=3600, rem_s=5400, light_s=16000, awake_s=2000,
+        score=80, source="garmin", source_id="s:lights_out_test",
+    ))
+    out = await RESOLVERS["bed_by_10"](mock_db, local_d, tz=chicago)
+    assert out == "done"
+
+
 async def test_compose_today_mixes_auto_manual_and_none(mock_db):
     chicago = ZoneInfo("America/Chicago")
     local_d = date(2026, 5, 10)

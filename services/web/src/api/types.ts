@@ -304,6 +304,9 @@ export interface CoachInsight {
   thread_id?: string | null;
   anchors?: Record<string, string> | null;
   acked_at?: string | null;
+  phase?: "day" | "wind-down" | "late";
+  lights_out_at?: string;
+  wind_down_mode?: boolean;
 }
 
 export type KioskUrgency = "clear" | "action" | "urgent";

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
 import type { KioskUrgency } from "../../api/types";
-import { KioskPhaseCard } from "./KioskPhaseCard";
 
 const URGENCY_COLOR: Record<KioskUrgency, string> = {
   clear:   "text-emerald-400",
@@ -23,7 +22,7 @@ export function KioskHero() {
   const urgency: KioskUrgency = q.data?.urgency ?? "clear";
 
   if (urgency === "clear") {
-    return <KioskPhaseCard />;
+    return <section className="leading-none" />;
   }
 
   const displayVerb = verb.length > 0 ? verb : "CLEAR";

@@ -74,9 +74,19 @@ function AckRow({
 }) {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: () => api.coachAck(insightId),
+    mutationFn: async () => {
+      // Ack both surfaces from the one button on the webapp — the kiosk
+      // is a wall display with no input, so this is its only ack path.
+      // Errors from the kiosk-ack are swallowed: a missing kiosk insight
+      // (e.g. early morning before any kiosk fetch today) shouldn't
+      // block acking the web brief.
+      const result = await api.coachAck(insightId);
+      try { await api.coachAckKioskLatest(); } catch { /* see above */ }
+      return result;
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["coach.recent"] });
+      void qc.invalidateQueries({ queryKey: ["coach-kiosk"] });
     },
   });
   if (ackedAt) {

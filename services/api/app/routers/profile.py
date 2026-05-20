@@ -17,17 +17,20 @@ the prompt, so they reach the kiosk glance-line AND the main coach
 identically.
 """
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.auth import require_api_key
 from app.services.audit import record_change
 
 router = APIRouter(prefix="/profile", dependencies=[Depends(require_api_key)])
+
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 TARGETS_KEY = "targets"
 DAY_NOTE_KEY = "day_note"
@@ -73,6 +76,21 @@ class Targets(BaseModel):
         default=None, ge=0, le=5,
         description="Upper bound of target weekly weight loss in lb.",
     )
+    lights_out_local: str | None = Field(
+        default=None,
+        description=(
+            "Local-time lights-out target, 'HH:MM'. Drives the coach's "
+            "wind-down phase and the bedtime habit cutoff. None = use "
+            "22:00 default."
+        ),
+    )
+
+    @field_validator("lights_out_local")
+    @classmethod
+    def _check_hhmm(cls, v: str | None) -> str | None:
+        if v is not None and not _HHMM_RE.match(v):
+            raise ValueError("must be HH:MM (24h)")
+        return v
 
 
 def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
@@ -88,6 +106,7 @@ def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
         "goal_weight_lb": doc.get("goal_weight_lb"),
         "weekly_loss_rate_min_lb": doc.get("weekly_loss_rate_min_lb"),
         "weekly_loss_rate_max_lb": doc.get("weekly_loss_rate_max_lb"),
+        "lights_out_local": doc.get("lights_out_local"),
         "updated_at": doc.get("updated_at"),
     }
 

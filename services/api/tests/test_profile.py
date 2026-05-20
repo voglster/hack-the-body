@@ -173,3 +173,30 @@ async def test_coach_note_round_trip(client):
 async def test_coach_note_require_auth(client):
     r = await client.get("/profile/coach-note")
     assert r.status_code == 401
+
+
+# ---------- lights_out_local ----------
+
+async def test_targets_round_trip_lights_out_local(client):
+    r = await client.put(
+        "/profile/targets",
+        json={"lights_out_local": "22:30"},
+        headers={"X-API-Key": "test-key"},
+    )
+    assert r.status_code == 200
+    assert r.json()["lights_out_local"] == "22:30"
+
+    g = await client.get(
+        "/profile/targets",
+        headers={"X-API-Key": "test-key"},
+    )
+    assert g.json()["lights_out_local"] == "22:30"
+
+
+async def test_targets_lights_out_local_validates_format(client):
+    r = await client.put(
+        "/profile/targets",
+        json={"lights_out_local": "not a time"},
+        headers={"X-API-Key": "test-key"},
+    )
+    assert r.status_code == 422

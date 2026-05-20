@@ -23,6 +23,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.services.coach.context import Findings, build_findings
+from app.services.coach.phase import compute_phase
 from app.services.food_repo import FoodRepo
 from app.services.metrics_repo import MetricsRepo
 
@@ -141,7 +142,12 @@ KIOSK_SYSTEM_PROMPT = (
     + '"anchors": {"lights_out": "2026-05-19T22:00:00-05:00"}. If no '
     + "time is referenced, omit or send {}.\n"
     + "\n"
-    + "Return JSON only."
+    + "Return JSON only.\n"
+    + "\n"
+    + "Context includes `phase` (day | wind-down | late). During "
+    + "wind-down, the coach sentence may anchor on {{lights_out}}. "
+    + "During `late`, prefer CLEAR with a quiet acknowledging coach "
+    + "sentence — no action prompt."
 )
 
 BRIEF_SYSTEM_PROMPT = (
@@ -197,7 +203,13 @@ BRIEF_SYSTEM_PROMPT = (
     + "browser substitutes it live. Example:\n"
     + '  { "text": "Lights out at {{lights_out}} keeps the streak alive.",\n'
     + '    "anchors": { "lights_out": "2026-05-19T22:00:00-05:00" } }\n'
-    + "Never write 'in N minutes' or 'N hours from now'. Always anchor."
+    + "Never write 'in N minutes' or 'N hours from now'. Always anchor.\n"
+    + "\n"
+    + "Context includes a `phase` field: `day`, `wind-down`, or `late`. "
+    + "During `wind-down`, surface the lights-out anchor with the "
+    + "{{lights_out}} placeholder when it's useful — e.g. \"Lights out "
+    + "at {{lights_out}} keeps the streak.\" During `late`, acknowledge "
+    + "the hour without nagging; do not propose new actions."
 )
 
 # Back-compat aliases. `SYSTEM_PROMPT` is what the rest of the codebase
@@ -350,27 +362,27 @@ async def gather_context(
     intraday = await repo.range_steps_intraday(day_start, day_end)
     today_steps = sum(int(b.get("steps", 0)) for b in intraday)
 
-    # Derive the user's local hour from the day window: midpoint of the
-    # window matches their local noon, so window-start is local midnight.
-    # `(now - window_start) % 24h` gives the local hour offset.
-    elapsed = (now_utc - day_start).total_seconds()
-    local_seconds = elapsed % 86_400
-    local_hour = int(local_seconds // 3600)
-    local_minute = int((local_seconds % 3600) // 60)
-    local_now = f"{local_hour:02d}:{local_minute:02d}"
-
-    # Weekday derived from the local-day start so Saturday-evening UTC
-    # doesn't read as Sunday-local (or vice versa) — same fix as the
-    # local_hour drift, applied to day-of-week framing.
+    # Compute tz-aware local now once; reuse for local_hour, weekday, and phase.
     tz_name = os.environ.get("TZ") or "UTC"
     try:
         local_tz = ZoneInfo(tz_name)
     except ZoneInfoNotFoundError:
         local_tz = UTC
+    now_local = now_utc.astimezone(local_tz)
+    local_hour = now_local.hour
+    local_minute = now_local.minute
+    local_now = f"{local_hour:02d}:{local_minute:02d}"
+
+    # Weekday derived from the local-day start so Saturday-evening UTC
+    # doesn't read as Sunday-local (or vice versa).
     local_date = day_start.astimezone(local_tz).date()
     weekday = local_date.strftime("%A")
     # weekday(): Mon=0..Fri=4, Sat=5, Sun=6.
     is_weekend = local_date.weekday() >= _SATURDAY
+
+    # Phase: derive from targets config or default lights-out of 22:00.
+    lights_out_local = (targets or {}).get("lights_out_local") or "22:00"
+    phase_info = compute_phase(now_local, lights_out_local)
 
     out: dict[str, Any] = {
         "now_utc": now_utc.isoformat(timespec="minutes"),
@@ -385,6 +397,11 @@ async def gather_context(
         "weight": weight,
         "daily_summary": daily,
         "steps_today": today_steps,
+        "phase": {
+            "phase": phase_info.phase,
+            "lights_out_at": phase_info.lights_out_at.isoformat(),
+            "wind_down_mode": phase_info.wind_down_mode,
+        },
     }
     if targets is not None:
         # Strip fields the model doesn't need (the timestamp); keep only

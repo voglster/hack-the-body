@@ -867,3 +867,29 @@ async def test_thread_reply_404_when_thread_missing(client):
         headers=HEADERS, json={"text": "hi"},
     )
     assert r.status_code == 404
+
+
+async def test_insight_includes_phase_fields(client, mock_db, monkeypatch):
+    """GET /coach/insight response must include top-level phase, lights_out_at,
+    and wind_down_mode. These are computed fresh (not persisted) on every request."""
+    from app.services.coach import Insight  # noqa: PLC0415
+
+    stub = Insight(
+        text="Steps looking good.",
+        model="m", eval_ms=0, total_ms=0,
+        generated_at=datetime.now(UTC), context={},
+        trigger="manual",
+    )
+
+    async def fake_gen(*_a, **_kw):
+        return stub
+
+    monkeypatch.setattr("app.routers.coach.generate_insight", fake_gen)
+    r = await client.get("/coach/insight", headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert "phase" in body
+    assert body["phase"] in ("day", "wind-down", "late")
+    assert "lights_out_at" in body
+    assert "wind_down_mode" in body
+    assert isinstance(body["wind_down_mode"], bool)

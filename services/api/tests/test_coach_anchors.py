@@ -83,3 +83,14 @@ def test_brief_prompt_documents_anchors_contract():
 def test_kiosk_prompt_documents_anchors_field():
     assert "anchors" in KIOSK_SYSTEM_PROMPT
     assert "{{" in KIOSK_SYSTEM_PROMPT  # at least one placeholder example
+
+
+def test_brief_prompt_mentions_phase_and_lights_out_anchor():
+    assert "phase" in BRIEF_SYSTEM_PROMPT
+    assert "wind-down" in BRIEF_SYSTEM_PROMPT or "wind_down" in BRIEF_SYSTEM_PROMPT
+    assert "{{lights_out}}" in BRIEF_SYSTEM_PROMPT
+
+
+def test_kiosk_prompt_mentions_phase():
+    assert "phase" in KIOSK_SYSTEM_PROMPT
+    assert "wind-down" in KIOSK_SYSTEM_PROMPT or "wind_down" in KIOSK_SYSTEM_PROMPT

@@ -1,6 +1,8 @@
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -11,6 +13,7 @@ from app.auth import require_api_key
 from app.routers.profile import get_user_targets
 from app.services.coach import Insight, generate_insight, recent_insights
 from app.services.coach.brief import KIOSK_SYSTEM_PROMPT, resolve_day_window
+from app.services.coach.phase import compute_phase
 from app.services.coach_weekly import generate_weekly_review
 
 router = APIRouter(prefix="/coach", dependencies=[Depends(require_api_key)])
@@ -40,6 +43,26 @@ def _oid(s: str) -> ObjectId:
         return ObjectId(s)
     except (InvalidId, TypeError) as e:
         raise HTTPException(status_code=400, detail=f"invalid id: {s}") from e
+
+
+async def _phase_for_window(
+    db: Any, day_start: datetime | None, day_end: datetime | None,
+) -> dict[str, Any]:
+    """Compute current phase fields fresh (never cached — time-sensitive)."""
+    tz_name = os.environ.get("TZ") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        tz = UTC
+    targets_doc = await db["user_profile"].find_one({"_id": "targets"}) or {}
+    lights_out_local = targets_doc.get("lights_out_local") or "22:00"
+    now_local = datetime.now(UTC).astimezone(tz)
+    info = compute_phase(now_local, lights_out_local)
+    return {
+        "phase": info.phase,
+        "lights_out_at": info.lights_out_at.isoformat(),
+        "wind_down_mode": info.wind_down_mode,
+    }
 
 
 class ReplyReq(BaseModel):
@@ -72,7 +95,9 @@ async def insight(
             status_code=502,
             detail=f"coach LLM unavailable: {type(e).__name__}: {e}",
         ) from e
-    return _serialize(result)
+    payload = _serialize(result)
+    payload.update(await _phase_for_window(db, start, end))
+    return payload
 
 
 _KIOSK_CACHE_TTL = timedelta(minutes=15)
@@ -115,7 +140,11 @@ async def kiosk(
     now = datetime.now(UTC)
     hit = cache.get(key)
     if hit and (now - hit["stored_at"]) < _KIOSK_CACHE_TTL:
-        return hit["payload"]
+        # Phase is time-sensitive — compute fresh and merge; don't serve
+        # a stale phase from the cached payload.
+        payload = dict(hit["payload"])
+        payload.update(await _phase_for_window(db, start, end))
+        return payload
 
     try:
         targets = await get_user_targets(db)
@@ -167,7 +196,11 @@ async def kiosk(
         payload["verb"] = "CLEAR"
         payload["qualifier"] = ""
         payload["urgency"] = "clear"
+    # Cache the pre-phase payload so cached payloads stay tight.
     cache[key] = {"stored_at": now, "payload": payload}
+    # Phase is computed fresh and merged after caching.
+    payload = dict(payload)
+    payload.update(await _phase_for_window(db, start, end))
     return payload
 
 

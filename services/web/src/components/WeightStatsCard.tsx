@@ -76,10 +76,19 @@ function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | nul
   const lossRate = -ratePerWeekLb;
   if (lossRate <= 0.05) return "—";
   const weeks = distance / lossRate;
-  if (weeks < 1) return "<1 wk";
   if (weeks > 104) return ">2 yr";
-  if (weeks > 8) return `${(weeks / 4.33).toFixed(1)} mo`;
-  return `${weeks.toFixed(1)} wk`;
+  // Lead with the concrete date — a target you can circle on a
+  // calendar is more motivating than "2.7 mo". Keep the duration in
+  // parens as a sanity check.
+  const target = new Date(Date.now() + weeks * 7 * 86_400_000);
+  const dateStr = target.toLocaleDateString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+  });
+  let span: string;
+  if (weeks < 1) span = "<1 wk";
+  else if (weeks > 8) span = `${(weeks / 4.33).toFixed(1)} mo`;
+  else span = `${weeks.toFixed(1)} wk`;
+  return `${dateStr} (${span})`;
 }
 
 function formatProtocolStart(iso: string): string {

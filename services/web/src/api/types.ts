@@ -35,6 +35,21 @@ export interface DailySummaryPoint {
 }
 
 export interface WeightPoint { ts: string; kg: number; meta?: Meta; }
+
+export interface WeightProjectionFit {
+  asymptote_lb: number;
+  decay_per_week: number;
+  r_squared: number;
+  n_points: number;
+  fit_window_start: string;
+  w0_lb: number;
+}
+export interface WeightProjection {
+  fit: WeightProjectionFit | null;
+  eta: { goal_lb: number; date: string } | null;
+  reason: null | "insufficient_data" | "no_decay" | "asymptote_above_goal";
+  n_points?: number;
+}
 export interface SleepPoint {
   ts: string; duration_s: number; deep_s: number; rem_s: number;
   light_s: number; awake_s: number; score: number | null; meta?: Meta;

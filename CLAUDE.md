@@ -1,5 +1,17 @@
 # Hack the Body — Project Notes for Claude
 
+## Tooling
+
+**Python: `uv` only.** The `services/api/` and `services/ingestor-garmin/` venvs
+were created with `uv venv` and use uv-managed installs. Defaults:
+
+- Run scripts: `uv run <script.py>`, or use the existing `.venv/bin/python`.
+- Add a dep to a service: `cd services/<name> && uv pip install <pkg>` (writes
+  into that service's `.venv`). For project dependencies that should stick,
+  edit `pyproject.toml` and re-sync with `uv sync`.
+- Ad-hoc data scripts at the repo root: `uv run --with matplotlib --with pymongo script.py` or similar — uv builds an ephemeral env per invocation.
+- **Never** `pipx`, `pip install --user`, or `--break-system-packages`.
+
 ## Workflow for this repo
 
 This is a personal tool, single committer, non-critical. Skip the

@@ -1,5 +1,5 @@
 import type {
-  Summary, WeightPoint, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
+  Summary, WeightPoint, WeightProjection, SleepPoint, HRVPoint, RHRPoint, VO2MaxPoint, DailySummaryPoint, Workout,
   WorkoutDetail,
   ActiveWorkout, TreadmillSample,
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, KioskGlance, CoachRecentEntry,
@@ -66,6 +66,11 @@ async function del(path: string): Promise<void> {
 export const api = {
   summary: () => get<Summary>("/metrics/summary"),
   weightRange: (days = 60) => get<WeightPoint[]>(`/metrics/weight/range?days=${days}`),
+  weightProjection: (goal?: number) => {
+    const params = new URLSearchParams({ days: "120" });
+    if (goal != null) params.set("goal", String(goal));
+    return get<WeightProjection>(`/metrics/weight/projection?${params.toString()}`);
+  },
   sleepRange:  (days = 30) => get<SleepPoint[]>(`/metrics/sleep/range?days=${days}`),
   hrvRange:    (days = 30) => get<HRVPoint[]>(`/metrics/hrv/range?days=${days}`),
   rhrRange:    (days = 30) => get<RHRPoint[]>(`/metrics/rhr/range?days=${days}`),

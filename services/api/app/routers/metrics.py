@@ -1,10 +1,14 @@
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import require_api_key
+from app.routers.profile import TARGETS_KEY
 from app.services.metrics_repo import MetricsRepo
+from app.services.weight_projection import MIN_DAYS_FOR_FIT, fit_decay
+
+KG_TO_LB = 2.2046226
 
 router = APIRouter(prefix="/metrics", dependencies=[Depends(require_api_key)])
 
@@ -70,6 +74,79 @@ async def latest(kind: str, request: Request):
     if doc is None:
         raise HTTPException(status_code=404, detail="no data")
     return _strip_id(doc)
+
+
+@router.get("/weight/projection")
+async def weight_projection(
+    request: Request,
+    days: Annotated[int, Query(ge=21, le=365)] = 120,
+    goal: Annotated[float | None, Query(ge=50, le=600)] = None,
+) -> dict[str, Any]:
+    """Exponential-decay projection of weight at current effort.
+
+    Returns the asymptote (plateau weight at current behavior), the
+    decay constant, and — if `goal` is set OR `profile.targets.goal_weight_lb`
+    is set — the projected date to reach it. Returns null fields with a
+    `reason` when the fit can't be made (too few days, asymptote above
+    goal, etc).
+    """
+    db = request.app.state.db
+    repo = _repo(request)
+    end = datetime.now(UTC)
+    start = end - timedelta(days=days)
+    rows = await repo.range_weight(start, end)
+    pts = [
+        (
+            r["ts"] if isinstance(r["ts"], datetime)
+            else datetime.fromisoformat(str(r["ts"])),
+            float(r["kg"]) * KG_TO_LB,
+        )
+        for r in rows
+        if r.get("kg") is not None
+    ]
+    if goal is None:
+        targets = await db["user_profile"].find_one({"_id": TARGETS_KEY})
+        if targets is not None and targets.get("goal_weight_lb") is not None:
+            goal = float(targets["goal_weight_lb"])
+
+    fit = fit_decay(pts)
+    if fit is None:
+        span_days = (
+            (pts[-1][0] - pts[0][0]).total_seconds() / 86_400
+            if len(pts) >= 2 else 0
+        )
+        reason = (
+            "insufficient_data"
+            if len(pts) < 3 or span_days < MIN_DAYS_FOR_FIT
+            else "no_decay"
+        )
+        return {
+            "fit": None,
+            "eta": None,
+            "reason": reason,
+            "n_points": len(pts),
+        }
+    eta_date = fit.date_for(goal) if goal is not None else None
+    reason = None
+    if goal is not None and eta_date is None:
+        reason = "asymptote_above_goal"
+    return {
+        "fit": {
+            "asymptote_lb": round(fit.asymptote_lb, 2),
+            "decay_per_week": round(fit.decay_per_week, 4),
+            "r_squared": round(fit.r_squared, 3),
+            "n_points": fit.n_points,
+            "fit_window_start": fit.t0.isoformat(),
+            "w0_lb": round(fit.w0_lb, 2),
+        },
+        "eta": (
+            {
+                "goal_lb": goal,
+                "date": eta_date.isoformat(),
+            } if eta_date is not None else None
+        ),
+        "reason": reason,
+    }
 
 
 @router.get("/{kind}/range")

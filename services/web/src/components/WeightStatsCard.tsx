@@ -17,12 +17,11 @@ import { api } from "../api/client";
 import { kgToLbs } from "../lib/format";
 import { PROTOCOL_START_ISO, sinceProtocolStart } from "../lib/protocol";
 import {
-  ratePerWeek,
   rollingAverage,
   smoothedRatePerWeek,
   type Point,
 } from "../lib/trend";
-import type { UserTargets } from "../api/types";
+import type { UserTargets, WeightProjection } from "../api/types";
 
 interface RateClass {
   label: string;
@@ -69,7 +68,9 @@ function formatLb(lb: number): string {
   return `${sign}${Math.abs(lb).toFixed(1)} lb`;
 }
 
-function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | null): string {
+/** Linear-extrapolation ETA — kept as a secondary stat next to the
+ *  decay-based projection so we can sanity-check one against the other. */
+function etaWeeksLinear(currentLb: number, goalLb: number, ratePerWeekLb: number | null): string {
   if (ratePerWeekLb == null) return "—";
   const distance = currentLb - goalLb;
   if (distance <= 0) return "at goal";
@@ -91,6 +92,24 @@ function etaWeeks(currentLb: number, goalLb: number, ratePerWeekLb: number | nul
   return `${dateStr} (${span})`;
 }
 
+/** Format the decay-projection ETA the API returned, or null if the API
+ *  has no fit / says the goal is unreachable. The caller falls back to
+ *  the linear ETA when this is null. */
+function formatProjectionEta(p: WeightProjection | undefined): string | null {
+  if (!p) return null;
+  if (p.reason === "asymptote_above_goal" && p.fit) {
+    return `plateau ~${p.fit.asymptote_lb.toFixed(0)} lb`;
+  }
+  if (!p.eta) return null;
+  const target = new Date(p.eta.date);
+  const dateStr = target.toLocaleDateString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+  });
+  const weeks = (target.getTime() - Date.now()) / (7 * 86_400_000);
+  const span = weeks > 8 ? `${(weeks / 4.33).toFixed(1)} mo` : `${weeks.toFixed(1)} wk`;
+  return `${dateStr} (${span})`;
+}
+
 function formatProtocolStart(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -105,6 +124,13 @@ export function WeightStatsCard() {
     queryKey: ["profile.targets"],
     queryFn: api.getTargets,
   });
+  // Server-side exponential-decay projection — front-end stays dumb,
+  // just renders whatever the API returns. Refetch is independent of
+  // weightRange so changes to the underlying data update both.
+  const { data: projection } = useQuery({
+    queryKey: ["weightProjection", targets?.goal_weight_lb],
+    queryFn: () => api.weightProjection(targets?.goal_weight_lb ?? undefined),
+  });
 
   if (!weightData?.length) return null;
 
@@ -117,7 +143,6 @@ export function WeightStatsCard() {
   const firstSmoothed = smoothed[0];
 
   const smoothed7 = smoothedRatePerWeek(pts, 7);
-  const rate7Trend = ratePerWeek(pts, 7);
 
   // Total elapsed days since first reading post-protocol.
   const elapsedMs =
@@ -151,9 +176,13 @@ export function WeightStatsCard() {
           hint="7d avg now vs 7d ago"
         />
         <Stat
-          label="trend pace"
-          value={formatRate(rate7Trend)}
-          hint="regression — reacts to single weigh-ins"
+          label="plateau"
+          value={projection?.fit ? `${projection.fit.asymptote_lb.toFixed(0)} lb` : "—"}
+          hint={
+            projection?.fit
+              ? `where you'd settle at current effort — decay fit, R²=${projection.fit.r_squared.toFixed(2)}`
+              : "needs ≥21d of data"
+          }
         />
       </div>
       <div className="text-[11px] text-neutral-400 pt-1 border-t border-neutral-800
@@ -187,7 +216,11 @@ export function WeightStatsCard() {
           />
           <Stat
             label="ETA"
-            value={etaWeeks(latestSmoothed.avg, goal, smoothed7.rate ?? sinceStartRate)}
+            value={formatProjectionEta(projection)
+              ?? etaWeeksLinear(latestSmoothed.avg, goal, smoothed7.rate ?? sinceStartRate)}
+            hint={projection?.fit
+              ? `decay fit R²=${projection.fit.r_squared.toFixed(2)}, n=${projection.fit.n_points}`
+              : "linear extrapolation (decay fit needs ≥21d of data)"}
           />
           {targets?.weekly_loss_rate_min_lb != null
               && targets.weekly_loss_rate_max_lb != null && (

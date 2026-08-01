@@ -5,12 +5,13 @@ import httpx
 
 from app.services.coach.chat import MAX_ITERATIONS, reply
 from app.services.coach.threads import Turn, create_thread
+from tests.conftest import llm_body
 
 
 def _stateful_ollama(responses: list[dict]):
     """Return an async POST that yields one queued response per call."""
     seq = list(responses)
-    async def _post(_self, _url, json=None):
+    async def _post(_self, _url, json=None, **_kw):
         del json
         body = seq.pop(0)
         class _R:
@@ -22,8 +23,9 @@ def _stateful_ollama(responses: list[dict]):
 
 
 class _FakeSettings:
-    ollama_url = "http://x"
-    ollama_model = "test-model"
+    llm_base_url = "http://x/v1"
+    llm_api_key = "test"
+    llm_model = "test-model"
     coach_timeout_s = 5
 
 
@@ -35,25 +37,16 @@ async def test_reply_handles_tool_call_then_final_text(mock_db):
 
     # Ollama returns tool_call first, then final content after seeing tool result.
     sequence = [
-        {  # Iteration 1: model wants to call `trend`
-            "message": {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{
-                    "function": {
-                        "name": "trend",
-                        "arguments": {"metric": "hrv", "window_days": 7},
-                    },
-                }],
+        # Iteration 1: model wants to call `trend`
+        llm_body("", tool_calls=[{
+            "id": "call_1", "type": "function",
+            "function": {
+                "name": "trend",
+                "arguments": {"metric": "hrv", "window_days": 7},
             },
-        },
-        {  # Iteration 2: model produces final text
-            "message": {
-                "role": "assistant",
-                "content": "Your HRV is steady at 50ms — nothing to address.",
-                "tool_calls": [],
-            },
-        },
+        }]),
+        # Iteration 2: model produces final text
+        llm_body("Your HRV is steady at 50ms — nothing to address.", tool_calls=[]),
     ]
     with patch.object(httpx.AsyncClient, "post", _stateful_ollama(sequence)):
         coach_turn = await reply(
@@ -75,18 +68,13 @@ async def test_reply_hits_iteration_cap_and_forces_final_turn(mock_db):
         mock_db, initial_turn=Turn(role="coach", text="hi"),
     )
     # Always returns a tool_call → loop will hit MAX_ITERATIONS.
-    looping = {
-        "message": {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [{
-                "function": {
-                    "name": "trend",
-                    "arguments": {"metric": "hrv", "window_days": 7},
-                },
-            }],
+    looping = llm_body("", tool_calls=[{
+        "id": "call_loop", "type": "function",
+        "function": {
+            "name": "trend",
+            "arguments": {"metric": "hrv", "window_days": 7},
         },
-    }
+    }])
     sequence = [looping] * (MAX_ITERATIONS + 2)
     with patch.object(httpx.AsyncClient, "post", _stateful_ollama(sequence)):
         coach_turn = await reply(
@@ -101,9 +89,7 @@ async def test_reply_appends_user_turn_before_coach_turn(mock_db):
     tid = await create_thread(
         mock_db, initial_turn=Turn(role="coach", text="hi"),
     )
-    sequence = [{
-        "message": {"role": "assistant", "content": "ok", "tool_calls": []},
-    }]
+    sequence = [llm_body("ok", tool_calls=[])]
     with patch.object(httpx.AsyncClient, "post", _stateful_ollama(sequence)):
         await reply(_FakeSettings(), mock_db, tid, user_message="hello")
     doc = await mock_db["coach_threads"].find_one()

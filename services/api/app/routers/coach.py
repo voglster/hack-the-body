@@ -15,6 +15,7 @@ from app.services.coach import Insight, generate_insight, recent_insights
 from app.services.coach.brief import KIOSK_SYSTEM_PROMPT, resolve_day_window
 from app.services.coach.phase import compute_phase
 from app.services.coach_weekly import generate_weekly_review
+from app.services.llm import single_flight
 
 router = APIRouter(prefix="/coach", dependencies=[Depends(require_api_key)])
 
@@ -146,14 +147,21 @@ async def kiosk(
         payload.update(await _phase_for_window(db, start, end))
         return payload
 
-    try:
+    async def _generate() -> Any:
         targets = await get_user_targets(db)
-        result = await generate_insight(
+        return await generate_insight(
             settings, db, trigger="kiosk",
             day_start=start, day_end=end, targets=targets,
             system_prompt=KIOSK_SYSTEM_PROMPT,
             response_format="json",
         )
+
+    # The kiosk polls every 60s and the cache only holds successes, so a
+    # slow model used to get a fresh generation per poll, each one still
+    # burning GPU after its caller had timed out. Concurrent polls for the
+    # same window now share one generation.
+    try:
+        result = await single_flight(f"kiosk:{key}", _generate)
     except Exception as e:
         raise HTTPException(
             status_code=502,

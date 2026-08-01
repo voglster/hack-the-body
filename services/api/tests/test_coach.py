@@ -13,20 +13,15 @@ from bson import ObjectId as ObjectIdFromStr
 from app.models.metrics import HRV, Sleep, Weight
 from app.services.coach import SYSTEM_PROMPT, gather_context, generate_insight
 from app.services.metrics_repo import MetricsRepo
+from tests.conftest import llm_body
 
 HEADERS = {"X-API-Key": "test-key"}
 
 
 @pytest.fixture
 def fake_ollama_response():
-    """An object shaped like httpx.Response.json() output from Ollama."""
-    return {
-        "model": "glm-4.7-flash:latest",
-        "response": "Sleep solid. HRV low — back off intensity. Walk 30min now.",
-        "eval_count": 50,
-        "eval_duration": 2_000_000_000,
-        "total_duration": 4_000_000_000,
-    }
+    """An object shaped like httpx.Response.json() output from the proxy."""
+    return llm_body("Sleep solid. HRV low — back off intensity. Walk 30min now.")
 
 
 async def _seed(mock_db):
@@ -99,7 +94,7 @@ async def test_insight_returns_text_and_metadata(client, mock_db, fake_ollama_re
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
 
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -109,9 +104,7 @@ async def test_insight_returns_text_and_metadata(client, mock_db, fake_ollama_re
     assert r.status_code == 200
     body = r.json()
     assert "Sleep solid" in body["text"]
-    assert body["model"] == "glm-4.7-flash:latest"
-    assert body["eval_ms"] == 2000
-    assert body["total_ms"] == 4000
+    assert body["model"] == "ollama/qwen3.6:35b-a3b-q8_0-fast"
     assert body["context"]["snapshot"]["sleep"]["duration_s"] == 27000
     assert body["context"]["snapshot"]["hrv"]["rmssd_ms"] == 33.0
     assert body["trigger"] == "manual"
@@ -129,7 +122,7 @@ async def test_recent_returns_persisted_insights(client, mock_db, fake_ollama_re
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
 
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -174,7 +167,7 @@ async def test_insight_uses_local_day_window_for_food_and_history(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         captured["payload"] = json
         return _MockResp()
 
@@ -186,7 +179,7 @@ async def test_insight_uses_local_day_window_for_food_and_history(
         )
 
     assert r.status_code == 200, r.text
-    prompt = captured["payload"]["prompt"]
+    prompt = captured["payload"]["messages"][0]["content"]
     # Yesterday's stale message must NOT have leaked into today's history.
     assert "You haven't eaten anything today" not in prompt
     # The new context fields must be present so the LLM has local-time signal.
@@ -223,14 +216,14 @@ async def test_insight_carries_water_total_separate_from_food(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         captured["payload"] = json
         return _MockResp()
 
     with patch.object(httpx.AsyncClient, "post", _fake_post):
         await client.get("/coach/insight", headers=HEADERS)
 
-    prompt = captured["payload"]["prompt"]
+    prompt = captured["payload"]["messages"][0]["content"]
     assert '"water_oz": 32.0' in prompt
     # And water didn't get counted as food entries.
     assert '"entries": 0' in prompt
@@ -247,7 +240,7 @@ async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_r
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         captured["payload"] = json
         return _MockResp()
 
@@ -255,7 +248,7 @@ async def test_insight_signals_no_food_logged_yet(client, mock_db, fake_ollama_r
         r = await client.get("/coach/insight", headers=HEADERS)
 
     assert r.status_code == 200
-    prompt = captured["payload"]["prompt"]
+    prompt = captured["payload"]["messages"][0]["content"]
     assert '"food_logged_today": false' in prompt
     assert '"entries": 0' in prompt
     # System prompt warns the model about this exact failure mode.
@@ -292,7 +285,7 @@ async def test_insight_response_includes_id(client, mock_db, fake_ollama_respons
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -320,7 +313,7 @@ async def test_insight_includes_targets_in_prompt(client, mock_db, fake_ollama_r
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         captured["payload"] = json
         return _MockResp()
 
@@ -328,7 +321,7 @@ async def test_insight_includes_targets_in_prompt(client, mock_db, fake_ollama_r
         r = await client.get("/coach/insight", headers=HEADERS)
 
     assert r.status_code == 200
-    prompt = captured["payload"]["prompt"]
+    prompt = captured["payload"]["messages"][0]["content"]
     assert '"targets":' in prompt
     assert '"daily_calories": 2200' in prompt
     assert '"daily_protein_g": 180' in prompt
@@ -373,7 +366,7 @@ async def test_insight_persists_full_prompt_inputs(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -457,8 +450,9 @@ async def test_generate_insight_food_totals_respect_tz_env(
     })
 
     class _FakeSettings:
-        ollama_url = "http://x"
-        ollama_model = "test"
+        llm_base_url = "http://x/v1"
+        llm_api_key = "test"
+        llm_model = "test"
         coach_timeout_s = 5
 
     class _MockResp:
@@ -466,7 +460,7 @@ async def test_generate_insight_food_totals_respect_tz_env(
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
 
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -541,7 +535,7 @@ async def test_feedback_round_trip(client, mock_db, fake_ollama_response):
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -577,7 +571,7 @@ async def test_feedback_replaces_prior_and_archives_to_history(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -611,7 +605,7 @@ async def test_insights_clear_archives_then_empties(client, mock_db, fake_ollama
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -660,7 +654,7 @@ async def test_feedback_clear_archives_then_empties(client, mock_db, fake_ollama
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -725,7 +719,7 @@ async def test_insight_creates_thread_with_brief_as_turn_one(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -763,7 +757,7 @@ async def test_insight_prompt_includes_findings_attention_block(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         captured["payload"] = json
         return _MockResp()
 
@@ -771,7 +765,7 @@ async def test_insight_prompt_includes_findings_attention_block(
         r = await client.get("/coach/insight", headers=HEADERS)
 
     assert r.status_code == 200
-    prompt = captured["payload"]["prompt"]
+    prompt = captured["payload"]["messages"][0]["content"]
     assert "Attention:" in prompt
     assert "On track:" in prompt
     # The saved insight's `context` field carries the full findings dict.
@@ -797,7 +791,7 @@ async def test_thread_active_returns_most_recent_thread(
         status_code = 200
         def raise_for_status(self): pass
         def json(self): return fake_ollama_response
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         return _MockResp()
 
@@ -834,9 +828,7 @@ async def test_thread_reply_runs_agent_and_returns_coach_turn(
     thread_id = r.json()["thread_id"]
 
     # Mock /api/chat with a single-iteration final response.
-    chat_response = {
-        "message": {"role": "assistant", "content": "Sleep was fine.", "tool_calls": []},
-    }
+    chat_response = llm_body("Sleep was fine.", tool_calls=[])
     class _MockChatResp:
         status_code = 200
         def raise_for_status(self): pass
@@ -846,7 +838,7 @@ async def test_thread_reply_runs_agent_and_returns_coach_turn(
         return _MockChatResp()
 
     # Patch at the module level to avoid affecting the test client
-    with patch("app.services.coach.chat.httpx.AsyncClient") as mock_aclient:
+    with patch("app.services.llm.httpx.AsyncClient") as mock_aclient:
         # Mock the async context manager
         mock_instance = mock_aclient.return_value.__aenter__.return_value
         mock_instance.post = _fake_chat

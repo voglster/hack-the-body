@@ -8,6 +8,7 @@ from app.services.food_parser import (
     _extract_json_array,
     parse_food_text,
 )
+from tests.conftest import llm_body
 
 H = {"X-API-Key": "test-key"}
 
@@ -35,7 +36,7 @@ async def test_parse_food_text_returns_items(settings):
     class _R:
         status_code = 200
         def raise_for_status(self): pass
-        def json(self): return {"response": SAMPLE_RESPONSE}
+        def json(self): return llm_body(SAMPLE_RESPONSE)
 
     async def _fake_post(_self, _url, **_kw):
         return _R()

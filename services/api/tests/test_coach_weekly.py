@@ -7,24 +7,20 @@ import pytest
 
 from app.models.metrics import HRV, DailySummary, Sleep, Weight
 from app.services.metrics_repo import MetricsRepo
+from tests.conftest import llm_body
 
 HEADERS = {"X-API-Key": "test-key"}
 
 
 @pytest.fixture
 def fake_weekly_response():
-    return {
-        "model": "gpt-oss:120b",
-        "response": (
-            "**The week in one sentence.** Solid sleep, lagging steps.\n"
-            "**Wins** — slept 7.2h avg.\n"
-            "**Misses** — 8,400 step avg vs 12k goal.\n"
-            "**Pattern** — late food on low-HRV days.\n"
-            "**Next week** — 10k steps, 30min walk after dinner, weigh daily."
-        ),
-        "eval_duration": 30_000_000_000,
-        "total_duration": 60_000_000_000,
-    }
+    return llm_body(
+        "**The week in one sentence.** Solid sleep, lagging steps.\n"
+        "**Wins** — slept 7.2h avg.\n"
+        "**Misses** — 8,400 step avg vs 12k goal.\n"
+        "**Pattern** — late food on low-HRV days.\n"
+        "**Next week** — 10k steps, 30min walk after dinner, weigh daily."
+    )
 
 
 async def _seed_week(mock_db):
@@ -71,7 +67,7 @@ async def test_weekly_runs_and_persists(client, mock_db, fake_weekly_response):
     assert r.status_code == 200, r.text
     body = r.json()
     assert "Wins" in body["text"]
-    assert body["model"] == "gpt-oss:120b"
+    assert body["model"] == "ollama/qwen3.6:35b-a3b-q8_0-fast"
     assert body["trigger"] == "weekly-manual"
 
     saved = await mock_db["coach_insights"].count_documents({"trigger": "weekly-manual"})

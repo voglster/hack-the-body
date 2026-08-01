@@ -11,6 +11,7 @@ from app.services.coach.brief import (
     recent_insights,
     save_insight,
 )
+from tests.conftest import llm_body
 
 _JSON_RESPONSE = (
     '{"text": "Lights out at {{lights_out}}.", '
@@ -46,12 +47,8 @@ def _make_fake_post(fake_resp: dict):
 
 @pytest.mark.asyncio
 async def test_generate_insight_parses_anchors_from_json(mock_db, settings):
-    fake_resp = {
-        "response": _JSON_RESPONSE,
-        "eval_duration": 0,
-        "total_duration": 0,
-    }
-    with patch("app.services.coach.brief.httpx.AsyncClient") as mock_client:
+    fake_resp = llm_body(_JSON_RESPONSE)
+    with patch("app.services.llm.httpx.AsyncClient") as mock_client:
         instance = mock_client.return_value.__aenter__.return_value
         instance.post = _make_fake_post(fake_resp)
         insight = await generate_insight(settings, mock_db, trigger="manual")
@@ -61,12 +58,8 @@ async def test_generate_insight_parses_anchors_from_json(mock_db, settings):
 
 @pytest.mark.asyncio
 async def test_generate_insight_falls_back_when_json_invalid(mock_db, settings):
-    fake_resp = {
-        "response": "not json at all just prose",
-        "eval_duration": 0,
-        "total_duration": 0,
-    }
-    with patch("app.services.coach.brief.httpx.AsyncClient") as mock_client:
+    fake_resp = llm_body("not json at all just prose")
+    with patch("app.services.llm.httpx.AsyncClient") as mock_client:
         instance = mock_client.return_value.__aenter__.return_value
         instance.post = _make_fake_post(fake_resp)
         insight = await generate_insight(settings, mock_db, trigger="manual")

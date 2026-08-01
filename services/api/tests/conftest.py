@@ -8,6 +8,25 @@ from app.main import create_app
 from app.services.coach.habits import ensure_default_habits
 
 
+def llm_body(text: str = "", tool_calls: list | None = None) -> dict:
+    """An OpenAI-compatible chat-completion body, as the LiteLLM proxy returns it.
+
+    Tests patch `httpx.AsyncClient.post` and hand the result to
+    `app.services.llm.complete`, so the mock has to match the proxy's
+    wire shape rather than Ollama's native `{"response": ...}`.
+    """
+    message: dict = {"role": "assistant", "content": text}
+    if tool_calls is not None:
+        message["tool_calls"] = tool_calls
+    return {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "model": "ollama/qwen3.6:35b-a3b-q8_0-fast",
+        "choices": [{"index": 0, "finish_reason": "stop", "message": message}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+    }
+
+
 @pytest.fixture
 async def mock_db():
     client = AsyncMongoMockClient()

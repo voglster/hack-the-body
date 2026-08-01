@@ -18,13 +18,13 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import httpx
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.services.coach.context import Findings, build_findings
 from app.services.coach.phase import compute_phase
 from app.services.food_repo import FoodRepo
+from app.services.llm import complete
 from app.services.metrics_repo import MetricsRepo
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ BRIEF_SYSTEM_PROMPT = (
     + "Context includes a `phase` field: `day`, `wind-down`, or `late`. "
     + "During `wind-down`, surface the lights-out anchor with the "
     + "{{lights_out}} placeholder when it's useful — e.g. \"Lights out "
-    + "at {{lights_out}} keeps the streak.\" During `late`, acknowledge "
+    + 'at {{lights_out}} keeps the streak." During `late`, acknowledge '
     + "the hour without nagging; do not propose new actions."
 )
 
@@ -574,20 +574,14 @@ async def generate_insight(
     history_surface = "kiosk" if trigger == "kiosk" else "manual"
     history = await recent_insights(db, since=day_start, surface=history_surface)
     prompt = render_brief_prompt(findings, history, system_prompt=system_prompt)
-    payload: dict[str, Any] = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.4, "num_predict": 400},
-    }
-    if response_format is not None:
-        payload["format"] = response_format
-    async with httpx.AsyncClient(timeout=settings.coach_timeout_s) as c:
-        r = await c.post(f"{settings.ollama_url}/api/generate", json=payload)
-        r.raise_for_status()
-        data = r.json()
-    raw_text = (data.get("response") or "").strip()
+    completion = await complete(
+        settings,
+        messages=[{"role": "user", "content": prompt}],
+        json_mode=response_format == "json",
+        temperature=0.4,
+        max_tokens=400,
+    )
+    raw_text = completion.text
     parsed_text = raw_text
     parsed_anchors: dict[str, str] = {}
     try:
@@ -606,9 +600,9 @@ async def generate_insight(
         pass
     insight = Insight(
         text=parsed_text,
-        model=settings.ollama_model,
-        eval_ms=int(data.get("eval_duration", 0)) // 1_000_000,
-        total_ms=int(data.get("total_duration", 0)) // 1_000_000,
+        model=completion.model,
+        eval_ms=completion.elapsed_ms,
+        total_ms=completion.elapsed_ms,
         generated_at=datetime.now(UTC),
         context=findings.to_dict(),
         trigger=trigger,

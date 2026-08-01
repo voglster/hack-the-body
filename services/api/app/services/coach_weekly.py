@@ -1,8 +1,9 @@
 """Weekly review — slow, deep coaching pass against a big local model.
 
 Pulls the last 7 days of metrics, food, and previous coach insights, then
-asks gpt-oss:120b (or whatever's configured) to produce a structured review:
-what worked, what didn't, plan for the coming week. Persisted to
+asks `weekly_llm_model` — the thinking-enabled alias, unlike the coach's
+`-fast` one — to produce a structured review: what worked, what didn't,
+plan for the coming week. Persisted to
 `coach_insights` with trigger='weekly' so the regular coach can reference it.
 """
 from __future__ import annotations
@@ -12,12 +13,12 @@ import logging
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
-import httpx
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.services.coach import USER_PROFILE, Insight, save_insight
 from app.services.food_repo import FoodRepo
+from app.services.llm import complete
 from app.services.metrics_repo import MetricsRepo
 
 logger = logging.getLogger(__name__)
@@ -124,21 +125,19 @@ async def generate_weekly_review(
 ) -> Insight:
     context = await gather_weekly_context(db)
     prompt = _format_weekly_prompt(context)
-    payload = {
-        "model": settings.weekly_ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.4, "num_predict": 2000},
-    }
-    async with httpx.AsyncClient(timeout=settings.weekly_timeout_s) as c:
-        r = await c.post(f"{settings.weekly_ollama_url}/api/generate", json=payload)
-        r.raise_for_status()
-        data = r.json()
+    completion = await complete(
+        settings,
+        messages=[{"role": "user", "content": prompt}],
+        model=settings.weekly_llm_model,
+        temperature=0.4,
+        max_tokens=2000,
+        timeout_s=settings.weekly_timeout_s,
+    )
     insight = Insight(
-        text=(data.get("response") or "").strip(),
-        model=settings.weekly_ollama_model,
-        eval_ms=int(data.get("eval_duration", 0)) // 1_000_000,
-        total_ms=int(data.get("total_duration", 0)) // 1_000_000,
+        text=completion.text,
+        model=completion.model,
+        eval_ms=completion.elapsed_ms,
+        total_ms=completion.elapsed_ms,
         generated_at=datetime.now(UTC),
         context={"window": "7d", "summary_keys": sorted(context.keys())},
         trigger=trigger,

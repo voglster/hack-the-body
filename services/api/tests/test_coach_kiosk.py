@@ -9,18 +9,14 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from tests.conftest import llm_body
+
 HEADERS = {"X-API-Key": "test-key"}
 
 
 @pytest.fixture
 def fake_ollama_response():
-    return {
-        "model": "glm-4.7-flash:latest",
-        "response": "Behind on steps. 15-min walk now.",
-        "eval_count": 10,
-        "eval_duration": 1_000_000_000,
-        "total_duration": 2_000_000_000,
-    }
+    return llm_body("Behind on steps. 15-min walk now.")
 
 
 def _make_fake_post(mock_response: dict, counter: list[int]):
@@ -29,7 +25,7 @@ def _make_fake_post(mock_response: dict, counter: list[int]):
         def raise_for_status(self): pass
         def json(self): return mock_response
 
-    async def _fake_post(_self, _url, json=None):
+    async def _fake_post(_self, _url, json=None, **_kw):
         del json
         counter[0] += 1
         return _MockResp()
@@ -73,17 +69,11 @@ async def test_kiosk_requires_auth(client):
 
 async def test_kiosk_parses_structured_json_response(client):
     counter = [0]
-    structured = {
-        "model": "glm-4.7-flash:latest",
-        "response": (
-            '{"verb": "EAT", "qualifier": "1,651 kcal by 7:00 PM", '
-            '"urgency": "urgent", '
-            '"coach": "Lunch happened. The log does not yet reflect this."}'
-        ),
-        "eval_count": 10,
-        "eval_duration": 1_000_000_000,
-        "total_duration": 2_000_000_000,
-    }
+    structured = llm_body(
+        '{"verb": "EAT", "qualifier": "1,651 kcal by 7:00 PM", '
+        '"urgency": "urgent", '
+        '"coach": "Lunch happened. The log does not yet reflect this."}'
+    )
     with patch.object(httpx.AsyncClient, "post", _make_fake_post(structured, counter)):
         r = await client.get(
             "/coach/kiosk?start=2026-05-14T06:00:00Z&end=2026-05-15T06:00:00Z",
@@ -103,17 +93,11 @@ async def test_kiosk_forces_clear_when_findings_attention_empty(client):
     to CLEAR. Prevents 'EAT' from showing on the wall after the user has
     logged plenty of food but is under their calorie target."""
     counter = [0]
-    structured = {
-        "model": "glm-4.7-flash:latest",
-        "response": (
-            '{"verb": "EAT", "qualifier": "200 kcal short", '
-            '"urgency": "urgent", '
-            '"coach": "Calories logged. Steps remain low."}'
-        ),
-        "eval_count": 10,
-        "eval_duration": 1_000_000_000,
-        "total_duration": 2_000_000_000,
-    }
+    structured = llm_body(
+        '{"verb": "EAT", "qualifier": "200 kcal short", '
+        '"urgency": "urgent", '
+        '"coach": "Calories logged. Steps remain low."}'
+    )
     with patch.object(httpx.AsyncClient, "post", _make_fake_post(structured, counter)):
         r = await client.get(
             "/coach/kiosk?start=2026-05-14T08:00:00Z&end=2026-05-15T08:00:00Z",
@@ -130,13 +114,7 @@ async def test_kiosk_forces_clear_when_findings_attention_empty(client):
 
 async def test_kiosk_falls_back_when_response_is_not_json(client):
     counter = [0]
-    bad = {
-        "model": "glm-4.7-flash:latest",
-        "response": "just plain text",
-        "eval_count": 10,
-        "eval_duration": 1_000_000_000,
-        "total_duration": 2_000_000_000,
-    }
+    bad = llm_body("just plain text")
     with patch.object(httpx.AsyncClient, "post", _make_fake_post(bad, counter)):
         r = await client.get(
             "/coach/kiosk?start=2026-05-14T07:00:00Z&end=2026-05-15T07:00:00Z",

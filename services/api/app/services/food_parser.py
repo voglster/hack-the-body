@@ -14,9 +14,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
 from app.config import Settings
+from app.services.llm import complete
 
 log = logging.getLogger(__name__)
 
@@ -91,18 +90,13 @@ async def parse_food_text(settings: Settings, text: str) -> list[ParsedItem]:
     if not text.strip():
         return []
     prompt = PARSE_PROMPT.replace("{TEXT}", text.strip())
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": 1500},
-    }
-    async with httpx.AsyncClient(timeout=settings.coach_timeout_s) as c:
-        r = await c.post(f"{settings.ollama_url}/api/generate", json=payload)
-        r.raise_for_status()
-        body = r.json()
-    raw = body.get("response") or ""
+    completion = await complete(
+        settings,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        max_tokens=1500,
+    )
+    raw = completion.text
     items = _extract_json_array(raw)
     out: list[ParsedItem] = []
     for it in items:

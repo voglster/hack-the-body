@@ -9,9 +9,14 @@ class Settings(BaseSettings):
     api_key: str = "dev-key"
     cors_origins: str = "http://localhost:5173"
 
-    # Local Ollama for the coach. Default points at jv-desktop2 on the LAN.
-    ollama_url: str = "http://10.0.6.46:11434"
-    ollama_model: str = "glm-4.7-flash:latest"
+    # LiteLLM proxy (OpenAI-compatible). Replaces the direct-to-Ollama LAN
+    # calls: reachable from anywhere, and the proxy's model aliases pin the
+    # sampling params. The `-fast` aliases have thinking disabled server-side
+    # — Ollama 0.32 turned thinking ON by default, which blew past
+    # coach_timeout_s and left abandoned generations pinning the GPU.
+    llm_base_url: str = "https://llm.jc.gravitate.energy/v1"
+    llm_api_key: str = ""
+    llm_model: str = "ollama/qwen3.6:27b-q4_K_M-fast"
     coach_timeout_s: float = 30.0
 
     # Coach scheduler — comma-separated 'HH:MM' local times to fire scheduled
@@ -26,8 +31,9 @@ class Settings(BaseSettings):
     # files don't break on import. The value is now ignored.
     vitamin_reminder_local: str = "10:00"
 
-    weekly_ollama_url: str = "http://10.0.6.45:11434"
-    weekly_ollama_model: str = "gpt-oss:120b"
+    # Weekly review — same proxy, but the non-`fast` alias so the model is
+    # free to think. Slow and deep, runs once a week.
+    weekly_llm_model: str = "ollama/qwen3.6:35b-a3b-q8_0"
     weekly_timeout_s: float = 600.0
     coach_weekly_local: str = "21:00"  # Sunday HH:MM
 

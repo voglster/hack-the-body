@@ -1,8 +1,9 @@
-"""Coach chat agent loop — wraps Ollama /api/chat with bounded tool use.
+"""Coach chat agent loop — bounded tool use over the LiteLLM proxy.
 
 Public entry point is `reply()`: takes a thread_id and a user message,
-runs an iteration-capped tool loop against Ollama, appends both the user
-turn and the coach turn to the thread, and returns the coach turn dict.
+runs an iteration-capped tool loop against the model, appends both the
+user turn and the coach turn to the thread, and returns the coach turn
+dict.
 """
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.services.coach.brief import SYSTEM_PROMPT, USER_PROFILE
@@ -19,6 +19,7 @@ from app.services.coach.context import build_findings
 from app.services.coach.threads import Turn, append_turn, get_thread
 from app.services.coach.tools import dispatch, schema_for_llm
 from app.services.food_repo import FoodRepo
+from app.services.llm import complete
 from app.services.metrics_repo import MetricsRepo
 
 logger = logging.getLogger(__name__)
@@ -67,51 +68,45 @@ async def reply(
     tool_calls_record: list[dict[str, Any]] = []
     final_text = ""
 
-    async with httpx.AsyncClient(timeout=settings.coach_timeout_s) as client:
-        for _ in range(MAX_ITERATIONS):
-            payload = {
-                "model": settings.ollama_model,
-                "messages": messages,
-                "tools": schema_for_llm(),
-                "stream": False,
-            }
-            r = await client.post(f"{settings.ollama_url}/api/chat", json=payload)
-            r.raise_for_status()
-            data = r.json()
-            msg = data.get("message") or {}
-            calls = msg.get("tool_calls") or []
-            if not calls:
-                final_text = (msg.get("content") or "").strip()
-                break
-            # Append the assistant's tool-call message so the model sees
-            # context next iteration.
-            messages.append({
-                "role": "assistant", "content": msg.get("content") or "",
-                "tool_calls": calls,
+    for _ in range(MAX_ITERATIONS):
+        completion = await complete(
+            settings, messages=messages, tools=schema_for_llm(),
+        )
+        if not completion.tool_calls:
+            final_text = completion.text
+            break
+        # Append the assistant's tool-call message so the model sees
+        # context next iteration.
+        messages.append({
+            "role": "assistant", "content": completion.text,
+            "tool_calls": completion.tool_calls,
+        })
+        for call in completion.tool_calls:
+            fn = call.get("function") or {}
+            name = fn.get("name") or ""
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            result = await dispatch(db, name, args)
+            tool_calls_record.append({
+                "name": name, "args": args, "result": result,
             })
-            for call in calls:
-                fn = call.get("function") or {}
-                name = fn.get("name") or ""
-                args = fn.get("arguments") or {}
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
-                result = await dispatch(db, name, args)
-                tool_calls_record.append({
-                    "name": name, "args": args, "result": result,
-                })
-                messages.append({
-                    "role": "tool", "name": name,
-                    "content": json.dumps(result, default=str),
-                })
-        else:
-            # Loop exhausted without a final content message.
-            final_text = (
-                "Hit the tool-call limit before reaching a conclusion. "
-                "Try a more focused question."
-            )
+            # OpenAI-compatible tool results are correlated by id, not name;
+            # omitting it makes the proxy drop the result silently.
+            messages.append({
+                "role": "tool", "tool_call_id": call.get("id") or name,
+                "name": name,
+                "content": json.dumps(result, default=str),
+            })
+    else:
+        # Loop exhausted without a final content message.
+        final_text = (
+            "Hit the tool-call limit before reaching a conclusion. "
+            "Try a more focused question."
+        )
 
     coach_turn = Turn(
         role="coach", text=final_text or "(empty response)",

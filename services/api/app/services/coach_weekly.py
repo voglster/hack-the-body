@@ -130,7 +130,11 @@ async def generate_weekly_review(
         messages=[{"role": "user", "content": prompt}],
         model=settings.weekly_llm_model,
         temperature=0.4,
-        max_tokens=2000,
+        # Thinking model: reasoning tokens come out of the same budget as the
+        # answer. At 2000 the review burned the whole allowance thinking and
+        # returned empty content. A ~350-word review costs ~500 tokens, so the
+        # rest is headroom for reasoning.
+        max_tokens=settings.weekly_max_tokens,
         timeout_s=settings.weekly_timeout_s,
     )
     insight = Insight(

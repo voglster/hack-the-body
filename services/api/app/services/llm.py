@@ -92,13 +92,25 @@ async def complete(
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
     try:
-        message = data["choices"][0]["message"]
+        choice = data["choices"][0]
+        message = choice["message"]
     except (KeyError, IndexError, TypeError) as e:
         raise LLMError(f"{model}: unexpected response shape: {str(data)[:300]}") from e
 
+    text = (message.get("content") or "").strip()
+    tool_calls = message.get("tool_calls") or []
+    if not text and not tool_calls and choice.get("finish_reason") == "length":
+        # A thinking model draws reasoning tokens from the same budget as the
+        # answer, so too small a max_tokens yields a 200 with empty content.
+        # Failing loudly beats persisting a blank insight.
+        raise LLMError(
+            f"{model}: hit the {max_tokens}-token budget before emitting an "
+            "answer — raise max_tokens or use a non-thinking model alias"
+        )
+
     return Completion(
-        text=(message.get("content") or "").strip(),
-        tool_calls=message.get("tool_calls") or [],
+        text=text,
+        tool_calls=tool_calls,
         model=data.get("model") or model,
         elapsed_ms=elapsed_ms,
         usage=data.get("usage") or {},

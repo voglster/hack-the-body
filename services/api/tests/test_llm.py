@@ -186,3 +186,25 @@ async def test_distinct_keys_do_not_share():
     a = await single_flight("day-a", await _make("a"))
     b = await single_flight("day-b", await _make("b"))
     assert (a, b) == ("a", "b")
+
+
+async def test_empty_answer_from_exhausted_token_budget_raises():
+    """A thinking model that spends its whole budget reasoning returns a 200
+    with empty content. That must fail loudly, not persist a blank insight."""
+    body = llm_body("")
+    body["choices"][0]["finish_reason"] = "length"
+    with (
+        patch.object(httpx.AsyncClient, "post", _post_returning(body)),
+        pytest.raises(LLMError, match="token budget"),
+    ):
+        await complete(
+            _Settings(), messages=[{"role": "user", "content": "hi"}], max_tokens=10,
+        )
+
+
+async def test_truncated_but_non_empty_answer_is_kept():
+    body = llm_body("a partial but usable answer")
+    body["choices"][0]["finish_reason"] = "length"
+    with patch.object(httpx.AsyncClient, "post", _post_returning(body)):
+        out = await complete(_Settings(), messages=[{"role": "user", "content": "hi"}])
+    assert out.text == "a partial but usable answer"

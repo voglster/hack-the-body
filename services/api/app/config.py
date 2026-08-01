@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Weekly review — same proxy, but the non-`fast` alias so the model is
     # free to think. Slow and deep, runs once a week.
     weekly_llm_model: str = "ollama/qwen3.6:35b-a3b-q8_0"
+    weekly_max_tokens: int = 6000
     weekly_timeout_s: float = 600.0
     coach_weekly_local: str = "21:00"  # Sunday HH:MM
 

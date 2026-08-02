@@ -292,6 +292,7 @@ export interface CoachTurn {
   ts: string;
   tool_calls?: CoachToolCall[] | null;
   findings_snapshot?: Record<string, unknown> | null;
+  anchors?: Record<string, string> | null;
 }
 
 export interface CoachThread {

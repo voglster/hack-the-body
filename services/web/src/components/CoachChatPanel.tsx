@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import type { CoachTurn } from "../api/types";
+import { CoachText } from "./CoachText";
 
 
 function TurnBubble({ turn }: { turn: CoachTurn }) {
@@ -12,7 +13,9 @@ function TurnBubble({ turn }: { turn: CoachTurn }) {
       <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">
         {isCoach ? "Coach" : "You"}
       </div>
-      <div className="whitespace-pre-wrap leading-relaxed">{turn.text}</div>
+      <div className="whitespace-pre-wrap leading-relaxed">
+        <CoachText text={turn.text} anchors={turn.anchors} />
+      </div>
       {turn.tool_calls?.length ? (
         <details className="text-[11px] text-neutral-500 mt-1">
           <summary className="cursor-pointer">

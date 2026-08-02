@@ -553,6 +553,34 @@ def render_brief_prompt(
     return "\n".join(parts)
 
 
+def parse_coach_json(raw: str) -> tuple[str, dict[str, str]]:
+    """Split a coach response into display prose and its anchor map.
+
+    Every coach surface is prompted for `{"text": ..., "anchors": {...}}`, but
+    the model can still return bare prose. Falls back to treating the whole
+    string as the text so a malformed response degrades to something readable
+    rather than showing the user raw JSON.
+    """
+    text = raw
+    anchors: dict[str, str] = {}
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return text, anchors
+    if not isinstance(parsed, dict):
+        return text, anchors
+    t = parsed.get("text")
+    if isinstance(t, str) and t.strip():
+        text = t.strip()
+    a = parsed.get("anchors")
+    if isinstance(a, dict):
+        anchors = {
+            str(k): str(v) for k, v in a.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
+    return text, anchors
+
+
 async def generate_insight(
     settings: Settings,
     db: AsyncDatabase,
@@ -581,23 +609,7 @@ async def generate_insight(
         temperature=0.4,
         max_tokens=400,
     )
-    raw_text = completion.text
-    parsed_text = raw_text
-    parsed_anchors: dict[str, str] = {}
-    try:
-        parsed = json.loads(raw_text)
-        if isinstance(parsed, dict):
-            t = parsed.get("text")
-            if isinstance(t, str) and t.strip():
-                parsed_text = t.strip()
-            a = parsed.get("anchors")
-            if isinstance(a, dict):
-                parsed_anchors = {
-                    str(k): str(v) for k, v in a.items()
-                    if isinstance(k, str) and isinstance(v, str)
-                }
-    except (ValueError, TypeError):
-        pass
+    parsed_text, parsed_anchors = parse_coach_json(completion.text)
     insight = Insight(
         text=parsed_text,
         model=completion.model,
@@ -619,6 +631,7 @@ async def generate_insight(
         db,
         initial_turn=Turn(
             role="coach", text=insight.text, findings_snapshot=findings.to_dict(),
+            anchors=parsed_anchors or None,
         ),
     )
     insight.thread_id = thread_id

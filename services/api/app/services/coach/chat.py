@@ -14,7 +14,7 @@ from typing import Any
 
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.services.coach.brief import SYSTEM_PROMPT, USER_PROFILE
+from app.services.coach.brief import SYSTEM_PROMPT, USER_PROFILE, parse_coach_json
 from app.services.coach.context import build_findings
 from app.services.coach.threads import Turn, append_turn, get_thread
 from app.services.coach.tools import dispatch, schema_for_llm
@@ -108,9 +108,15 @@ async def reply(
             "Try a more focused question."
         )
 
+    # The chat surface shares SYSTEM_PROMPT with the brief, so the model
+    # answers in `{"text": ..., "anchors": {...}}`. Store the prose, not the
+    # envelope — otherwise the user reads raw JSON in the chat bubble.
+    display_text, anchors = parse_coach_json(final_text)
+
     coach_turn = Turn(
-        role="coach", text=final_text or "(empty response)",
+        role="coach", text=display_text or "(empty response)",
         tool_calls=tool_calls_record or None,
+        anchors=anchors or None,
         ts=datetime.now(UTC),
     )
     await append_turn(db, thread_id, coach_turn)

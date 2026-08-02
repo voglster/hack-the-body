@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { api } from "../api/client";
 import { CoachChatPanel } from "./CoachChatPanel";
 
 vi.mock("../api/client", () => ({
@@ -24,9 +25,38 @@ function wrap(node: React.ReactElement) {
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
 }
 
+function threadWithTurn(turn: Record<string, unknown>) {
+  return {
+    id: "tid1",
+    started_at: "2026-05-10T12:00:00Z",
+    last_activity_at: "2026-05-10T12:00:00Z",
+    surface: "web",
+    turns: [turn],
+  };
+}
+
 describe("CoachChatPanel", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the first coach turn from the active thread", async () => {
     render(wrap(<CoachChatPanel />));
     expect(await screen.findByText(/sleep solid/i)).toBeTruthy();
+  });
+
+  it("resolves {{anchor}} placeholders in a coach turn", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-05-19T21:15:00-05:00"));
+    vi.mocked(api.coachThreadActive).mockResolvedValueOnce(
+      threadWithTurn({
+        role: "coach",
+        text: "Lights out at {{lights_out}}.",
+        ts: "2026-05-10T12:00:00Z",
+        anchors: { lights_out: "2026-05-19T22:00:00-05:00" },
+      }),
+    );
+    render(wrap(<CoachChatPanel />));
+    expect(await screen.findByText(/in 45m/)).toBeTruthy();
   });
 });

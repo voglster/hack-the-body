@@ -20,6 +20,9 @@ class Turn:
     text: str
     tool_calls: list[dict[str, Any]] | None = None
     findings_snapshot: dict[str, Any] | None = None
+    # Placeholder name -> ISO-8601 timestamp, for {{lights_out}}-style spans
+    # the FE renders as live relative times.
+    anchors: dict[str, str] | None = None
     ts: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
@@ -28,6 +31,8 @@ class Turn:
             out["tool_calls"] = self.tool_calls
         if self.findings_snapshot is not None:
             out["findings_snapshot"] = self.findings_snapshot
+        if self.anchors:
+            out["anchors"] = self.anchors
         return out
 
 

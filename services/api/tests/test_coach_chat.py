@@ -96,3 +96,44 @@ async def test_reply_appends_user_turn_before_coach_turn(mock_db):
     assert doc["turns"][1]["role"] == "user"
     assert doc["turns"][1]["text"] == "hello"
     assert doc["turns"][2]["role"] == "coach"
+
+
+async def test_reply_stores_prose_not_the_json_envelope(mock_db):
+    """The chat surface shares SYSTEM_PROMPT with the brief, so the model
+    answers in a {"text": ..., "anchors": ...} envelope. The user must read
+    the prose, never the raw JSON."""
+    tid = await create_thread(mock_db, initial_turn=Turn(role="coach", text="hi"))
+    envelope = llm_body(
+        '{ "text": "You slept 8h 36m with a score of 86.", "anchors": {} }'
+    )
+    with patch.object(httpx.AsyncClient, "post", _stateful_ollama([envelope])):
+        coach_turn = await reply(
+            _FakeSettings(), mock_db, tid, user_message="how did I sleep?",
+        )
+    assert coach_turn["text"] == "You slept 8h 36m with a score of 86."
+
+
+async def test_reply_carries_anchors_through_to_the_turn(mock_db):
+    tid = await create_thread(mock_db, initial_turn=Turn(role="coach", text="hi"))
+    envelope = llm_body(
+        '{"text": "Lights out at {{lights_out}}.", '
+        '"anchors": {"lights_out": "2026-05-19T22:00:00-05:00"}}'
+    )
+    with patch.object(httpx.AsyncClient, "post", _stateful_ollama([envelope])):
+        coach_turn = await reply(
+            _FakeSettings(), mock_db, tid, user_message="when is bedtime?",
+        )
+    assert coach_turn["text"] == "Lights out at {{lights_out}}."
+    assert coach_turn["anchors"] == {"lights_out": "2026-05-19T22:00:00-05:00"}
+
+
+async def test_reply_keeps_bare_prose_when_model_ignores_the_envelope(mock_db):
+    tid = await create_thread(mock_db, initial_turn=Turn(role="coach", text="hi"))
+    with patch.object(
+        httpx.AsyncClient, "post", _stateful_ollama([llm_body("Just plain prose.")]),
+    ):
+        coach_turn = await reply(
+            _FakeSettings(), mock_db, tid, user_message="hi",
+        )
+    assert coach_turn["text"] == "Just plain prose."
+    assert "anchors" not in coach_turn

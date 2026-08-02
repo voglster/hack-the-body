@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api/client";
+import type { CoachThread, CoachTurn } from "../api/types";
 import { CoachChatPanel } from "./CoachChatPanel";
 
 vi.mock("../api/client", () => ({
@@ -25,7 +26,7 @@ function wrap(node: React.ReactElement) {
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
 }
 
-function threadWithTurn(turn: Record<string, unknown>) {
+function threadWithTurn(turn: CoachTurn): CoachThread {
   return {
     id: "tid1",
     started_at: "2026-05-10T12:00:00Z",

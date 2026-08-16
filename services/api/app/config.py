@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # coach_timeout_s and left abandoned generations pinning the GPU.
     llm_base_url: str = "https://llm.jc.gravitate.energy/v1"
     llm_api_key: str = ""
-    llm_model: str = "ollama/qwen3.6:27b-q4_K_M-fast"
+    llm_model: str = "ollama/qwen3.8:27b-fast"
     coach_timeout_s: float = 30.0
 
     # Coach scheduler — comma-separated 'HH:MM' local times to fire scheduled
@@ -33,7 +33,13 @@ class Settings(BaseSettings):
 
     # Weekly review — same proxy, but the non-`fast` alias so the model is
     # free to think. Slow and deep, runs once a week.
-    weekly_llm_model: str = "ollama/qwen3.6:35b-a3b-q8_0"
+    #
+    # Node-pinned to .45 on purpose. The plain `ollama/qwen3.8:27b` alias
+    # resolves to .46, which is the same 24GB card the coach's `-fast` alias
+    # uses; two 27b models cannot both stay resident there, so an unpinned
+    # weekly run would evict the coach's model mid-day. `-node45` keeps the
+    # deep weekly pass on the other box entirely.
+    weekly_llm_model: str = "ollama/qwen3.8:27b-node45"
     weekly_max_tokens: int = 6000
     weekly_timeout_s: float = 600.0
     coach_weekly_local: str = "21:00"  # Sunday HH:MM

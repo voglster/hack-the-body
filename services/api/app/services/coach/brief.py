@@ -30,8 +30,11 @@ from app.services.metrics_repo import MetricsRepo
 logger = logging.getLogger(__name__)
 
 USER_PROFILE = (
-    "43yo male, 6'5\", ~240lb. Goal: build calisthenics strength + cardio "
-    "longevity. Lifelong runner; never barbell-lifted."
+    "44yo male, 6'5\", ~245lb. Restarting consistent training after a "
+    "14-week layoff. Goal: long-term health — ring calisthenics strength, "
+    "daily walking volume, moderate fat loss. Lifelong runner; never "
+    "barbell-lifted. Cannot yet do an unassisted pull-up. Equipment: "
+    "gymnastics rings, pull-up bar, resistance bands, treadmill."
 )
 
 # ---- prompt composition --------------------------------------------------

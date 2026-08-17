@@ -14,6 +14,7 @@ dependencies = [
   "pywebpush>=2.0",
   "cryptography>=43",
   "deepdiff>=8.0",
+  "websockets",
 ]
 
 [project.optional-dependencies]

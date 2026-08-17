@@ -37,6 +37,11 @@ collections, removing volumes).
 
 See `docs/superpowers/specs/2026-04-24-hack-the-body-design.md` (full design) and `docs/superpowers/plans/` (per-phase plans). Phase 0+1 (data spine + Garmin + dashboard + Pi kiosk) is built. Future phases: Telegram coach + voice loop, food/workout tracker, weekly reviewer, treadmill hack.
 
+- **Voice food entry** — `POST /foods/voice/log` takes 16kHz mono WAV from the
+  browser, transcribes against hotwords built from the food catalog
+  (`app/services/voice/`), and logs through the existing food parser. Off
+  unless `VOICE_STT_HOST` is set; the vendor is WhisperLive on `llmbox:9091`.
+
 ## Playbooks
 
 - **Coach debugging** — when the coach says something wrong, read

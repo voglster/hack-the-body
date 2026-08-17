@@ -22,7 +22,7 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates", "coach_insights",
                        "push_subscriptions", "parse_feedback",
-                       "strength_sets", "audit_log"]
+                       "strength_sets", "audit_log", "voice_entries"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:
@@ -77,6 +77,12 @@ async def ensure_collections(db: AsyncDatabase) -> None:
     await db["audit_log"].create_index(
         [("actor", 1), ("ts", -1)],
         name="audit_actor_ts",
+    )
+    # Voice dictations: time-ordered, and aged out after 90 days. Long enough
+    # to look back across a training block; transcripts are tiny.
+    await db["voice_entries"].create_index([("created_at", -1)])
+    await db["voice_entries"].create_index(
+        "created_at", expireAfterSeconds=90 * 24 * 3600,
     )
 
 

@@ -15,6 +15,7 @@ dependencies = [
   "cryptography>=43",
   "deepdiff>=8.0",
   "websockets",
+  "python-multipart>=0.0.12",
 ]
 
 [project.optional-dependencies]

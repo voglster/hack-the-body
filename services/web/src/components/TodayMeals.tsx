@@ -9,6 +9,7 @@ import { DayNav } from "./DayNav";
 import { EntryTimeEditor, type EntryEditPatch } from "./EntryTimeEditor";
 import { MacroProgressCard } from "./MacroProgressCard";
 import { PasteFood } from "./PasteFood";
+import { VoiceFood } from "./VoiceFood";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
 
@@ -168,6 +169,7 @@ function Loggers({ refresh, day }: { refresh: () => void; day: string | null }) 
           Logging to {day} — backdated entries land at the slot's typical hour.
         </div>
       )}
+      <VoiceFood onLogged={refresh} />
       <PasteFood onLogged={refresh} day={day} />
       <QuickLog onLogged={refresh} day={day} />
     </>

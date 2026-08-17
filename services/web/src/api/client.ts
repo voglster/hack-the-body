@@ -165,6 +165,23 @@ export const api = {
   ) => post<{ id: string; stored: boolean }>(
     "/foods/parse/feedback", { text, parsed, corrected, note },
   ),
+  logVoiceFood: async (audio: Blob, slot: MealSlot) => {
+    const form = new FormData();
+    form.append("audio", audio, "dictation.wav");
+    form.append("slot", slot);
+    const r = await fetch(`${BASE}/foods/voice/log`, {
+      method: "POST", headers: authHeaders(), body: form,
+    });
+    if (r.status === 401) handleUnauthorized();
+    if (r.status === 503) throw new Error("voice-unavailable");
+    if (!r.ok) throw new Error(`voice log failed: ${r.status}`);
+    return (await r.json()) as {
+      transcript: string;
+      items: ParsedFoodItem[];
+      logged_entry_ids: string[];
+      count: number;
+    };
+  },
   renameFood: (food_id: string, name: string) => {
     return fetch(`${BASE}/foods/${food_id}`, {
       method: "PATCH",

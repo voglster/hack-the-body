@@ -62,6 +62,7 @@ POST /foods/voice/log      multipart: pcm (16kHz mono int16 WAV) + slot + option
   → Transcriber.transcribe(pcm, ctx)        → transcript
   → food_parser.parse(transcript)           → items[]
   → existing parse-and-log write path       → entry ids
+      (Food.source = "voice", not "paste")
   → persist voice_entries doc
   ← { transcript, items[], logged_entry_ids[], ms{...} }
 ```
@@ -69,13 +70,14 @@ POST /foods/voice/log      multipart: pcm (16kHz mono int16 WAV) + slot + option
 One atomic call. Auto-log means there is no review step to hang a second round
 trip on, and an atomic call cannot leave a transcript with no entries.
 
-**Latency budget is estimated, not measured:** ~2–4s transcription (a 15s clip
-on the 3080 at 10–20× realtime, plus the 0.75s settle hold and 1.5s flush pad)
-and ~1–3s parse, so roughly **4–7s**. **Measure this first.** If it lands at
-the top of that range, the escape hatch is splitting into
-`POST /foods/voice/transcribe` (returns text immediately) and letting the
-client chain the existing parse+log, so words appear in ~3s and items a beat
-later. Do not build that up front.
+**Latency is not a design constraint.** It will land somewhere around a few
+seconds and that is fine — this replaces not logging at all, not a faster way
+of logging. Do not optimise it, do not build a progress-staging path for it,
+and do not let a number here reshape the design. If it ever becomes genuinely
+unpleasant in use, the escape hatch is splitting into
+`POST /foods/voice/transcribe` and letting the client chain the existing
+parse+log. That is a later reaction to a real complaint, not a thing to plan
+around.
 
 ### The boundary — `app/services/voice/`
 
@@ -150,12 +152,58 @@ Rules:
   decoder context between prompt and output, so hotwords and `initial_prompt`
   compete for the same space. `PROMPT_TOKEN_BUDGET = 384`, same backend, same
   number as Port.
-- **Order by logging frequency.** When the pool exceeds budget, Port falls
-  back to shortest-name-first because it has no usage signal. This repo does:
-  order by how often the food appears in `meal_entries`, so weekly staples
-  earn their slots ahead of a one-off scanned in March.
+- **Order by logging frequency, and require more than one.** When the pool
+  exceeds budget, Port falls back to shortest-name-first because it has no
+  usage signal. This repo does: order by how often the food appears in
+  `meal_entries`. This is not only a budget tie-breaker — it is what stops a
+  mis-hearing becoming permanent vocabulary. See *The learning loop*.
 - `initial_prompt` sets register — approximately *"A spoken food log:
   quantities, foods, and brand names."*
+
+### The learning loop
+
+This is the point of the feature, not a later phase. Say it, let it land, fix
+what it got wrong, and have it get it right next time.
+
+Most of that loop already closes by itself, because `POST /foods/parse/log`
+upserts a `Food` per parsed item and the vocabulary is rebuilt from `foods` on
+every request:
+
+```
+dictate "…and a Fairlife"
+  → heard correctly → Food("Fairlife") upserted
+  → next dictation's hotwords contain "Fairlife"
+  → heard correctly again, and more reliably
+```
+
+Two things have to be true for that to be a learning loop rather than a
+drift loop.
+
+**1. A mis-hearing must not become permanent vocabulary.** Heard as "fair
+life", the parser creates `Food("fair life")` and it sits in the catalog
+forever, competing for hotword slots and teaching the decoder its own mistake.
+The frequency ordering above is what defends against this and is the reason it
+is not merely a budget tie-breaker: a mis-heard name is logged once and never
+again, so it sorts below every real staple and falls off the budget, while the
+correction you actually eat weekly climbs. **Hotword eligibility is therefore
+by `meal_entries` count, not by presence in `foods`.** A food that has been
+eaten once contributes nothing to the decoder.
+
+**2. Voice-created foods must be distinguishable.** They get `source="voice"`,
+not `source="paste"` — matching the intent already in `log_parsed_items`'
+docstring ("so it's grouped/cleanable later"). Without it there is no way to
+sweep the mis-hearings later, or to ask how often voice is the thing that
+introduced a junk food record.
+
+Cleanup itself needs nothing new: editing and deleting entries already works
+in `TodayMeals`.
+
+**The correction signal comes for free and is worth capturing now even though
+nothing reads it yet.** `voice_entries` holds `logged_entry_ids` and the items
+as they were written. Diffing those entries' *current* state against what was
+logged is exactly Port's #708 mined-correction signal — "voice proposed X, the
+day ended with Y" — with no extra UI and no extra prompt. Record it; build the
+miner when there is enough of it to be worth reading.
 
 ### Persistence — `voice_entries`
 
@@ -195,7 +243,10 @@ path sit together and the fallback is one component away.
 
 - **Vocabulary:** token-budget enforcement; frequency ordering; a pin that
   `RXBAR` survives un-title-cased; the pool reflects a food added after
-  startup.
+  startup; and the loop-defence pin — **a food eaten exactly once contributes
+  no hotword**, so a mis-hearing cannot teach the decoder its own mistake.
+- **Provenance:** items logged by voice produce `Food(source="voice")`, so
+  mis-hearings stay sweepable.
 - **Transcriber:** the three load-bearing behaviours above, against a fake
   socket — segment accumulation by `start`, settle-on-stable-text, and that
   the silence pad is sent.
@@ -217,8 +268,10 @@ Each recoverable later, none blocking:
 - Per-claim confidence. Port's `calibration` command exists precisely because
   nobody has yet shown its confidence scores order anything — building on it
   now would be building on an unvalidated signal.
-- Spoken corrections and an eval harness. Worth it once there is a corpus;
-  there is not one yet.
+- **Reading** the correction signal. It is *captured* from day one (see *The
+  learning loop*); the miner that reads it, and any spoken-correction UI, wait
+  until there is enough of it to be worth reading.
+- An eval harness. Worth it once there is a corpus; there is not one yet.
 - Live streaming transcription.
 - Audio retention.
 - Workout logging, and any intent routing between food and workout.

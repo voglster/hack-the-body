@@ -33,13 +33,25 @@ function pickMimeType(): string | undefined {
   return PREFERRED_TYPES.find((t) => MediaRecorder.isTypeSupported?.(t));
 }
 
-export function useVoiceRecorder() {
+export interface UseVoiceRecorderOptions {
+  /**
+   * Called with whatever `stop()` would have returned when the 60s cap ends
+   * the recording for the caller. Without this, the auto-stopped Blob is
+   * unreachable — nothing else observes the cap firing — and a user who
+   * talks past it loses the recording silently.
+   */
+  onAutoStop?: (blob: Blob | null) => void | Promise<void>;
+}
+
+export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const [state, setState] = useState<RecorderState>("idle");
   const [seconds, setSeconds] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onAutoStopRef = useRef(options.onAutoStop);
+  onAutoStopRef.current = options.onAutoStop;
 
   const cleanup = useCallback(() => {
     if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
@@ -99,10 +111,11 @@ export function useVoiceRecorder() {
     }
   }, [cleanup]);
 
-  // The recorder stops itself at the cap so a pocket-dial cannot run forever.
+  // The recorder stops itself at the cap so a pocket-dial cannot run forever
+  // — but the resulting Blob must still reach the caller, not be discarded.
   useEffect(() => {
     if (state === "recording" && seconds >= MAX_RECORDING_SECONDS) {
-      void stop();
+      void stop().then((blob) => onAutoStopRef.current?.(blob));
     }
   }, [state, seconds, stop]);
 

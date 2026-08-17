@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import httpx
 
+from app.services.food_repo import FoodRepo
 from app.services.voice.boundary import MockTranscriber
 from tests.conftest import llm_body
 
@@ -120,6 +121,76 @@ async def test_the_dictation_is_recorded_for_later_tuning(client, mock_db):
     assert len(doc["logged_entry_ids"]) == 1
     assert doc["items_parsed"] == 1
     assert doc["hotword_count"] >= 0
+
+
+async def test_an_invalid_slot_is_rejected_before_any_write(client, mock_db):
+    """A bogus slot must 422 before `upsert_food` runs — otherwise it orphans
+    a `source="voice"` Food row with no matching entry and no voice_entries
+    doc to undo it by."""
+    with patch.object(httpx.AsyncClient, "post", _llm(PARSED)), \
+         patch("app.routers.voice.build_transcriber",
+               lambda _s: MockTranscriber("two scrambled eggs")):
+        r = await client.post(
+            "/foods/voice/log", headers=H,
+            files={"audio": ("a.wav", _audio(), "audio/wav")},
+            data={"slot": "elevenses"},
+        )
+    assert r.status_code == 422
+    assert await mock_db["foods"].count_documents({}) == 0
+    assert await mock_db["voice_entries"].count_documents({}) == 0
+
+
+async def test_an_unavailable_vendor_still_records_a_voice_entry_with_error(client, mock_db):
+    with patch("app.routers.voice.build_transcriber",
+               lambda _s: MockTranscriber(fail=True)):
+        await client.post(
+            "/foods/voice/log", headers=H,
+            files={"audio": ("a.wav", _audio(), "audio/wav")},
+            data={"slot": "snack"},
+        )
+    doc = await mock_db["voice_entries"].find_one({})
+    assert doc is not None
+    assert doc["error"]
+    assert doc["logged_entry_ids"] == []
+
+
+async def test_a_failure_mid_write_still_records_a_voice_entry_and_keeps_undo_ids(client, mock_db):
+    """One item lands, the second write blows up: the first entry's id must
+    survive into voice_entries so undo still works, and the original error
+    must not be swallowed."""
+    two_items = (
+        '[{"name": "Scrambled Eggs", "servings": 2, "calories": 150}, '
+        '{"name": "Toast", "servings": 1, "calories": 80}]'
+    )
+    orig_insert_entry = FoodRepo.insert_entry
+    calls = {"n": 0}
+
+    async def flaky_insert_entry(self, entry):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("boom")
+        return await orig_insert_entry(self, entry)
+
+    with patch.object(httpx.AsyncClient, "post", _llm(two_items)), \
+         patch("app.routers.voice.build_transcriber",
+               lambda _s: MockTranscriber("two scrambled eggs and toast")), \
+         patch.object(FoodRepo, "insert_entry", flaky_insert_entry):
+        try:
+            await client.post(
+                "/foods/voice/log", headers=H,
+                files={"audio": ("a.wav", _audio(), "audio/wav")},
+                data={"slot": "breakfast"},
+            )
+        except RuntimeError as exc:
+            assert "boom" in str(exc)
+        else:
+            raise AssertionError("expected the underlying error to propagate")
+
+    assert await mock_db["meal_entries"].count_documents({}) == 1
+    doc = await mock_db["voice_entries"].find_one({})
+    assert doc is not None
+    assert doc["error"] and "boom" in doc["error"]
+    assert len(doc["logged_entry_ids"]) == 1
 
 
 async def test_requires_the_api_key(client):

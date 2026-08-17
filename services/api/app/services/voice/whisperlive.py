@@ -106,13 +106,38 @@ def _as_float32(pcm16: bytes) -> bytes:
     return struct.pack(f"<{count}f", *(sample / 32768.0 for sample in samples))
 
 
+def _strip_wav_header(body: bytes) -> bytes:
+    """Bare int16 PCM passes through unchanged. A RIFF/WAVE body has its
+    44-byte header — and any other non-audio chunk — stripped down to just
+    the `data` chunk's payload, so it does not get decoded as ~1.4ms of
+    near-full-scale noise prepended to the transcript.
+
+    Only the chunk graph needed to find `data` is walked; anything that
+    doesn't validate as RIFF/WAVE (missing magic, truncated chunk header)
+    is treated as raw PCM rather than assumed to be a malformed WAV.
+    """
+    if len(body) < 12 or body[0:4] != b"RIFF" or body[8:12] != b"WAVE":
+        return body
+    offset = 12
+    while offset + 8 <= len(body):
+        chunk_id = body[offset:offset + 4]
+        chunk_size = struct.unpack("<I", body[offset + 4:offset + 8])[0]
+        payload_start = offset + 8
+        if chunk_id == b"data":
+            return body[payload_start:payload_start + chunk_size]
+        # Chunks are padded to an even byte count.
+        offset = payload_start + chunk_size + (chunk_size & 1)
+    return body
+
+
 async def _buffered_frames(pcm: bytes) -> AsyncIterator[bytes]:
     for start in range(0, len(pcm), FRAME_BYTES):
         yield pcm[start : start + FRAME_BYTES]
 
 
 class WhisperLiveTranscriber:
-    # 100 ms of 16 kHz mono float32 silence, appended to flush the buffer.
+    # Total silence appended to flush the buffer, sent as fifteen 100 ms
+    # float32 frames at 16 kHz mono — see `send_audio` below.
     _SILENCE_SECONDS = 1.5
     _QUIET_GAP_SECONDS = 0.75
     _SENT_HOLD_SECONDS = 0.75
@@ -130,6 +155,7 @@ class WhisperLiveTranscriber:
 
     async def transcribe(self, pcm: bytes, ctx: SpeechContext) -> str:
         from app.services.voice.boundary import BoundaryUnavailable  # noqa: PLC0415
+        pcm = _strip_wav_header(pcm)
         try:
             return await asyncio.wait_for(
                 self._run(_buffered_frames(pcm), ctx), timeout=self._timeout,

@@ -28,13 +28,14 @@ interface Landed {
 }
 
 export function VoiceFood({ onLogged, slot }: { onLogged: () => void; slot?: MealSlot }) {
-  const { state, seconds, start, stop } = useVoiceRecorder();
   const [busy, setBusy] = useState(false);
   const [landed, setLanded] = useState<Landed | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const onStop = async () => {
-    const blob = await stop();
+  // Shared by a manual "Stop" click and the recorder's own 60s auto-stop —
+  // whichever one produced the Blob, it still has to get uploaded rather
+  // than silently dropped.
+  const handleRecording = async (blob: Blob | null) => {
     if (!blob) { setError("nothing was recorded"); return; }
     setBusy(true); setError(null);
     try {
@@ -55,6 +56,13 @@ export function VoiceFood({ onLogged, slot }: { onLogged: () => void; slot?: Mea
     } finally {
       setBusy(false);
     }
+  };
+
+  const { state, seconds, start, stop } = useVoiceRecorder({ onAutoStop: handleRecording });
+
+  const onStop = async () => {
+    const blob = await stop();
+    await handleRecording(blob);
   };
 
   const onUndo = async () => {

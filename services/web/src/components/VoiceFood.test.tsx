@@ -1,8 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { VoiceFood } from "./VoiceFood";
+
+type AutoStopHandler = (blob: Blob | null) => void | Promise<void>;
+
+let capturedOnAutoStop: AutoStopHandler | undefined;
 
 // `useVoiceRecorder` is mocked with a *real* `useState` inside the mock
 // factory, not a plain mutated object. A plain object mutated between
@@ -14,7 +18,8 @@ import { VoiceFood } from "./VoiceFood";
 // and clicking "stop" genuinely flips it back — exercising the same render
 // path a real browser session would.
 vi.mock("../hooks/useVoiceRecorder", () => ({
-  useVoiceRecorder: () => {
+  useVoiceRecorder: (options?: { onAutoStop?: AutoStopHandler }) => {
+    capturedOnAutoStop = options?.onAutoStop;
     const [state, setState] = useState<"idle" | "recording">("idle");
     return {
       state,
@@ -76,5 +81,22 @@ describe("VoiceFood", () => {
       expect(api.deleteEntry).toHaveBeenCalledWith("e2");
     });
     expect(api.deleteEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it("uploads the recording when the recorder auto-stops it at the cap, not just on a manual stop", async () => {
+    const { api } = await import("../api/client");
+    render(<VoiceFood onLogged={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /record|speak/i }));
+    await screen.findByRole("button", { name: /stop|done/i });
+
+    // Simulates `useVoiceRecorder` hitting MAX_RECORDING_SECONDS and calling
+    // back with the Blob it would otherwise have discarded — never a click.
+    await act(async () => {
+      await capturedOnAutoStop?.(new Blob(["auto-stopped audio"], { type: "audio/wav" }));
+    });
+
+    await waitFor(() => expect(api.logVoiceFood).toHaveBeenCalled());
+    expect(await screen.findByText(/two scrambled eggs and toast/i)).toBeTruthy();
   });
 });

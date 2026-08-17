@@ -19,6 +19,19 @@ class Settings(BaseSettings):
     llm_model: str = "ollama/qwen3.8:27b-fast"
     coach_timeout_s: float = 30.0
 
+    # -- voice food entry --------------------------------------------------
+    # The vendor is a WhisperLive instance on llmbox (tailnet 100.64.183.66),
+    # and it is **off by default**: an empty host means the mock, so tests and
+    # CI never reach it. Set `VOICE_STT_HOST` on the host to switch it on;
+    # unsetting it is the rollback.
+    voice_stt_host: str = ""
+    voice_stt_port: int = 9091
+    voice_stt_model: str = "small"
+    voice_timeout_s: float = 30.0
+    # 60s of 16kHz mono int16 is ~1.9MB; this is a backstop against an
+    # accidental non-speech upload, not the bound the user records against.
+    voice_max_audio_bytes: int = 4_000_000
+
     # Coach scheduler — comma-separated 'HH:MM' local times to fire scheduled
     # insights. Defaults: 7am morning brief, 12pm midday check-in, 5pm pre-evening.
     coach_schedule_local: str = "07:00,12:00,17:00"

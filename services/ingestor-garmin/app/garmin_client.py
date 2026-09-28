@@ -52,10 +52,12 @@ class GarminClient:
         self._g = g
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
-    def _connectapi(self, path: str) -> Any:
+    def _connectapi(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        # garminconnect >= 0.3 rejects query strings embedded in the path;
+        # they must travel as `params`.
         if self._g is None:
             raise RuntimeError("login() must be called first")
-        return self._g.connectapi(path)
+        return self._g.connectapi(path, params=params)
 
     @property
     def _username(self) -> str:
@@ -65,7 +67,8 @@ class GarminClient:
 
     def fetch_sleep(self, day: date) -> dict:
         return self._connectapi(
-            f"/wellness-service/wellness/dailySleepData/{self._username}?date={day.isoformat()}"
+            f"/wellness-service/wellness/dailySleepData/{self._username}",
+            {"date": day.isoformat()},
         )
 
     def fetch_hrv(self, day: date) -> dict:
@@ -73,7 +76,8 @@ class GarminClient:
 
     def fetch_weight(self, start: date, end: date) -> list[dict]:
         data = self._connectapi(
-            f"/weight-service/weight/range/{start.isoformat()}/{end.isoformat()}?includeAll=true"
+            f"/weight-service/weight/range/{start.isoformat()}/{end.isoformat()}",
+            {"includeAll": "true"},
         )
         if isinstance(data, list):
             return data
@@ -100,8 +104,8 @@ class GarminClient:
 
     def fetch_vo2max(self, day: date) -> dict:
         return self._connectapi(
-            f"/userstats-service/wellness/daily/{self._username}"
-            f"?fromDate={day.isoformat()}&untilDate={day.isoformat()}"
+            f"/userstats-service/wellness/daily/{self._username}",
+            {"fromDate": day.isoformat(), "untilDate": day.isoformat()},
         )
 
     def fetch_workouts(self, start: date, end: date) -> list[dict]:
@@ -113,9 +117,9 @@ class GarminClient:
         offset = 0
         while True:
             page = self._connectapi(
-                f"/activitylist-service/activities/search/activities"
-                f"?startDate={start.isoformat()}&endDate={end.isoformat()}"
-                f"&start={offset}&limit={page_size}"
+                "/activitylist-service/activities/search/activities",
+                {"startDate": start.isoformat(), "endDate": end.isoformat(),
+                 "start": offset, "limit": page_size},
             )
             if not isinstance(page, list) or not page:
                 break
@@ -127,8 +131,8 @@ class GarminClient:
 
     def fetch_rhr_series(self, start: date, end: date) -> list[dict]:
         return self._connectapi(
-            f"/userstats-service/wellness/daily/summary"
-            f"?fromDate={start.isoformat()}&untilDate={end.isoformat()}"
+            "/userstats-service/wellness/daily/summary",
+            {"fromDate": start.isoformat(), "untilDate": end.isoformat()},
         )
 
     def fetch_intraday_steps(self, day: date) -> list[dict]:
@@ -138,8 +142,8 @@ class GarminClient:
         records spanning the day. Empty list if nothing's been synced yet.
         """
         data = self._connectapi(
-            f"/wellness-service/wellness/dailySummaryChart/{self._username}"
-            f"?date={day.isoformat()}",
+            f"/wellness-service/wellness/dailySummaryChart/{self._username}",
+            {"date": day.isoformat()},
         )
         if isinstance(data, list):
             return data
@@ -151,8 +155,8 @@ class GarminClient:
         """Garmin's rich per-day wellness summary: steps, distance, calories,
         resting HR, intensity minutes, floors, etc."""
         return self._connectapi(
-            f"/usersummary-service/usersummary/daily/{self._username}"
-            f"?calendarDate={day.isoformat()}"
+            f"/usersummary-service/usersummary/daily/{self._username}",
+            {"calendarDate": day.isoformat()},
         )
 
     def upload_tcx(self, tcx_bytes: bytes, *, name_hint: str) -> dict:

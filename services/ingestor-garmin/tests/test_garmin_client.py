@@ -6,7 +6,7 @@ from app.garmin_client import GarminClient
 
 def _client_with_response(payload):
     c = GarminClient(Settings())
-    c._connectapi = lambda _path: payload  # type: ignore[assignment]
+    c._connectapi = lambda _path, _params=None: payload  # type: ignore[assignment]
     return c
 
 
@@ -52,3 +52,37 @@ def test_fetch_weight_handles_empty():
         date(2026, 4, 1), date(2026, 4, 2)
     )
     assert out == []
+
+
+
+class _StrictGarmin:
+    """Mirrors garminconnect >= 0.3: a query string in the path is refused."""
+
+    display_name = "3aefc992-71fe-461d-bf3e-2601982df048"
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def connectapi(self, path, params=None):
+        if "?" in path:
+            raise ValueError(f"Invalid API path: {path!r}")
+        self.calls.append((path, params))
+        return []
+
+
+def test_every_fetch_sends_query_as_params():
+    c = GarminClient.__new__(GarminClient)
+    c._g = _StrictGarmin()
+    d = date(2026, 9, 28)
+    c.fetch_sleep(d)
+    c.fetch_weight(d, d)
+    c.fetch_vo2max(d)
+    c.fetch_workouts(d, d)
+    c.fetch_rhr_series(d, d)
+    c.fetch_intraday_steps(d)
+    c.fetch_daily_summary(d)
+    assert len(c._g.calls) == 7
+    assert c._g.calls[-1] == (
+        "/usersummary-service/usersummary/daily/3aefc992-71fe-461d-bf3e-2601982df048",
+        {"calendarDate": "2026-09-28"},
+    )

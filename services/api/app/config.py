@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     # accidental non-speech upload, not the bound the user records against.
     voice_max_audio_bytes: int = 4_000_000
 
+    # -- Home Assistant bridge ---------------------------------------------
+    # HTB subscribes to HA's websocket for IKEA remote presses and speaks
+    # through script.office_announce. Off when the token is empty.
+    # `ha_remotes` maps ZHA device IEEE → remote name: "ieee=name,ieee=name".
+    ha_url: str = "https://hass.home.vogelcc.com"
+    ha_token: str = ""
+    ha_remotes: str = "d0:cf:5e:ff:fe:23:62:6c=habit_remote_1"
+    ha_speak_script: str = "script.office_announce"
+
+    @property
+    def ha_remote_names(self) -> dict[str, str]:
+        pairs = (p.split("=", 1) for p in self.ha_remotes.split(",") if "=" in p)
+        return {ieee.strip().lower(): name.strip() for ieee, name in pairs}
+
     # Coach scheduler — comma-separated 'HH:MM' local times to fire scheduled
     # insights. Defaults: 7am morning brief, 12pm midday check-in, 5pm pre-evening.
     coach_schedule_local: str = "07:00,12:00,17:00"

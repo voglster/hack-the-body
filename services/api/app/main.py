@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -39,9 +40,17 @@ async def lifespan(app: FastAPI):
         "coach scheduler started: cron times %s (tz=%s)",
         settings.coach_schedule_local, tz or "system-default",
     )
+    from app.services.buttons import ensure_default_buttons
+    from app.services.ha_bridge import run_bridge
+    await ensure_default_buttons(app.state.db)
+    bridge = (
+        asyncio.create_task(run_bridge(settings, app.state.db)) if settings.ha_token else None
+    )
     try:
         yield
     finally:
+        if bridge:
+            bridge.cancel()
         scheduler.shutdown(wait=False)
         app.state.mongo_client.close()
 

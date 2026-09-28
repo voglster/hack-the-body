@@ -22,6 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
+from app.services import buttons
 from app.services import capture as svc
 from app.services.food_repo import FoodRepo
 from app.services.voice.boundary import BoundaryUnavailable, build_transcriber
@@ -171,6 +172,40 @@ async def inbox(request: Request) -> list[dict]:
         .sort("ts", -1)
     )
     return [svc.capture_to_dict(c) async for c in cur]
+
+
+class ButtonPressReq(BaseModel):
+    button: str
+
+
+@router.post("/button")
+async def button_press(req: ButtonPressReq, request: Request) -> dict:
+    """What an IKEA remote press does; the HA bridge calls the same function."""
+    return await buttons.press(request.app.state.db, req.button)
+
+
+@router.get("/buttons")
+async def list_buttons(request: Request) -> list[dict]:
+    cur = request.app.state.db[buttons.BUTTONS].find({}, {"_id": 0}).sort("button", 1)
+    return [b async for b in cur]
+
+
+class ButtonMappingReq(BaseModel):
+    action: Literal["food", "water", "habit", "placeholder", "undo"]
+    label: str
+    food_id: str | None = None
+    quantity_g: float | None = Field(default=None, gt=0)
+    habit: str | None = None
+    oz: float | None = Field(default=None, gt=0)
+
+
+@router.put("/buttons/{remote}/{name}")
+async def set_button(remote: str, name: str, req: ButtonMappingReq, request: Request) -> dict:
+    doc = {"button": f"{remote}/{name}", **req.model_dump(exclude_none=True)}
+    await request.app.state.db[buttons.BUTTONS].replace_one(
+        {"button": doc["button"]}, doc, upsert=True,
+    )
+    return doc
 
 
 @router.get("/context")

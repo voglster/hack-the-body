@@ -57,6 +57,9 @@ services:
       # absent from it is silently ignored no matter what .env says.
       VOICE_STT_HOST: ${VOICE_STT_HOST:-}
       VOICE_STT_PORT: ${VOICE_STT_PORT:-9091}
+      # Home Assistant bridge (IKEA remotes + spoken confirmations). Empty token = off.
+      HA_URL: ${HA_URL:-https://hass.home.vogelcc.com}
+      HA_TOKEN: ${HA_TOKEN:-}
     ports:
       - "${APP_PORT:-8080}:8000"
     networks:

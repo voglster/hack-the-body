@@ -15,6 +15,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
+import type { UserTargets } from "../api/types";
 
 const KCAL_PER_G_PROTEIN = 4;
 const KCAL_PER_G_FAT = 9;
@@ -161,6 +162,28 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Calorie share of each macro, or null when the grams add up to no calories. */
+function macroSplit(proteinG: number, fatG: number, carbsG: number): MacroPercents | null {
+  const proteinKcal = proteinG * KCAL_PER_G_PROTEIN;
+  const fatKcal = fatG * KCAL_PER_G_FAT;
+  const carbKcal = carbsG * KCAL_PER_G_CARBS;
+  const macroKcal = proteinKcal + fatKcal + carbKcal;
+  if (macroKcal <= 0) return null;
+  return {
+    protein: pct(proteinKcal, macroKcal),
+    fat: pct(fatKcal, macroKcal),
+    carbs: pct(carbKcal, macroKcal),
+  };
+}
+
+/** Target macro mix: only render if all three are set. Same 4-9-4 weighting
+ *  so actual vs target compare on the same axis. */
+function targetMacroSplit(targets: UserTargets): MacroPercents | null {
+  const { daily_protein_g: tP, daily_fat_g: tF, daily_carbs_g: tC } = targets;
+  if (tP == null || tF == null || tC == null) return null;
+  return macroSplit(tP, tF, tC);
+}
+
 export function MacroProgressCard({ day }: { day?: string } = {}) {
   const totals = useQuery({
     queryKey: ["meals.totals", day ?? "today"],
@@ -181,39 +204,11 @@ export function MacroProgressCard({ day }: { day?: string } = {}) {
   const targetCal = targets.data.daily_calories ?? null;
   const consumedCal = t.calories;
 
-  const proteinKcal = (t.protein_g || 0) * KCAL_PER_G_PROTEIN;
-  const fatKcal = (t.fat_g || 0) * KCAL_PER_G_FAT;
-  const carbKcal = (t.carbs_g || 0) * KCAL_PER_G_CARBS;
-  const macroKcal = proteinKcal + fatKcal + carbKcal;
-  const noMacros = macroKcal <= 0;
-
-  const macros: MacroPercents = noMacros
-    ? { protein: 0, fat: 0, carbs: 0 }
-    : {
-        protein: pct(proteinKcal, macroKcal),
-        fat: pct(fatKcal, macroKcal),
-        carbs: pct(carbKcal, macroKcal),
-      };
-
-  // Target macro mix: only render if all three are set. Same 4-9-4 weighting
-  // so actual vs target compare on the same axis.
-  const tP = targets.data.daily_protein_g;
-  const tF = targets.data.daily_fat_g;
-  const tC = targets.data.daily_carbs_g;
-  let targetMacros: MacroPercents | null = null;
-  if (tP != null && tF != null && tC != null) {
-    const tProteinKcal = tP * KCAL_PER_G_PROTEIN;
-    const tFatKcal = tF * KCAL_PER_G_FAT;
-    const tCarbKcal = tC * KCAL_PER_G_CARBS;
-    const tMacroKcal = tProteinKcal + tFatKcal + tCarbKcal;
-    if (tMacroKcal > 0) {
-      targetMacros = {
-        protein: pct(tProteinKcal, tMacroKcal),
-        fat: pct(tFatKcal, tMacroKcal),
-        carbs: pct(tCarbKcal, tMacroKcal),
-      };
-    }
-  }
+  const gramsP = t.protein_g || 0;
+  const gramsF = t.fat_g || 0;
+  const gramsC = t.carbs_g || 0;
+  const macros = macroSplit(gramsP, gramsF, gramsC);
+  const targetMacros = targetMacroSplit(targets.data);
 
   return (
     <Card>
@@ -225,14 +220,14 @@ export function MacroProgressCard({ day }: { day?: string } = {}) {
           <span className="text-neutral-600"> · no calorie target set</span>
         </div>
       )}
-      {noMacros ? (
+      {macros == null ? (
         <div className="text-sm text-neutral-500">Log a meal to see your macro split</div>
       ) : (
         <MacroStack
           {...macros}
-          gramsP={t.protein_g || 0}
-          gramsF={t.fat_g || 0}
-          gramsC={t.carbs_g || 0}
+          gramsP={gramsP}
+          gramsF={gramsF}
+          gramsC={gramsC}
           target={targetMacros}
         />
       )}

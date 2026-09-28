@@ -154,8 +154,8 @@ export function WeightStatsCard() {
     : null;
 
   const goal = targets?.goal_weight_lb ?? null;
-  const toGoal = goal != null ? latestSmoothed.avg - goal : null;
-  const cls = classifyRate(smoothed7.rate ?? sinceStartRate, targets);
+  const currentRate = smoothed7.rate ?? sinceStartRate;
+  const cls = classifyRate(currentRate, targets);
 
   const isEarlyProtocol = elapsedDays < 14;
 
@@ -175,15 +175,7 @@ export function WeightStatsCard() {
           value={formatRate(smoothed7.rate)}
           hint="7d avg now vs 7d ago"
         />
-        <Stat
-          label="plateau"
-          value={projection?.fit ? `${projection.fit.asymptote_lb.toFixed(0)} lb` : "—"}
-          hint={
-            projection?.fit
-              ? `where you'd settle at current effort — decay fit, R²=${projection.fit.r_squared.toFixed(2)}`
-              : "needs ≥21d of data"
-          }
-        />
+        <PlateauStat projection={projection} />
       </div>
       <div className="text-[11px] text-neutral-400 pt-1 border-t border-neutral-800
                       flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -207,29 +199,14 @@ export function WeightStatsCard() {
           day 14.
         </div>
       )}
-      {goal != null && toGoal != null && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 pt-1 border-t border-neutral-800">
-          <Stat label="goal" value={`${goal.toFixed(0)} lb`} />
-          <Stat
-            label="to goal"
-            value={toGoal > 0 ? `−${toGoal.toFixed(1)} lb` : "at goal"}
-          />
-          <Stat
-            label="ETA"
-            value={formatProjectionEta(projection)
-              ?? etaWeeksLinear(latestSmoothed.avg, goal, smoothed7.rate ?? sinceStartRate)}
-            hint={projection?.fit
-              ? `decay fit R²=${projection.fit.r_squared.toFixed(2)}, n=${projection.fit.n_points}`
-              : "linear extrapolation (decay fit needs ≥21d of data)"}
-          />
-          {targets?.weekly_loss_rate_min_lb != null
-              && targets.weekly_loss_rate_max_lb != null && (
-            <Stat
-              label="target band"
-              value={`${targets.weekly_loss_rate_min_lb}–${targets.weekly_loss_rate_max_lb} lb/wk`}
-            />
-          )}
-        </div>
+      {goal != null && (
+        <GoalStats
+          goal={goal}
+          currentLb={latestSmoothed.avg}
+          rate={currentRate}
+          projection={projection}
+          targets={targets}
+        />
       )}
     </div>
   );
@@ -240,6 +217,54 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
     <div title={hint}>
       <div className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
       <div className="text-base tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function PlateauStat({ projection }: { projection: WeightProjection | undefined }) {
+  return (
+    <Stat
+      label="plateau"
+      value={projection?.fit ? `${projection.fit.asymptote_lb.toFixed(0)} lb` : "—"}
+      hint={
+        projection?.fit
+          ? `where you'd settle at current effort — decay fit, R²=${projection.fit.r_squared.toFixed(2)}`
+          : "needs ≥21d of data"
+      }
+    />
+  );
+}
+
+function GoalStats({ goal, currentLb, rate, projection, targets }: {
+  goal: number;
+  currentLb: number;
+  rate: number | null;
+  projection: WeightProjection | undefined;
+  targets: UserTargets | undefined;
+}) {
+  const toGoal = currentLb - goal;
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 pt-1 border-t border-neutral-800">
+      <Stat label="goal" value={`${goal.toFixed(0)} lb`} />
+      <Stat
+        label="to goal"
+        value={toGoal > 0 ? `−${toGoal.toFixed(1)} lb` : "at goal"}
+      />
+      <Stat
+        label="ETA"
+        value={formatProjectionEta(projection)
+          ?? etaWeeksLinear(currentLb, goal, rate)}
+        hint={projection?.fit
+          ? `decay fit R²=${projection.fit.r_squared.toFixed(2)}, n=${projection.fit.n_points}`
+          : "linear extrapolation (decay fit needs ≥21d of data)"}
+      />
+      {targets?.weekly_loss_rate_min_lb != null
+          && targets.weekly_loss_rate_max_lb != null && (
+        <Stat
+          label="target band"
+          value={`${targets.weekly_loss_rate_min_lb}–${targets.weekly_loss_rate_max_lb} lb/wk`}
+        />
+      )}
     </div>
   );
 }

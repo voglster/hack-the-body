@@ -20,12 +20,12 @@ export type MacrosPatch = Partial<{
   fat_g: number | null;
 }>;
 
-export type EntryEditPatch = {
+export interface EntryEditPatch {
   ts?: string;
   slot?: MealSlot;
   quantity_g?: number;
   macros?: MacrosPatch;
-};
+}
 
 type MacroKey = "calories" | "protein_g" | "carbs_g" | "fat_g";
 const MACRO_KEYS: { key: MacroKey; label: string; step: string }[] = [
@@ -45,33 +45,23 @@ function isValidServings(s: string): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
-function buildPatch(
-  entry: MealEntry,
-  t: Date,
-  slot: MealSlot,
-  servingsStr: string,
-  macrosStr: Record<MacroKey, string>,
-): EntryEditPatch {
-  const patch: EntryEditPatch = {
-    ts: t.toISOString(),
-    slot,
-  };
+function changedQuantityG(entry: MealEntry, servingsStr: string): number | undefined {
   const n = parseFloat(servingsStr);
-  if (Number.isFinite(n) && n > 0) {
-    const sg = impliedServingG(entry);
-    if (sg != null) {
-      const newGrams = round2(n * sg);
-      // Only include quantity_g when the user actually changed it.
-      if (Math.abs(newGrams - entry.quantity_g) > 0.5) {
-        patch.quantity_g = newGrams;
-      }
-    } else {
-      // Fallback: treat the field as raw grams (when servings is unknown).
-      if (Math.abs(n - entry.quantity_g) > 0.5) {
-        patch.quantity_g = round2(n);
-      }
-    }
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  const sg = impliedServingG(entry);
+  if (sg != null) {
+    const newGrams = round2(n * sg);
+    // Only include quantity_g when the user actually changed it.
+    return Math.abs(newGrams - entry.quantity_g) > 0.5 ? newGrams : undefined;
   }
+  // Fallback: treat the field as raw grams (when servings is unknown).
+  return Math.abs(n - entry.quantity_g) > 0.5 ? round2(n) : undefined;
+}
+
+function changedMacros(
+  entry: MealEntry,
+  macrosStr: Record<MacroKey, string>,
+): MacrosPatch | undefined {
   const macroOverride: MacrosPatch = {};
   let macrosDirty = false;
   for (const { key } of MACRO_KEYS) {
@@ -87,7 +77,24 @@ function buildPatch(
       macrosDirty = true;
     }
   }
-  if (macrosDirty) patch.macros = macroOverride;
+  return macrosDirty ? macroOverride : undefined;
+}
+
+function buildPatch(
+  entry: MealEntry,
+  t: Date,
+  slot: MealSlot,
+  servingsStr: string,
+  macrosStr: Record<MacroKey, string>,
+): EntryEditPatch {
+  const patch: EntryEditPatch = {
+    ts: t.toISOString(),
+    slot,
+  };
+  const quantity_g = changedQuantityG(entry, servingsStr);
+  if (quantity_g !== undefined) patch.quantity_g = quantity_g;
+  const macros = changedMacros(entry, macrosStr);
+  if (macros) patch.macros = macros;
   return patch;
 }
 
@@ -146,6 +153,117 @@ function QuantityField({
   );
 }
 
+function MacrosField({
+  macrosStr, onMacrosStr, busy,
+}: {
+  macrosStr: Record<MacroKey, string>;
+  onMacrosStr: (update: (m: Record<MacroKey, string>) => Record<MacroKey, string>) => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-neutral-400">macros</span>
+        <span className="text-[11px] text-neutral-500">
+          override per-entry · blank = unknown
+        </span>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {MACRO_KEYS.map(({ key, label, step }) => (
+          <label key={key} className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-neutral-500">
+              {label}
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step={step}
+              value={macrosStr[key]}
+              disabled={busy}
+              onChange={e => onMacrosStr(m => ({ ...m, [key]: e.target.value }))}
+              className="w-full px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base tabular-nums"
+              aria-label={label}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FoodNameHeader({
+  entry, onRenameFood, busy,
+}: {
+  entry: MealEntry;
+  onRenameFood?: (food_id: string, name: string) => Promise<void>;
+  busy: boolean;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(entry.food_name);
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const saveRename = async () => {
+    if (!onRenameFood) return;
+    const next = renameValue.trim();
+    if (!next || next === entry.food_name) {
+      setRenaming(false);
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      await onRenameFood(entry.food_id, next);
+      setRenaming(false);
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  if (renaming) {
+    return (
+      <div className="flex items-center gap-2 mt-1">
+        <input
+          value={renameValue}
+          onChange={e => setRenameValue(e.target.value)}
+          disabled={renameBusy || busy}
+          autoFocus
+          className="flex-1 min-w-0 px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base"
+          aria-label="food name"
+        />
+        <button
+          onClick={() => { void saveRename(); }}
+          disabled={renameBusy || busy || !renameValue.trim()}
+          className="px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 text-white text-sm disabled:opacity-50"
+        >
+          {renameBusy ? "..." : "save"}
+        </button>
+        <button
+          onClick={() => { setRenaming(false); setRenameValue(entry.food_name); }}
+          disabled={renameBusy}
+          className="px-2 py-2 text-neutral-400 text-sm"
+          aria-label="cancel rename"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <div className="font-medium truncate">{entry.food_name}</div>
+      {onRenameFood && (
+        <button
+          onClick={() => { setRenameValue(entry.food_name); setRenaming(true); }}
+          className="text-neutral-500 active:text-neutral-200 text-sm px-1"
+          aria-label="rename food"
+          title="rename food (cascades to all entries)"
+        >
+          ✎
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Per-serving grams, derived from the entry. Returns null if we can't trust
  *  the math (e.g. servings was logged as 0 or null) — caller should fall back
  *  to direct-grams editing. */
@@ -195,9 +313,6 @@ export function EntryTimeEditor({
   const initial = new Date(entry.ts);
   const [t, setT] = useState<Date>(initial);
   const [slot, setSlot] = useState<MealSlot>(entry.slot);
-  const [renaming, setRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(entry.food_name);
-  const [renameBusy, setRenameBusy] = useState(false);
   // Servings as a string so the user can clear/retype freely. Defaults to
   // the current entry's `servings` (e.g. 325 for a buggy entry — they'll
   // immediately see "this is wildly wrong").
@@ -264,61 +379,7 @@ export function EntryTimeEditor({
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-wide text-neutral-400">edit time</div>
-          {renaming ? (
-            <div className="flex items-center gap-2 mt-1">
-              <input
-                value={renameValue}
-                onChange={e => setRenameValue(e.target.value)}
-                disabled={renameBusy || busy}
-                autoFocus
-                className="flex-1 min-w-0 px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base"
-                aria-label="food name"
-              />
-              <button
-                onClick={async () => {
-                  if (!onRenameFood) return;
-                  const next = renameValue.trim();
-                  if (!next || next === entry.food_name) {
-                    setRenaming(false);
-                    return;
-                  }
-                  setRenameBusy(true);
-                  try {
-                    await onRenameFood(entry.food_id, next);
-                    setRenaming(false);
-                  } finally {
-                    setRenameBusy(false);
-                  }
-                }}
-                disabled={renameBusy || busy || !renameValue.trim()}
-                className="px-3 py-2 rounded bg-emerald-700 active:bg-emerald-800 text-white text-sm disabled:opacity-50"
-              >
-                {renameBusy ? "..." : "save"}
-              </button>
-              <button
-                onClick={() => { setRenaming(false); setRenameValue(entry.food_name); }}
-                disabled={renameBusy}
-                className="px-2 py-2 text-neutral-400 text-sm"
-                aria-label="cancel rename"
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <div className="font-medium truncate">{entry.food_name}</div>
-              {onRenameFood && (
-                <button
-                  onClick={() => { setRenameValue(entry.food_name); setRenaming(true); }}
-                  className="text-neutral-500 active:text-neutral-200 text-sm px-1"
-                  aria-label="rename food"
-                  title="rename food (cascades to all entries)"
-                >
-                  ✎
-                </button>
-              )}
-            </div>
-          )}
+          <FoodNameHeader entry={entry} onRenameFood={onRenameFood} busy={busy} />
         </div>
         <div className="text-2xl font-semibold tabular-nums text-emerald-300">
           {fmtTime(t)}
@@ -334,33 +395,7 @@ export function EntryTimeEditor({
       />
 
       {/* Macros override */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-neutral-400">macros</span>
-          <span className="text-[11px] text-neutral-500">
-            override per-entry · blank = unknown
-          </span>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {MACRO_KEYS.map(({ key, label, step }) => (
-            <label key={key} className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-neutral-500">
-                {label}
-              </span>
-              <input
-                type="number"
-                inputMode="decimal"
-                step={step}
-                value={macrosStr[key]}
-                disabled={busy}
-                onChange={e => setMacrosStr(m => ({ ...m, [key]: e.target.value }))}
-                className="w-full px-2 py-2 rounded bg-neutral-800 border border-neutral-700 text-base tabular-nums"
-                aria-label={label}
-              />
-            </label>
-          ))}
-        </div>
-      </div>
+      <MacrosField macrosStr={macrosStr} onMacrosStr={setMacrosStr} busy={busy} />
 
       {/* Slot chips */}
       <div className="flex flex-wrap gap-2">

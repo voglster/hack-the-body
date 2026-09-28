@@ -26,6 +26,144 @@ interface Draft {
   items: DraftItem[];
 }
 
+function draftFromTemplate(t: MealTemplate): Draft {
+  return {
+    id: t.id,
+    name: t.name,
+    default_slot: t.default_slot,
+    items: t.items.map(i => ({
+      food_id: i.food_id, quantity_g: i.quantity_g,
+      food_name: "",
+    })),
+  };
+}
+
+/** Upsert the existing template by the same name with the merged items list
+ *  (existing items + new ones at their suggested qty). */
+function augmentedTemplateDraft(existing: MealTemplate, s: UsualAugmentSuggestion): Draft {
+  const existingIds = new Set(existing.items.map(i => i.food_id));
+  const additions = s.items
+    .filter(it => s.add_food_ids.includes(it.food_id) && !existingIds.has(it.food_id))
+    .map(it => ({ food_id: it.food_id, quantity_g: it.quantity_g }));
+  return {
+    name: existing.name,
+    default_slot: existing.default_slot,
+    items: [
+      ...existing.items.map(i => ({ food_id: i.food_id, quantity_g: i.quantity_g })),
+      ...additions,
+    ].map((i): DraftItem => ({ ...i, food_name: "" })),
+  };
+}
+
+function tweakDraft(s: UsualSuggestion, templates: MealTemplate[] | undefined): Draft {
+  if (s.kind === "augment") {
+    const existing = templates?.find(t => t.id === s.template_id);
+    const baseItems: DraftItem[] = existing
+      ? existing.items.map(i => ({
+          food_id: i.food_id, quantity_g: i.quantity_g, food_name: "",
+        }))
+      : [];
+    const additions: DraftItem[] = s.items
+      .filter(it => s.add_food_ids.includes(it.food_id))
+      .map(it => ({
+        food_id: it.food_id, quantity_g: it.quantity_g,
+        food_name: it.food_name,
+      }));
+    return {
+      id: existing?.id,
+      name: existing?.name ?? s.template_name,
+      default_slot: s.slot,
+      items: [...baseItems, ...additions],
+    };
+  }
+  const items: DraftItem[] = s.items.map(it => ({
+    food_id: it.food_id, quantity_g: it.quantity_g, food_name: it.food_name,
+  }));
+  return { name: s.name, default_slot: s.slot, items };
+}
+
+function draftFromEntries(entries: MealEntry[]): Draft {
+  const seen = new Set<string>();
+  const items: DraftItem[] = [];
+  for (const e of entries) {
+    if (e.food_name === "Water" || e.food_name === "Vitamins") continue;
+    const key = `${e.food_id}:${e.quantity_g}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      food_id: e.food_id,
+      quantity_g: e.quantity_g,
+      food_name: e.food_name,
+    });
+  }
+  const firstSlot = entries[0]?.slot ?? "snack";
+  return { name: "", default_slot: firstSlot, items };
+}
+
+function suggestionsError(queryError: Error | null, dataError: string | null | undefined): string | null {
+  if (queryError) {
+    return queryError instanceof Error ? queryError.message : String(queryError);
+  }
+  return dataError ?? null;
+}
+
+function MyUsualsSection({ templates, onEdit, onDelete, busy }: {
+  templates: MealTemplate[] | undefined;
+  onEdit: (t: MealTemplate) => void;
+  onDelete: (t: MealTemplate) => void;
+  busy: boolean;
+}) {
+  const grouped = useMemo(() => {
+    const out = new Map<MealSlot, MealTemplate[]>();
+    for (const s of SLOTS) out.set(s, []);
+    for (const t of templates ?? []) {
+      out.get(t.default_slot)?.push(t);
+    }
+    return out;
+  }, [templates]);
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-sm uppercase tracking-wide text-neutral-400">
+          My usuals
+        </h2>
+        <span className="text-xs text-neutral-600 tabular-nums">
+          {templates?.length ?? 0}
+        </span>
+      </div>
+      {!templates?.length && (
+        <div className="text-sm text-neutral-500 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+          No usuals yet. The suggestions above can build your first few in
+          one tap — or use <b>+ New</b> to start from scratch.
+        </div>
+      )}
+      {SLOTS.map(slot => {
+        const list = grouped.get(slot) ?? [];
+        if (list.length === 0) return null;
+        return (
+          <div key={slot}>
+            <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+              {SLOT_LABEL[slot]}
+            </div>
+            <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+              {list.map(t => (
+                <UsualRow
+                  key={t.id}
+                  template={t}
+                  onEdit={() => onEdit(t)}
+                  onDelete={() => onDelete(t)}
+                  busy={busy}
+                />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 export function UsualsPage() {
   const qc = useQueryClient();
   const templates = useQuery({
@@ -83,60 +221,14 @@ export function UsualsPage() {
   };
 
   const onSaveAugmentSuggestion = (s: UsualAugmentSuggestion) => {
-    // Look up the existing template, then upsert by same name with the
-    // merged items list (existing items + new ones at their suggested qty).
     const existing = templates.data?.find(t => t.id === s.template_id);
     if (!existing) return;
-    const existingIds = new Set(existing.items.map(i => i.food_id));
-    const additions = s.items
-      .filter(it => s.add_food_ids.includes(it.food_id) && !existingIds.has(it.food_id))
-      .map(it => ({ food_id: it.food_id, quantity_g: it.quantity_g }));
-    saveTemplate.mutate({
-      name: existing.name,
-      default_slot: existing.default_slot,
-      items: [
-        ...existing.items.map(i => ({ food_id: i.food_id, quantity_g: i.quantity_g })),
-        ...additions,
-      ].map((i): DraftItem => ({ ...i, food_name: "" })),
-    });
+    saveTemplate.mutate(augmentedTemplateDraft(existing, s));
   };
 
   const onTweakSuggestion = (s: UsualSuggestion) => {
-    if (s.kind === "augment") {
-      const existing = templates.data?.find(t => t.id === s.template_id);
-      const baseItems: DraftItem[] = existing
-        ? existing.items.map(i => ({
-            food_id: i.food_id, quantity_g: i.quantity_g, food_name: "",
-          }))
-        : [];
-      const additions: DraftItem[] = s.items
-        .filter(it => s.add_food_ids.includes(it.food_id))
-        .map(it => ({
-          food_id: it.food_id, quantity_g: it.quantity_g,
-          food_name: it.food_name,
-        }));
-      setDraft({
-        id: existing?.id,
-        name: existing?.name ?? s.template_name,
-        default_slot: s.slot,
-        items: [...baseItems, ...additions],
-      });
-      return;
-    }
-    const items: DraftItem[] = s.items.map(it => ({
-      food_id: it.food_id, quantity_g: it.quantity_g, food_name: it.food_name,
-    }));
-    setDraft({ name: s.name, default_slot: s.slot, items });
+    setDraft(tweakDraft(s, templates.data));
   };
-
-  const grouped = useMemo(() => {
-    const out = new Map<MealSlot, MealTemplate[]>();
-    for (const s of SLOTS) out.set(s, []);
-    for (const t of templates.data ?? []) {
-      out.get(t.default_slot)?.push(t);
-    }
-    return out;
-  }, [templates.data]);
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-6 pb-12">
@@ -160,11 +252,7 @@ export function UsualsPage() {
 
       <SuggestionsSection
         loading={suggestions.isFetching || refreshSuggestions.isPending}
-        error={
-          suggestions.error
-            ? (suggestions.error instanceof Error ? suggestions.error.message : String(suggestions.error))
-            : suggestions.data?.error ?? null
-        }
+        error={suggestionsError(suggestions.error, suggestions.data?.error)}
         newSuggestions={suggestions.data?.new ?? []}
         augmentSuggestions={suggestions.data?.augment ?? []}
         onSaveNew={onSaveNewSuggestion}
@@ -175,58 +263,16 @@ export function UsualsPage() {
         saving={saveTemplate.isPending}
       />
 
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-sm uppercase tracking-wide text-neutral-400">
-            My usuals
-          </h2>
-          <span className="text-xs text-neutral-600 tabular-nums">
-            {templates.data?.length ?? 0}
-          </span>
-        </div>
-        {!templates.data?.length && (
-          <div className="text-sm text-neutral-500 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-            No usuals yet. The suggestions above can build your first few in
-            one tap — or use <b>+ New</b> to start from scratch.
-          </div>
-        )}
-        {SLOTS.map(slot => {
-          const list = grouped.get(slot) ?? [];
-          if (list.length === 0) return null;
-          return (
-            <div key={slot}>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-                {SLOT_LABEL[slot]}
-              </div>
-              <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
-                {list.map(t => (
-                  <UsualRow
-                    key={t.id}
-                    template={t}
-                    onEdit={() => {
-                      setDraft({
-                        id: t.id,
-                        name: t.name,
-                        default_slot: t.default_slot,
-                        items: t.items.map(i => ({
-                          food_id: i.food_id, quantity_g: i.quantity_g,
-                          food_name: "",
-                        })),
-                      });
-                    }}
-                    onDelete={() => {
-                      if (confirm(`Delete usual "${t.name}"?`)) {
-                        deleteTemplate.mutate(t.id);
-                      }
-                    }}
-                    busy={deleteTemplate.isPending}
-                  />
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-      </section>
+      <MyUsualsSection
+        templates={templates.data}
+        onEdit={(t) => setDraft(draftFromTemplate(t))}
+        onDelete={(t) => {
+          if (confirm(`Delete usual "${t.name}"?`)) {
+            deleteTemplate.mutate(t.id);
+          }
+        }}
+        busy={deleteTemplate.isPending}
+      />
 
       <section>
         <button
@@ -254,21 +300,7 @@ export function UsualsPage() {
         <BuildFromDay
           onClose={() => setBuildFromDayOpen(false)}
           onPick={(entries) => {
-            const seen = new Set<string>();
-            const items: DraftItem[] = [];
-            for (const e of entries) {
-              if (e.food_name === "Water" || e.food_name === "Vitamins") continue;
-              const key = `${e.food_id}:${e.quantity_g}`;
-              if (seen.has(key)) continue;
-              seen.add(key);
-              items.push({
-                food_id: e.food_id,
-                quantity_g: e.quantity_g,
-                food_name: e.food_name,
-              });
-            }
-            const firstSlot = entries[0]?.slot ?? "snack";
-            setDraft({ name: "", default_slot: firstSlot, items });
+            setDraft(draftFromEntries(entries));
             setBuildFromDayOpen(false);
           }}
         />

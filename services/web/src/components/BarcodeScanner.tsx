@@ -18,6 +18,9 @@ interface Props {
   onClose: () => void;
 }
 
+const UNSUPPORTED_MESSAGE =
+  "This browser doesn't support barcode scanning. (Chrome on Android is required.)";
+
 /**
  * Full-screen camera scanner. Opens the rear camera, runs BarcodeDetector
  * every animation frame, calls onScanned the first time a barcode resolves.
@@ -32,12 +35,10 @@ export function BarcodeScanner({ onScanned, onClose }: Props) {
   const rafRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string>("starting camera...");
+  const unsupported = !window.BarcodeDetector;
 
   useEffect(() => {
-    if (!window.BarcodeDetector) {
-      setError("This browser doesn't support barcode scanning. (Chrome on Android is required.)");
-      return;
-    }
+    if (!window.BarcodeDetector) return;
     const detector = new window.BarcodeDetector({
       formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
     });
@@ -96,7 +97,7 @@ export function BarcodeScanner({ onScanned, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 text-white">
-        <span className="text-sm">{error ?? hint}</span>
+        <span className="text-sm">{error ?? (unsupported ? UNSUPPORTED_MESSAGE : hint)}</span>
         <button
           onClick={onClose}
           className="px-3 py-2 rounded bg-neutral-800 active:bg-neutral-600 text-sm min-h-[44px]"

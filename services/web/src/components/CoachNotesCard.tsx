@@ -40,12 +40,10 @@ export function DayNoteCard() {
   const [editing, setEditing] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (dayNoteQ.data && !daySeeded) {
-      setDay(dayNoteQ.data.text);
-      setDaySeeded(true);
-    }
-  }, [dayNoteQ.data, daySeeded]);
+  if (dayNoteQ.data && !daySeeded) {
+    setDay(dayNoteQ.data.text);
+    setDaySeeded(true);
+  }
 
   useEffect(() => {
     if (editing && taRef.current) {
@@ -140,12 +138,10 @@ export function StandingProfileCard() {
   const [coach, setCoach] = useState<string>("");
   const [coachSeeded, setCoachSeeded] = useState(false);
 
-  useEffect(() => {
-    if (coachNoteQ.data && !coachSeeded) {
-      setCoach(coachNoteQ.data.text);
-      setCoachSeeded(true);
-    }
-  }, [coachNoteQ.data, coachSeeded]);
+  if (coachNoteQ.data && !coachSeeded) {
+    setCoach(coachNoteQ.data.text);
+    setCoachSeeded(true);
+  }
 
   const saveCoach = useMutation({
     mutationFn: (text: string) => api.putCoachNote(text),

@@ -9,7 +9,7 @@
  * Storage is one row in `user_profile` keyed `_id="targets"` server-side.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../api/client";
 import type { UserTargets } from "../api/types";
@@ -87,13 +87,16 @@ export function TargetsCard() {
     queryFn: api.getTargets,
   });
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [seededFrom, setSeededFrom] = useState<UserTargets | undefined>(undefined);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // Hydrate the form once the server data lands. We only sync once so
-  // typing isn't clobbered by a background refetch.
-  useEffect(() => {
-    if (data) setForm(fromServer(data));
-  }, [data]);
+  // Hydrate the form when the server data lands or actually changes.
+  // An identical background refetch keeps the same reference, so typing
+  // isn't clobbered by it.
+  if (data && data !== seededFrom) {
+    setSeededFrom(data);
+    setForm(fromServer(data));
+  }
 
   const save = useMutation({
     mutationFn: () => api.putTargets(toServer(form)),

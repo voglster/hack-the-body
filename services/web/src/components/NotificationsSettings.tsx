@@ -3,28 +3,16 @@
  * unsubscribe — the version that lives on Today auto-hides once granted,
  * so we needed somewhere users could still reach the controls.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../api/client";
-import {
-  currentSubscription, pushSupported, subscribeToPush, unsubscribeFromPush,
-} from "../lib/push";
-
-type State = "loading" | "unsupported" | "denied" | "off" | "on";
+import { usePushState } from "../hooks/usePushState";
+import { subscribeToPush, unsubscribeFromPush } from "../lib/push";
 
 export function NotificationsSettings() {
-  const [state, setState] = useState<State>("loading");
+  const [state, refresh] = usePushState();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const refresh = async () => {
-    if (!pushSupported()) { setState("unsupported"); return; }
-    if (Notification.permission === "denied") { setState("denied"); return; }
-    const sub = await currentSubscription();
-    setState(sub ? "on" : "off");
-  };
-
-  useEffect(() => { void refresh(); }, []);
 
   const enable = async () => {
     setBusy(true); setError(null);

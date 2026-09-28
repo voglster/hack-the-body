@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { downsampleTo16k, encodeWav, MAX_RECORDING_SECONDS, TARGET_SAMPLE_RATE } from "../lib/wav";
 
@@ -51,7 +51,9 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const streamRef = useRef<MediaStream | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onAutoStopRef = useRef(options.onAutoStop);
-  onAutoStopRef.current = options.onAutoStop;
+  useLayoutEffect(() => {
+    onAutoStopRef.current = options.onAutoStop;
+  });
 
   const cleanup = useCallback(() => {
     if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }

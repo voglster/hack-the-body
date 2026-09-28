@@ -1,22 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { currentSubscription, pushSupported, subscribeToPush } from "../lib/push";
-
-type State = "loading" | "unsupported" | "denied" | "off" | "on";
+import { usePushState } from "../hooks/usePushState";
+import { subscribeToPush } from "../lib/push";
 
 export function NotificationsCard() {
-  const [state, setState] = useState<State>("loading");
+  const [state, refresh] = usePushState();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const refresh = async () => {
-    if (!pushSupported()) { setState("unsupported"); return; }
-    if (Notification.permission === "denied") { setState("denied"); return; }
-    const sub = await currentSubscription();
-    setState(sub ? "on" : "off");
-  };
-
-  useEffect(() => { void refresh(); }, []);
 
   const enable = async () => {
     setBusy(true); setError(null);

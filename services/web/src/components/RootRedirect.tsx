@@ -4,7 +4,7 @@
  *  data-only (Vite's fast-refresh likes that). */
 import { Navigate } from "react-router-dom";
 
-import { TAB_KEY, VALID_TABS } from "./BottomNav";
+import { TAB_KEY, VALID_TABS } from "../hooks/useActiveTab";
 
 export function RootRedirect() {
   const saved = typeof window === "undefined" ? null : localStorage.getItem(TAB_KEY);

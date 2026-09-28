@@ -7,7 +7,7 @@ import {
   vitaminItem,
   waterItem,
   weighInItem,
-} from "./KioskOpenList";
+} from "./kioskOpenItems";
 import { todayLocalISO } from "../../lib/tz";
 import type {
   MealEntry,

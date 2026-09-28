@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Summary } from "../api/types";
-import { BottomNav, useActiveTab } from "../components/BottomNav";
+import { BottomNav } from "../components/BottomNav";
 import { ActiveWorkoutCard } from "../components/ActiveWorkoutCard";
 import { CoachCard } from "../components/CoachCard";
 import { DayNoteCard, StandingProfileCard } from "../components/CoachNotesCard";
@@ -26,6 +26,7 @@ import { TodayMeals } from "../components/TodayMeals";
 import { WeightChart } from "../components/WeightChart";
 import { WeightStatsCard } from "../components/WeightStatsCard";
 import { WorkoutList } from "../components/WorkoutList";
+import { useActiveTab } from "../hooks/useActiveTab";
 import { clearApiKey } from "../lib/auth";
 import { formatDuration, formatLbs } from "../lib/format";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -79,7 +80,7 @@ function Section({ id, title, children, defaultOpen = true }: {
     <details
       id={id}
       open={open}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
       className="group"
     >
       <summary className="cursor-pointer list-none flex items-center justify-between text-sm uppercase tracking-wide text-neutral-400 mb-2 select-none">

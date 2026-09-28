@@ -1,20 +1,10 @@
 /**
  * Bottom tab nav. Pixel-9 thumb-zone friendly: fixed, 56px-tall hit
- * targets, respects iOS safe-area-inset.
- *
- * Tab state lives in the URL (path `/today`, `/food`, `/trends`,
- * `/more`) so browser back/forward, deep links, and PWA refresh all
- * work. The last-used tab is mirrored to localStorage purely so the
- * bare `/` redirect knows where to send a returning user; the URL is
- * the source of truth in-app.
+ * targets, respects iOS safe-area-inset. Tab state lives in the URL;
+ * see `useActiveTab`.
  */
-import { useEffect } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-
-export type Tab = "today" | "food" | "trends" | "more";
-
-export const VALID_TABS = ["today", "food", "trends", "more"] as const;
-export const TAB_KEY = "htb.activeTab";
+import { Link } from "react-router-dom";
+import type { Tab } from "../hooks/useActiveTab";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "today",  label: "Today",  icon: "●" },
@@ -22,20 +12,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "trends", label: "Trends", icon: "📊" },
   { id: "more",   label: "More",   icon: "⋯" },
 ];
-
-export function useActiveTab(): [Tab, (t: Tab) => void] {
-  const { tab: rawTab } = useParams<{ tab?: string }>();
-  const navigate = useNavigate();
-  const tab: Tab = (VALID_TABS as readonly string[]).includes(rawTab ?? "")
-    ? (rawTab as Tab) : "today";
-  // Mirror to localStorage so RootRedirect ("/") sends a returning
-  // user back to the same tab they had open.
-  useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem(TAB_KEY, tab);
-  }, [tab]);
-  const setTab = (t: Tab): void => { void navigate(`/${t}`); };
-  return [tab, setTab];
-}
 
 export function BottomNav({ active, onChange }: {
   active: Tab | "log"; onChange: (t: Tab) => void;

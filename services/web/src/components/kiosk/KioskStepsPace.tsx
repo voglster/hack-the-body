@@ -70,7 +70,7 @@ export function KioskStepsPace() {
             <CartesianGrid stroke={INK.grid} vertical={false} />
             <XAxis type="number" dataKey="hour" domain={[WAKE_HOUR, Math.ceil(bed)]} ticks={[7, 10, 13, 16, 19, 22]}
                    tickFormatter={clock} stroke={INK.axis} tick={{ fontSize: 18 }} tickLine={false} />
-            <YAxis type="number" domain={[0, Math.max(goal, steps.data.total)]} ticks={[0, goal / 2, goal]}
+            <YAxis type="number" domain={[0, Math.max(goal, steps.data.total)]} ticks={[goal / 2, goal]}
                    tickFormatter={(n: number) => `${Math.round(n / 1000)}k`} stroke={INK.axis}
                    tick={{ fontSize: 18 }} tickLine={false} axisLine={false} width={48} />
             <Line data={pace} dataKey="steps" stroke={INK.pace} strokeWidth={2} strokeDasharray="6 6"

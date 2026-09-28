@@ -23,7 +23,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.models.food import Food, Macros, MealEntry, MealSlot
-from app.services.food_parser import ParsedItem, parse_food_text
+from app.services.food_parser import ParsedItem, estimate_macros, parse_food_text
 from app.services.food_repo import FoodRepo, macros_for_quantity
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ AUTO_MATCH = 0.80
 ASK_FLOOR = 0.55
 AMBIGUITY_MARGIN = 0.05
 MAX_ATTEMPTS = 5
-TOKEN_FUZZ = 0.8
+TOKEN_FUZZ = 0.85
 
 _FLUID_OZ_G = 29.5735
 _UNIT_G = {
@@ -154,6 +154,11 @@ async def _distinct_foods(db: AsyncDatabase, usage: dict[str, int]) -> list[dict
     best: dict[str, dict[str, Any]] = {}
     async for d in db["foods"].find():
         d["id"] = str(d.pop("_id"))
+        if (
+            d.get("category", "food") == "food"
+            and (d.get("per_serving") or {}).get("calories") is None
+        ):
+            continue
         key = normalize(f"{d.get('name', '')} {d.get('brand') or ''}")
         kept = best.get(key)
         if kept is None or usage.get(d["id"], 0) > usage.get(kept["id"], 0):
@@ -209,9 +214,14 @@ async def log_food(
 
 
 async def _log_estimate(
-    db: AsyncDatabase, item: ParsedItem, ts: datetime, capture_id: str
+    settings: Settings, db: AsyncDatabase, item: ParsedItem, ts: datetime, capture_id: str
 ) -> dict[str, Any]:
     repo = FoodRepo(db)
+    if item.calories is None:
+        try:
+            item = await estimate_macros(settings, item)
+        except Exception as exc:  # an unestimated entry beats a lost one
+            log.warning("capture %s: estimate failed: %s", capture_id, exc)
     macros = Macros(
         calories=item.calories, protein_g=item.protein_g, carbs_g=item.carbs_g, fat_g=item.fat_g
     )
@@ -314,18 +324,20 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
         name, explicit_g = split_quantity(item.name)
         learned = await _phrase(db, name)
         if learned:
-            entry_ids.extend([
-                (
-                    await log_food(
-                        db,
-                        food_id=li["food_id"],
-                        quantity_g=explicit_g or li["quantity_g"],
-                        ts=ts,
-                        capture_id=capture_id,
-                    )
-                )["id"]
-                for li in learned
-            ])
+            entry_ids.extend(
+                [
+                    (
+                        await log_food(
+                            db,
+                            food_id=li["food_id"],
+                            quantity_g=explicit_g or li["quantity_g"],
+                            ts=ts,
+                            capture_id=capture_id,
+                        )
+                    )["id"]
+                    for li in learned
+                ]
+            )
             items.append({"text": name, "status": "logged", "via": "phrase"})
             continue
         ranked = rank_catalog(name, foods, usage)
@@ -375,7 +387,7 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
                 }
             )
         else:
-            entry_ids.append((await _log_estimate(db, item, ts, capture_id))["id"])
+            entry_ids.append((await _log_estimate(settings, db, item, ts, capture_id))["id"])
             items.append({"text": name, "status": "logged", "via": "estimate"})
 
     status = "needs_confirm" if any(i["status"] == "ask" for i in items) else "resolved"
@@ -390,6 +402,7 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
 
 
 async def confirm_item(
+    settings: Settings,
     db: AsyncDatabase,
     capture_id: str,
     item_index: int,
@@ -419,7 +432,7 @@ async def confirm_item(
             carbs_g=est.get("carbs_g"),
             fat_g=est.get("fat_g"),
         )
-        entry_ids.append((await _log_estimate(db, pi, ts, capture_id))["id"])
+        entry_ids.append((await _log_estimate(settings, db, pi, ts, capture_id))["id"])
         item["status"] = "logged"
         item["via"] = "estimate"
     else:
@@ -558,11 +571,15 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
     for e in sorted(entries, key=lambda e: e["ts"]):
         last_qty[e["food_id"]] = e.get("quantity_g") or 0
     out: list[dict[str, Any]] = []
+    shown_foods: set[str] = set()
     for key, score in ranked:
         kind, ref = key.split(":", 1)
         if kind == "template":
             tpl = await repo.get_template(ref)
-            if tpl:
+            lone = tpl["items"][0]["food_id"] if tpl and len(tpl["items"]) == 1 else None
+            if tpl and lone not in shown_foods:
+                if lone:
+                    shown_foods.add(lone)
                 out.append(
                     {
                         "kind": "template",
@@ -572,8 +589,9 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
                     }
                 )
         else:
-            food = await repo.get_food(ref)
+            food = await repo.get_food(ref) if ref not in shown_foods else None
             if food:
+                shown_foods.add(ref)
                 out.append(
                     {
                         "kind": "food",

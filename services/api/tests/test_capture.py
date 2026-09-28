@@ -220,9 +220,32 @@ async def test_voice_capture_transcribes_then_resolves(client, parsed, monkeypat
 
     monkeypatch.setattr(router_mod, "build_transcriber", lambda _s: FakeTranscriber())
     parsed["items"] = [ParsedItem(name="vanilla premier shake")]
-    r = await client.post("/capture/voice", headers=H,
-                          files={"audio": ("d.wav", b"\x00" * 64, "audio/wav")})
+    r = await client.post(
+        "/capture/voice", headers=H, files={"audio": ("d.wav", b"\x00" * 64, "audio/wav")}
+    )
     assert r.status_code == 201
     assert r.json()["input"]["text"] == "vanilla premier shake"
     entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
     assert entry["food_id"] == shake["id"]
+
+
+async def test_estimate_fills_missing_macros(client, parsed, monkeypatch):
+    async def fake_estimate(_settings, item):
+        return ParsedItem(name=item.name, servings=item.servings, calories=650, protein_g=30)
+
+    monkeypatch.setattr(svc, "estimate_macros", fake_estimate)
+    parsed["items"] = [ParsedItem(name="Brewery burger")]
+    await client.post("/capture", headers=H, json={"text": "brewery burger"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 650
+
+
+async def test_macro_less_foods_are_not_match_targets(client, parsed, monkeypatch):
+    await client.post("/foods", headers=H, json={"name": "Burger", "per_serving": {}})
+
+    async def fake_estimate(_settings, item):
+        return ParsedItem(name=item.name, calories=700)
+
+    monkeypatch.setattr(svc, "estimate_macros", fake_estimate)
+    parsed["items"] = [ParsedItem(name="Burger")]
+    await client.post("/capture", headers=H, json={"text": "burger"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 700

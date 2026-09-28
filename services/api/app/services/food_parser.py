@@ -6,6 +6,7 @@ and we get back a list of items with macros where present. Macros are
 TOTAL for the item (not per-serving), so logging them is just creating
 a Food + MealEntry where quantity_g == serving_g (factor 1).
 """
+
 from __future__ import annotations
 
 import json
@@ -105,12 +106,51 @@ async def parse_food_text(settings: Settings, text: str) -> list[ParsedItem]:
         name = (it.get("name") or "").strip()
         if not name:
             continue
-        out.append(ParsedItem(
-            name=name,
-            servings=_coerce_float(it.get("servings")) or 1.0,
-            calories=_coerce_float(it.get("calories")),
-            protein_g=_coerce_float(it.get("protein_g")),
-            carbs_g=_coerce_float(it.get("carbs_g")),
-            fat_g=_coerce_float(it.get("fat_g")),
-        ))
+        out.append(
+            ParsedItem(
+                name=name,
+                servings=_coerce_float(it.get("servings")) or 1.0,
+                calories=_coerce_float(it.get("calories")),
+                protein_g=_coerce_float(it.get("protein_g")),
+                carbs_g=_coerce_float(it.get("carbs_g")),
+                fat_g=_coerce_float(it.get("fat_g")),
+            )
+        )
     return out
+
+
+ESTIMATE_PROMPT = """Estimate the nutrition for one typical US portion of: {NAME}
+
+Return ONLY a JSON object, no prose:
+{"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}
+JSON:"""
+
+
+async def estimate_macros(settings: Settings, item: ParsedItem) -> ParsedItem:
+    """Fill an item's missing macros with a typical-portion estimate, scaled by servings."""
+    completion = await complete(
+        settings,
+        messages=[{"role": "user", "content": ESTIMATE_PROMPT.replace("{NAME}", item.name)}],
+        temperature=0.1,
+        max_tokens=300,
+    )
+    raw = completion.text
+    start, end = raw.find("{"), raw.rfind("}")
+    try:
+        data = json.loads(raw[start : end + 1]) if start != -1 and end > start else {}
+    except json.JSONDecodeError:
+        data = {}
+    n = item.servings or 1.0
+
+    def scaled(key: str) -> float | None:
+        v = _coerce_float(data.get(key))
+        return round(v * n, 1) if v is not None else None
+
+    return ParsedItem(
+        name=item.name,
+        servings=item.servings,
+        calories=scaled("calories"),
+        protein_g=scaled("protein_g"),
+        carbs_g=scaled("carbs_g"),
+        fat_g=scaled("fat_g"),
+    )

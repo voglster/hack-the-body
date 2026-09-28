@@ -209,6 +209,7 @@ async def confirm(
         return await svc.get_capture(db, capture_id)  # type: ignore[return-value]
     try:
         return await svc.confirm_item(
+            request.app.state.settings,
             db,
             capture_id,
             req.item_index,
@@ -241,7 +242,8 @@ async def capture_voice(
         raise HTTPException(status_code=413, detail="recording too large")
     try:
         transcript = await build_transcriber(settings).transcribe(
-            pcm, await build_speech_context(db),
+            pcm,
+            await build_speech_context(db),
         )
     except BoundaryUnavailable as exc:
         raise HTTPException(status_code=503, detail="voice is unavailable") from exc
@@ -249,7 +251,11 @@ async def capture_voice(
     if not transcript:
         raise HTTPException(status_code=422, detail="nothing was heard")
     cap = await svc.create_capture(
-        db, source="voice", device=device, status="pending", payload={"text": transcript},
+        db,
+        source="voice",
+        device=device,
+        status="pending",
+        payload={"text": transcript},
     )
     background.add_task(svc.resolve_capture, settings, db, cap["id"])
     return cap

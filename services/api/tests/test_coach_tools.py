@@ -1,12 +1,13 @@
 """Coach tool registry + per-tool unit tests."""
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.models.metrics import HRV, Weight
 from app.services.coach.habits import HabitConfig, create_habit, mark_status
 from app.services.coach.tools import (
     REGISTRY,
     ToolError,
+    _local_today,
     dispatch,
     schema_for_llm,
 )
@@ -150,8 +151,7 @@ async def test_habit_status_tool_returns_history(mock_db):
     hid = await create_habit(mock_db, HabitConfig(
         name="brush teeth", kind="manual",
     ))
-    today = date(2026, 5, 10)
-    await mark_status(mock_db, hid, today, status="done", source="manual")
+    await mark_status(mock_db, hid, _local_today(), status="done", source="manual")
     out = await dispatch(mock_db, "habit_status", {
         "name": "brush teeth", "days_back": 7,
     })

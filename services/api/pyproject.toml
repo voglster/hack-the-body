@@ -30,6 +30,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = ["ignore:datetime.datetime.utcnow:DeprecationWarning:mongomock"]
 
 [tool.ruff]
 line-length = 100

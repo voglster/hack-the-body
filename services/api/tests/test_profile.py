@@ -200,3 +200,13 @@ async def test_targets_lights_out_local_validates_format(client):
         headers={"X-API-Key": "test-key"},
     )
     assert r.status_code == 422
+
+
+async def test_eating_window_round_trips_and_validates(client):
+    h = {"X-API-Key": "test-key"}
+    window = {"eating_window_start_local": "10:30", "eating_window_end_local": "18:30"}
+    assert (await client.put("/profile/targets", headers=h, json=window)).status_code == 200
+    got = (await client.get("/profile/targets", headers=h)).json()
+    assert (got["eating_window_start_local"], got["eating_window_end_local"]) == ("10:30", "18:30")
+    bad = await client.put("/profile/targets", headers=h, json={"eating_window_end_local": "7pm"})
+    assert bad.status_code == 422

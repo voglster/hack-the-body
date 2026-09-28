@@ -357,6 +357,7 @@ export interface UserTargets {
   weekly_loss_rate_max_lb: number | null;
   eating_window_start_local?: string | null;
   eating_window_end_local?: string | null;
+  lights_out_local?: string | null;
   updated_at?: string;
 }
 

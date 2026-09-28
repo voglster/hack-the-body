@@ -24,6 +24,9 @@ interface FormState {
   goal_weight_lb: string;
   weekly_loss_rate_min_lb: string;
   weekly_loss_rate_max_lb: string;
+  eating_window_start_local: string;
+  eating_window_end_local: string;
+  lights_out_local: string;
 }
 
 const EMPTY: FormState = {
@@ -36,19 +39,25 @@ const EMPTY: FormState = {
   goal_weight_lb: "",
   weekly_loss_rate_min_lb: "",
   weekly_loss_rate_max_lb: "",
+  eating_window_start_local: "",
+  eating_window_end_local: "",
+  lights_out_local: "",
 };
+
+const TIME_FIELDS = ["eating_window_start_local", "eating_window_end_local", "lights_out_local"] as const;
 
 const FIELDS: (keyof FormState)[] = [
   "daily_calories", "daily_protein_g", "daily_fat_g", "daily_carbs_g",
   "daily_water_oz", "step_goal_override",
   "goal_weight_lb", "weekly_loss_rate_min_lb", "weekly_loss_rate_max_lb",
+  ...TIME_FIELDS,
 ];
 
 function fromServer(t: UserTargets | undefined): FormState {
   if (!t) return EMPTY;
   const out = { ...EMPTY };
   for (const k of FIELDS) {
-    const v = (t as unknown as Record<string, number | null | undefined>)[k];
+    const v = (t as unknown as Record<string, number | string | null | undefined>)[k];
     out[k] = v == null ? "" : String(v);
   }
   return out;
@@ -77,6 +86,9 @@ function toServer(f: FormState): Partial<UserTargets> {
     goal_weight_lb: floatNum(f.goal_weight_lb),
     weekly_loss_rate_min_lb: floatNum(f.weekly_loss_rate_min_lb),
     weekly_loss_rate_max_lb: floatNum(f.weekly_loss_rate_max_lb),
+    eating_window_start_local: f.eating_window_start_local || null,
+    eating_window_end_local: f.eating_window_end_local || null,
+    lights_out_local: f.lights_out_local || null,
   };
 }
 
@@ -199,6 +211,15 @@ export function TargetsCard() {
               step="0.25"
             />
           </div>
+          <div className="text-[11px] text-neutral-500 pt-1">Day shape (blank = 11:00–19:00, lights out 22:00)</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="window opens" type="time" value={form.eating_window_start_local}
+                   onChange={onField("eating_window_start_local")} />
+            <Field label="window closes" type="time" value={form.eating_window_end_local}
+                   onChange={onField("eating_window_end_local")} />
+            <Field label="lights out" type="time" value={form.lights_out_local}
+                   onChange={onField("lights_out_local")} />
+          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -219,8 +240,9 @@ export function TargetsCard() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, suffix, step }: {
+function Field({ label, value, onChange, placeholder, suffix, step, type = "number" }: {
   label: string;
+  type?: "number" | "time";
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
@@ -232,8 +254,8 @@ function Field({ label, value, onChange, placeholder, suffix, step }: {
       <span className="text-xs text-neutral-500">{label}</span>
       <div className="relative">
         <input
-          type="number"
-          inputMode={step ? "decimal" : "numeric"}
+          type={type}
+          inputMode={type === "time" ? undefined : step ? "decimal" : "numeric"}
           step={step}
           value={value}
           onChange={onChange}

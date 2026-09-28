@@ -11,8 +11,8 @@ is correct on the day it is written and wrong by the end of the week, because
 the catalog grows every time something new is logged.
 
 **Eligibility is by `meal_entries` count, not by presence in `foods`.** This
-is what makes the loop learn rather than drift: `/foods/parse/log` upserts a
-Food per parsed item, so a mis-hearing becomes a permanent catalog row. It is
+is what makes the loop learn rather than drift: an estimated capture upserts a
+Food per unmatched item, so a mis-hearing becomes a permanent catalog row. It is
 logged exactly once and never again, so requiring more than one entry starves
 it while the correction actually eaten weekly climbs.
 

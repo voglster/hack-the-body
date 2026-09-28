@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Capture, CaptureContext, CaptureSuggestion, EatingWindow } from "../api/types";
 import { BottomNav } from "../components/BottomNav";
-import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import { CaptureBar } from "../components/CaptureBar";
 
 const UNDO_MS = 6000;
 
@@ -234,57 +234,6 @@ function Chip({ children, onClick }: { children: React.ReactNode; onClick: () =>
             className="rounded-full bg-neutral-900 border border-neutral-700 active:bg-neutral-700 px-4 py-2">
       {children}
     </button>
-  );
-}
-
-function CaptureBar({ device, onCaptured, onError }: {
-  device: string; onCaptured: (c: Capture) => void; onError: (m: string) => void;
-}) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const sendVoice = async (blob: Blob | null) => {
-    if (!blob) return;
-    setBusy(true);
-    try { onCaptured(await api.captureVoice(blob, device)); }
-    catch (e) { onError((e as Error).message); }
-    finally { setBusy(false); }
-  };
-  const recorder = useVoiceRecorder({ onAutoStop: (b) => { void sendVoice(b); } });
-  const recording = recorder.state === "recording";
-  const canRecord = recorder.state !== "unsupported" && recorder.state !== "denied";
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = text.trim();
-    if (!t) return;
-    setText("");
-    try { onCaptured(await api.capture({ text: t, device })); }
-    catch (err) { setText(t); onError((err as Error).message); }
-  };
-
-  return (
-    <form onSubmit={(e) => { void submit(e); }} className="flex gap-2">
-      <input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="What did you eat?"
-        enterKeyHint="send"
-        className="flex-1 rounded-2xl bg-neutral-900 border border-neutral-700 px-4 py-4 text-lg outline-none
-                   focus:border-emerald-500"
-      />
-      {canRecord && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => { void (recording ? recorder.stop().then(sendVoice) : recorder.start()); }}
-          className={`rounded-2xl px-5 text-2xl ${recording ? "bg-red-600" : "bg-neutral-800"} disabled:opacity-50`}
-          aria-label={recording ? "stop recording" : "record"}
-        >
-          {busy ? "…" : recording ? `■ ${recorder.seconds}` : "🎤"}
-        </button>
-      )}
-    </form>
   );
 }
 

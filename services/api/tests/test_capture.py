@@ -219,7 +219,7 @@ def test_infer_slot(monkeypatch):
     assert svc.infer_slot(at(8), "supplement") == "supplement"
 
 
-async def test_voice_capture_transcribes_then_resolves(client, parsed, monkeypatch):
+async def test_voice_capture_transcribes_then_resolves(client, parsed, monkeypatch, mock_db):
     shake = await _food(client, "Vanilla Premier Protein Shake", 325, 160)
 
     class FakeTranscriber:
@@ -233,6 +233,7 @@ async def test_voice_capture_transcribes_then_resolves(client, parsed, monkeypat
     )
     assert r.status_code == 201
     assert r.json()["input"]["text"] == "vanilla premier shake"
+    assert await mock_db["voice_entries"].count_documents({"capture_id": r.json()["id"]}) == 1
     entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
     assert entry["food_id"] == shake["id"]
 
@@ -354,3 +355,19 @@ async def test_context_hides_usual_whose_foods_were_eaten_directly(client, monke
     await client.post("/capture", headers=H, json={"food_id": shake["id"]})
     ctx = (await client.get("/capture/context", headers=H)).json()
     assert ctx["suggestions"] == []
+
+
+async def test_stated_macros_beat_a_catalog_match(client, parsed):
+    await _food(client, "Chicken Shawarma w/ grilled veg", 1, 900)
+    parsed["items"] = [ParsedItem(name="Chicken Shawarma", calories=650, protein_g=45)]
+    text = "Chicken shawarma: 650 cal, 45g protein"
+    await client.post("/capture", headers=H, json={"text": text})
+    today = (await client.get("/capture/today", headers=H)).json()
+    assert today["totals"] == {"calories": 650, "protein_g": 45}
+
+
+def test_has_stated_macros():
+    assert svc.has_stated_macros("Crepe Shell: 250 cal")
+    assert svc.has_stated_macros("eggs, 30g protein")
+    assert svc.has_stated_macros("Crepe Shell: 250\n2 Eggs: 150")
+    assert not svc.has_stated_macros("2 eggs and 10 oz water")

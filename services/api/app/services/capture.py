@@ -54,6 +54,10 @@ _QTY_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ounces?|ml|grams?|g|cups?)\b",
     re.IGNORECASE,
 )
+_STATED_MACROS_RE = re.compile(
+    r"\d+\s*(k?cal|calories|g\s*protein|protein)\b|^[^:\n]+:\s*\d+\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _STOPWORDS = {"a", "an", "the", "of", "some", "my", "with", "and", "fl"}
 
 
@@ -94,6 +98,11 @@ async def _slot_for(db: AsyncDatabase, ts: datetime, category: str) -> MealSlot:
         }
     )
     return infer_slot(ts, category, first_meal=earlier is None)
+
+
+def has_stated_macros(text: str) -> bool:
+    """'Shawarma: 650 cal, 45g protein' — the user's numbers beat the catalog's."""
+    return bool(_STATED_MACROS_RE.search(text))
 
 
 def normalize(text: str) -> str:
@@ -338,8 +347,13 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
     foods, usage, last_qty = await _catalog(db)
     entry_ids: list[str] = []
     items: list[dict[str, Any]] = []
+    stated = has_stated_macros(text)
     for item in parsed:
         name, explicit_g = split_quantity(item.name)
+        if stated and item.calories is not None:
+            entry_ids.append((await _log_estimate(settings, db, item, ts, capture_id))["id"])
+            items.append({"text": name, "status": "logged", "via": "stated"})
+            continue
         learned = await _phrase(db, name)
         if learned:
             entry_ids.extend(

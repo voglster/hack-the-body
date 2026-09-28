@@ -304,5 +304,13 @@ async def capture_voice(
         status="pending",
         payload={"text": transcript},
     )
+    # The transcript beside the capture it produced is the tuning corpus
+    # for the hotword vocabulary (services/voice/vocabulary.py).
+    await db["voice_entries"].insert_one({
+        "created_at": datetime.now(UTC),
+        "transcript": transcript,
+        "capture_id": cap["id"],
+        "stt_model": settings.voice_stt_model,
+    })
     background.add_task(svc.resolve_capture, settings, db, cap["id"])
     return cap

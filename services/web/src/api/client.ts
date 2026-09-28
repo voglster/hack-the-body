@@ -5,7 +5,7 @@ import type {
   Food, MealEntry, MealTemplate, MealSlot, TodayTotals, StepsToday, CoachInsight, KioskGlance, CoachRecentEntry,
   CoachFeedback, CoachFeedbackRating, CoachThread, CoachTurn, SyncStatus, UserTargets,
   DayNote, CoachNote,
-  WaterToday, VitaminsToday, ParsedFoodItem,
+  WaterToday, VitaminsToday,
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
   UsualSuggestionsResponse,
@@ -181,37 +181,6 @@ export const api = {
   foodById: (food_id: string) =>
     get<Food>(`/foods/${encodeURIComponent(food_id)}`),
   createFood: (food: Partial<Food>) => post<Food>("/foods", food),
-  parseFoodText: (text: string) =>
-    post<{ items: ParsedFoodItem[] }>("/foods/parse", { text }),
-  logParsedFoods: (items: ParsedFoodItem[], slot: MealSlot, ts?: string) =>
-    post<{ count: number; entries: MealEntry[] }>(
-      "/foods/parse/log", ts ? { items, slot, ts } : { items, slot },
-    ),
-  reportParseFailure: (
-    text: string,
-    parsed: ParsedFoodItem[],
-    corrected: ParsedFoodItem[] | null,
-    note: string | null,
-  ) => post<{ id: string; stored: boolean }>(
-    "/foods/parse/feedback", { text, parsed, corrected, note },
-  ),
-  logVoiceFood: async (audio: Blob, slot: MealSlot) => {
-    const form = new FormData();
-    form.append("audio", audio, "dictation.wav");
-    form.append("slot", slot);
-    const r = await fetch(`${BASE}/foods/voice/log`, {
-      method: "POST", headers: authHeaders(), body: form,
-    });
-    if (r.status === 401) handleUnauthorized();
-    if (r.status === 503) throw new Error("voice-unavailable");
-    if (!r.ok) throw new Error(`voice log failed: ${r.status}`);
-    return (await r.json()) as {
-      transcript: string;
-      items: ParsedFoodItem[];
-      logged_entry_ids: string[];
-      count: number;
-    };
-  },
   renameFood: (food_id: string, name: string) => {
     return fetch(`${BASE}/foods/${food_id}`, {
       method: "PATCH",

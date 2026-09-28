@@ -5,11 +5,10 @@ import { api } from "../api/client";
 import type { Food, MealEntry, MealSlot, MealTemplate } from "../api/types";
 import { slotTimestampUTC, todayLocalISO } from "../lib/tz";
 import { BarcodeScanner } from "./BarcodeScanner";
+import { CaptureBar } from "./CaptureBar";
 import { DayNav } from "./DayNav";
 import { EntryTimeEditor, type EntryEditPatch } from "./EntryTimeEditor";
 import { MacroProgressCard } from "./MacroProgressCard";
-import { PasteFood } from "./PasteFood";
-import { VoiceFood } from "./VoiceFood";
 
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner", "snack", "supplement"];
 
@@ -161,16 +160,26 @@ export function TodayMeals() {
   );
 }
 
+const RESOLVE_REFRESH_MS = 5000;
+
 function Loggers({ refresh, day }: { refresh: () => void; day: string | null }) {
   return (
     <>
       {day && (
         <div className="text-xs text-amber-300/80 bg-amber-900/20 border border-amber-800/40 rounded px-3 py-2">
-          Logging to {day} — backdated entries land at the slot's typical hour.
+          Logging to {day} — backdated entries land at midday unless you pick a slot below.
         </div>
       )}
-      <VoiceFood onLogged={refresh} />
-      <PasteFood onLogged={refresh} day={day} />
+      <CaptureBar
+        device="phone"
+        ts={day ? slotTimestampUTC(day, "lunch") : undefined}
+        onCaptured={() => {
+          refresh();
+          // The resolver lands entries a few seconds after capture.
+          window.setTimeout(refresh, RESOLVE_REFRESH_MS);
+        }}
+        onError={(m) => window.alert(m)}
+      />
       <QuickLog onLogged={refresh} day={day} />
     </>
   );

@@ -89,7 +89,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profile,
         push,
         vitamins,
-        voice,
         water,
         webhooks,
         workouts,
@@ -107,7 +106,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(push.router)
     app.include_router(water.router)
     app.include_router(vitamins.router)
-    app.include_router(voice.router)
     app.include_router(nudges.router)
     app.include_router(webhooks.router)
     app.include_router(audit.router)

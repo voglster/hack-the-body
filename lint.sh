@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lint everything: ruff (api + ingestor) and eslint (web).
+# Lint everything: ruff (every Python service) and eslint (web).
 # Exit non-zero if any check fails. Run from repo root.
 
 set -uo pipefail
@@ -49,6 +49,7 @@ run_eslint() {
 
 run_ruff api
 run_ruff ingestor-garmin
+run_ruff ingestor-hevy
 run_ruff treadmill-tracker
 run_ruff pi-agent
 run_eslint web

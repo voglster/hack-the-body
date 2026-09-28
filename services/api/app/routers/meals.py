@@ -111,8 +111,8 @@ class EditEntryReq(BaseModel):
 async def edit_entry(entry_id: str, req: EditEntryReq, request: Request):
     """Edit an entry's time, slot, quantity, and/or macros.
 
-    Time-series collections require a delete+reinsert, so the returned id
-    will differ from the original. When `quantity_g` is provided, macros
+    Time-series collections require a delete+reinsert; the entry keeps its
+    id. When `quantity_g` is provided, macros
     and the derived `servings` field are recomputed against the food's
     per-serving record. When `macros` is provided, the supplied fields
     override the (recomputed or existing) snapshot — useful for fixing a

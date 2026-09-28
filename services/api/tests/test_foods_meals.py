@@ -167,8 +167,7 @@ async def test_edit_entry_time_and_slot(client):
     moved = r.json()
     assert moved["slot"] == "lunch"
     assert moved["ts"].startswith("2026-04-25T13:30")
-    # New id (delete+reinsert pattern), original gone.
-    assert moved["id"] != entry_id
+    assert moved["id"] == entry_id  # captures keep pointing at an edited entry
 
 
 async def test_edit_entry_404(client):

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
+import { useReloadOnDeploy } from "../hooks/useReloadOnDeploy";
 import { KioskCoachLine } from "../components/kiosk/KioskCoachLine";
 import { KioskHero } from "../components/kiosk/KioskHero";
 import { KioskLogging } from "../components/kiosk/KioskLogging";
@@ -11,6 +12,7 @@ import { KioskTagline } from "../components/kiosk/KioskTagline";
 import { KioskTopBar } from "../components/kiosk/KioskTopBar";
 
 export function Kiosk() {
+  useReloadOnDeploy(true);
   const q = useQuery({
     queryKey: ["coach-kiosk"],
     queryFn: api.coachKiosk,

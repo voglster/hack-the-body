@@ -37,7 +37,7 @@ async def test_shake_button_logs_and_speaks(client, mock_db):
 async def test_water_button_reports_running_total(client, mock_db):
     await _seed(client, mock_db)
     await _press(client, "up")
-    assert (await _press(client, "up"))["say"] == "Water. 16 ounces today."
+    assert (await _press(client, "up"))["say"] == "Water. 32 ounces today."
 
 
 async def test_undo_removes_last_button_capture(client, mock_db):

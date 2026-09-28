@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -115,7 +116,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
+def frontend_build_id(static_dir: Path = STATIC_DIR) -> str:
+    """Changes with every frontend build — index.html carries the hashed asset names."""
+    index = static_dir / "index.html"
+    if not index.is_file():
+        return "dev"
+    return hashlib.sha256(index.read_bytes()).hexdigest()[:12]
+
+
 def _mount_frontend(app: FastAPI) -> None:
+    build_id = frontend_build_id()
+
+    @app.get("/version", include_in_schema=False)
+    async def version() -> dict[str, str]:
+        # Always-on screens (kiosk, kitchen iPad) poll this and reload when
+        # a deploy changes it, so nobody has to refresh them by hand.
+        return {"build": build_id}
+
     if not STATIC_DIR.is_dir():
         return  # tests / dev without a built bundle
 

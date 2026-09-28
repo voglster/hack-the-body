@@ -6,8 +6,10 @@ import { api } from "../api/client";
 import type { Capture, CaptureContext, CaptureSuggestion, EatingWindow } from "../api/types";
 import { BottomNav } from "../components/BottomNav";
 import { CaptureBar } from "../components/CaptureBar";
+import { useReloadOnDeploy } from "../hooks/useReloadOnDeploy";
 
 const UNDO_MS = 6000;
+const PINT_OZ = 16;
 
 interface Toast { captureId?: string; label: string }
 
@@ -34,6 +36,7 @@ export function LogPage() {
   const kitchen = params.get("kitchen") === "1";
   const device = kitchen ? "kitchen" : "phone";
   useWakeLock(kitchen);
+  useReloadOnDeploy(kitchen);
 
   const qc = useQueryClient();
   const today = useQuery({
@@ -176,9 +179,7 @@ function DayChips({ ctx, onWater, onVitamins, onAte }: {
       <span className="text-neutral-400 tabular-nums">
         💧 {ctx?.water_oz ?? 0}/{ctx?.water_goal_oz ?? 100} oz
       </span>
-      {[8, 16].map((oz) => (
-        <Chip key={oz} onClick={() => onWater(oz)}>+{oz}</Chip>
-      ))}
+      <Chip onClick={() => onWater(PINT_OZ)}>+ pint</Chip>
       {ctx && !ctx.vitamins_done && <Chip onClick={onVitamins}>💊 Vitamins</Chip>}
       <Chip onClick={onAte}>🍽 I just ate</Chip>
     </div>

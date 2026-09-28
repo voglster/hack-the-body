@@ -53,7 +53,7 @@ async def ensure_default_buttons(db: AsyncDatabase) -> None:
     r = DEFAULT_REMOTE
     defaults = [
         {"button": f"{r}/center", "action": "habit", "habit": "Vitamins", "label": "Vitamins"},
-        {"button": f"{r}/up", "action": "water", "oz": 8, "label": "Water"},
+        {"button": f"{r}/up", "action": "water", "oz": 16, "label": "Water"},
         {"button": f"{r}/left", "action": "placeholder", "label": "Ate something"},
         {"button": f"{r}/down", "action": "undo", "label": "Undo"},
     ]
@@ -131,7 +131,7 @@ async def _placeholder(db: AsyncDatabase, button: str, label: str) -> str:
 async def _log(db: AsyncDatabase, mapping: dict[str, Any], button: str, label: str) -> str:
     is_water = mapping["action"] == "water"
     if is_water:
-        food_id, qty = await _water_food_id(db), mapping.get("oz", 8) * WATER_OZ_G
+        food_id, qty = await _water_food_id(db), mapping.get("oz", 16) * WATER_OZ_G
     else:
         food_id, qty = mapping["food_id"], mapping["quantity_g"]
     c = await cap.create_capture(

@@ -508,3 +508,16 @@ export interface CaptureContext {
   last_food_at: string | null;
   suggestions: CaptureSuggestion[];
 }
+
+export interface LoggingStatus {
+  logged_today: boolean;
+  days_logged_7d: number;
+  lapsed: boolean;
+  pending: number;
+  weight_by_tracking: {
+    tracked_lb_per_week: number | null;
+    tracked_weeks: number;
+    untracked_lb_per_week: number | null;
+    untracked_weeks: number;
+  };
+}

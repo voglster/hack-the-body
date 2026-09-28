@@ -29,6 +29,7 @@ from app.services.coach import generate_insight
 from app.services.coach_weekly import generate_weekly_review
 from app.services.nudges import PUSH_BUCKETS, nudges_push_tick
 from app.services.push import send_push
+from app.services.rhythm import rhythm_tick
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,13 @@ async def _capture_sweep_run(settings: Settings, db: AsyncDatabase) -> None:
         logger.exception("capture sweep: failed")
 
 
+async def _rhythm_run(settings: Settings, db: AsyncDatabase) -> None:
+    try:
+        await rhythm_tick(settings, db)
+    except Exception:
+        logger.exception("rhythm tick: failed")
+
+
 def build_scheduler(
     settings: Settings,
     db: AsyncDatabase,
@@ -119,6 +127,13 @@ def build_scheduler(
         IntervalTrigger(minutes=5),
         args=[settings, db],
         id="capture-sweep",
+        replace_existing=True,
+    )
+    sched.add_job(
+        _rhythm_run,
+        IntervalTrigger(minutes=5),
+        args=[settings, db],
+        id="rhythm",
         replace_existing=True,
     )
     return sched

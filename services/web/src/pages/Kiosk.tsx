@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { KioskCoachLine } from "../components/kiosk/KioskCoachLine";
 import { KioskHero } from "../components/kiosk/KioskHero";
+import { KioskLogging } from "../components/kiosk/KioskLogging";
 import { KioskOpenList } from "../components/kiosk/KioskOpenList";
 import { KioskRecoverySentence } from "../components/kiosk/KioskRecoverySentence";
 import { KioskTagline } from "../components/kiosk/KioskTagline";
@@ -27,6 +28,7 @@ export function Kiosk() {
       <KioskHero />
       <KioskCoachLine />
       {!windDownMode && <KioskOpenList />}
+      {!windDownMode && <KioskLogging />}
       <div className="flex-1" />
       <KioskRecoverySentence />
       <KioskTagline />

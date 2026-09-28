@@ -22,7 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
-from app.services import buttons
+from app.services import buttons, rhythm
 from app.services import capture as svc
 from app.services.food_repo import FoodRepo
 from app.services.voice.boundary import BoundaryUnavailable, build_transcriber
@@ -206,6 +206,12 @@ async def set_button(remote: str, name: str, req: ButtonMappingReq, request: Req
         {"button": doc["button"]}, doc, upsert=True,
     )
     return doc
+
+
+@router.get("/status")
+async def logging_status(request: Request) -> dict:
+    """Days logged this week, lapse state, and weight on tracked vs untracked weeks."""
+    return await rhythm.status(request.app.state.db)
 
 
 @router.get("/context")

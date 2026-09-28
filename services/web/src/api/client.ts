@@ -9,7 +9,7 @@ import type {
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
   UsualSuggestionsResponse,
-  Capture, CaptureContext, CaptureToday, CaptureSuggestion,
+  Capture, CaptureContext, CaptureToday, CaptureSuggestion, LoggingStatus,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -70,6 +70,7 @@ export const api = {
   captureInbox: () => get<Capture[]>("/capture/inbox"),
   captureSuggestions: () => get<CaptureSuggestion[]>("/capture/suggestions"),
   captureContext: () => get<CaptureContext>("/capture/context"),
+  loggingStatus: () => get<LoggingStatus>("/capture/status"),
   capture: (body: {
     text?: string; food_id?: string; quantity_g?: number;
     template_id?: string; placeholder?: boolean; device?: string;

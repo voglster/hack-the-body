@@ -16,6 +16,7 @@ const ICONS: Record<string, string> = {
   weight: "⚖️",
   steps: "🚶",
   bedtime: "🌙",
+  sync: "⌚",
 };
 
 const SEVERITY_RING: Record<string, string> = {

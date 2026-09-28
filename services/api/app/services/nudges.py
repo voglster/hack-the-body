@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.services.data_freshness import garmin_freshness
 from app.services.nudge_dismissals import get_active_dismissals
 from app.services.push import send_push
 
@@ -45,7 +46,7 @@ BEDTIME_START = time(21, 30)
 BEDTIME_END = time(22, 30)
 
 # ----- push buckets (hour, minute) — must align with rules' push_at -----
-PUSH_BUCKETS: list[tuple[int, int]] = [(10, 0), (12, 0), (21, 30)]
+PUSH_BUCKETS: list[tuple[int, int]] = [(10, 0), (12, 0), (15, 0), (21, 30)]
 
 
 Severity = Literal["info", "warn"]
@@ -73,6 +74,7 @@ class NudgeContext:
     water_oz_today: float
     weight_logged_today: bool
     steps_today: int | None         # None = no daily summary doc yet
+    garmin: dict[str, Any] | None = None  # data_freshness.assess(); None = unknown
 
 
 @dataclass
@@ -153,8 +155,8 @@ def rule_no_weighin(ctx: NudgeContext) -> FiredNudge | None:
 def rule_steps_below_pace(ctx: NudgeContext) -> FiredNudge | None:
     if ctx.now_local.time() < STEPS_FLOOR:
         return None
-    if ctx.steps_today is None:
-        return None  # no Garmin data yet — can't judge
+    if ctx.steps_today is None or (ctx.garmin or {}).get("stale"):
+        return None  # no fresh Garmin data — low numbers may just be unsynced
     target = ctx.targets.get("step_goal_override")
     if not target:
         return None
@@ -168,6 +170,21 @@ def rule_steps_below_pace(ctx: NudgeContext) -> FiredNudge | None:
         severity="info",
         title="Behind on steps",
         body=f"{ctx.steps_today:,} of {target:,} so far — go for a walk.",
+    )
+
+
+def rule_garmin_stale(ctx: NudgeContext) -> FiredNudge | None:
+    garmin = ctx.garmin or {}
+    if not garmin.get("stale"):
+        return None
+    since = garmin.get("through_local")
+    return FiredNudge(
+        id="garmin_stale",
+        kind="sync",
+        severity="info",
+        title="Open the Garmin app",
+        body=f"No watch data since {since} — open Garmin Connect to sync."
+        if since else "No watch data today yet — open Garmin Connect to sync.",
     )
 
 
@@ -204,6 +221,11 @@ RULES: list[Rule] = [
         id="steps_below_pace", kind="steps",
         pushable=False, push_at=None,
         evaluate=rule_steps_below_pace,
+    ),
+    Rule(
+        id="garmin_stale", kind="sync",
+        pushable=True, push_at=time(15, 0),
+        evaluate=rule_garmin_stale,
     ),
     Rule(
         id="bedtime_reminder", kind="bedtime",
@@ -301,8 +323,11 @@ async def build_context(
     if summary is not None and summary.get("steps") is not None:
         steps_today = int(summary["steps"])
 
+    garmin = await garmin_freshness(db, now_local)
+
     return NudgeContext(
         now_local=now_local,
+        garmin=garmin,
         targets=targets,
         vitamins_count_today=vitamins_count,
         water_oz_today=water_oz,

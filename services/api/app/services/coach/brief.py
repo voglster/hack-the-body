@@ -23,6 +23,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.config import Settings
 from app.services.coach.context import Findings, build_findings
 from app.services.coach.phase import compute_phase
+from app.services.data_freshness import garmin_freshness
 from app.services.eating_window import eating_window
 from app.services.food_repo import FoodRepo
 from app.services.llm import complete
@@ -132,6 +133,10 @@ COACH_VOICE = (
     "`summary` says it in words. Repeat its times; never work out "
     "window timing yourself. While fasting or closed, give no "
     "advice about eating now.\n"
+    "- `garmin_data` says how current steps/sleep/HRV are. When "
+    "`garmin_data.stale` is true, the numbers are old, not low: do "
+    "not call steps low or push a walk off them — ask Jim to open "
+    "the Garmin Connect app so today's data can sync.\n"
     "- `protein` is precomputed: `eaten_g` so far, `daily_target_g`, "
     "`remaining_g`. The daily target is only cleared when "
     "`remaining_g` is 0 — hitting a front-load goal is not "
@@ -166,7 +171,7 @@ KIOSK_SYSTEM_PROMPT = (
     + "preamble, no markdown fences:\n"
     + "  verb       — one or two UPPERCASE words. The single action "
     + "right now, drawn from a small kit: EAT, WALK, DRINK, LOG "
-    + "FOOD, WEIGH IN, CLEAR. Must correspond to an item on "
+    + "FOOD, WEIGH IN, OPEN GARMIN, CLEAR. Must correspond to an item on "
     + "Attention. If Attention is empty: verb = CLEAR.\n"
     + "  qualifier  — short noun phrase ≤28 chars completing the "
     + "verb (the calorie gap, the step deficit). Empty when verb = "
@@ -455,6 +460,7 @@ async def gather_context(
         "daily_summary": daily,
         "steps_today": today_steps,
         "eating_window": eating_window(now_local, targets),
+        "garmin_data": await garmin_freshness(repo.db, now_local),
         "phase": {
             "phase": phase_info.phase,
             "lights_out_at": phase_info.lights_out_at.isoformat(),

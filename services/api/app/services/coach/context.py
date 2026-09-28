@@ -260,6 +260,9 @@ async def build_findings(
         targets=snapshot.get("targets") or {},
         window_state=snapshot["eating_window"]["state"],
     )
+    if (snapshot.get("garmin_data") or {}).get("stale"):
+        on_track = [m for m in on_track if m != "steps_today"]
+        attention = [m for m in attention if m != "steps_today"] + ["garmin_sync"]
 
     import os  # noqa: PLC0415
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # noqa: PLC0415

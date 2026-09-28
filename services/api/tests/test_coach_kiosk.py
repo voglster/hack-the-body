@@ -9,6 +9,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from app.services.coach import brief as brief_mod
 from tests.conftest import llm_body
 
 HEADERS = {"X-API-Key": "test-key"}
@@ -87,11 +88,16 @@ async def test_kiosk_parses_structured_json_response(client):
     assert body["coach"].startswith("Lunch happened")
 
 
-async def test_kiosk_forces_clear_when_findings_attention_empty(client):
+async def test_kiosk_forces_clear_when_findings_attention_empty(client, monkeypatch):
     """Even when the LLM hallucinates an action verb, if findings.attention
     is empty (nothing actually needs doing right now) the server overrides
     to CLEAR. Prevents 'EAT' from showing on the wall after the user has
     logged plenty of food but is under their calorie target."""
+
+    async def fresh(_db, _now):
+        return {"stale": False, "through_local": "12:00", "summary": "current"}
+
+    monkeypatch.setattr(brief_mod, "garmin_freshness", fresh)
     counter = [0]
     structured = llm_body(
         '{"verb": "EAT", "qualifier": "200 kcal short", '

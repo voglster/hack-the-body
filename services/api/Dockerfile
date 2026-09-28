@@ -9,10 +9,13 @@ RUN npm run build
 
 # Stage 2: Python API + bundled static FE
 FROM python:3.13-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
-COPY services/api/pyproject.toml ./
-RUN pip install --root-user-action=ignore --no-cache-dir --upgrade pip \
- && pip install --root-user-action=ignore --no-cache-dir -e .
+# Install exactly what uv.lock pins, so an unrelated rebuild can't pull a
+# breaking release (see services/ingestor-garmin/Dockerfile).
+COPY services/api/pyproject.toml services/api/uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+ENV PATH="/app/.venv/bin:$PATH"
 COPY services/api/app ./app
 COPY --from=web /web/dist ./static
 EXPOSE 8000

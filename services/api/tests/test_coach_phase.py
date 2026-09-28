@@ -3,7 +3,6 @@ from zoneinfo import ZoneInfo
 
 from app.services.coach.phase import WIND_DOWN_LEAD_MIN, compute_phase
 
-
 CT = ZoneInfo("America/Chicago")
 
 

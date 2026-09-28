@@ -19,7 +19,7 @@ from app.services.voice.vocabulary import SpeechContext
 log = logging.getLogger(__name__)
 
 
-class BoundaryUnavailable(RuntimeError):
+class BoundaryUnavailable(RuntimeError):  # noqa: N818 — public name used across routers and tests
     """The speech vendor did not answer. Degrade to typing; never surface raw."""
 
 
@@ -34,7 +34,7 @@ class MockTranscriber:
         self._text = text
         self._fail = fail
 
-    async def transcribe(self, pcm: bytes, ctx: SpeechContext) -> str:
+    async def transcribe(self, pcm: bytes, ctx: SpeechContext) -> str:  # noqa: ARG002 — Transcriber protocol
         if self._fail:
             raise BoundaryUnavailable("mock transcriber configured to fail")
         return self._text

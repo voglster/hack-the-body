@@ -1,6 +1,8 @@
 """Audit log: diff flattening + record_change behavior."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.services.audit import diff, record_change
@@ -126,7 +128,6 @@ async def test_meal_template_create_and_delete_records_audit(client, mock_db):
 @pytest.mark.asyncio
 async def test_audit_endpoint_filters(client, mock_db):
     # Seed two unrelated entities + actors
-    from datetime import datetime, UTC
     await mock_db["audit_log"].insert_many([
         {"ts": datetime.now(UTC), "entity": "user_profile.targets",
          "entity_id": "targets", "op": "update",

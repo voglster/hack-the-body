@@ -186,7 +186,7 @@ async def test_get_active_returns_none_for_empty(mock_db):
 
 
 @pytest.mark.asyncio
-async def test_get_active_finalizes_completed_session(mock_db, monkeypatch):
+async def test_get_active_finalizes_completed_session(mock_db):
     # 5 minutes of real walking, well outside the active window.
     base = datetime.now(UTC) - timedelta(hours=2)
     docs = [

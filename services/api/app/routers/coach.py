@@ -46,9 +46,7 @@ def _oid(s: str) -> ObjectId:
         raise HTTPException(status_code=400, detail=f"invalid id: {s}") from e
 
 
-async def _phase_for_window(
-    db: Any, day_start: datetime | None, day_end: datetime | None,
-) -> dict[str, Any]:
+async def _current_phase(db: Any) -> dict[str, Any]:
     """Compute current phase fields fresh (never cached — time-sensitive)."""
     tz_name = os.environ.get("TZ") or "UTC"
     try:
@@ -97,7 +95,7 @@ async def insight(
             detail=f"coach LLM unavailable: {type(e).__name__}: {e}",
         ) from e
     payload = _serialize(result)
-    payload.update(await _phase_for_window(db, start, end))
+    payload.update(await _current_phase(db))
     return payload
 
 
@@ -144,7 +142,7 @@ async def kiosk(
         # Phase is time-sensitive — compute fresh and merge; don't serve
         # a stale phase from the cached payload.
         payload = dict(hit["payload"])
-        payload.update(await _phase_for_window(db, start, end))
+        payload.update(await _current_phase(db))
         return payload
 
     async def _generate() -> Any:
@@ -208,7 +206,7 @@ async def kiosk(
     cache[key] = {"stored_at": now, "payload": payload}
     # Phase is computed fresh and merged after caching.
     payload = dict(payload)
-    payload.update(await _phase_for_window(db, start, end))
+    payload.update(await _current_phase(db))
     return payload
 
 

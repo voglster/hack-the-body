@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from time import perf_counter
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
@@ -32,8 +33,8 @@ router = APIRouter(prefix="/foods/voice", tags=["voice"], dependencies=[Depends(
 @router.post("/log", status_code=201)
 async def log_dictation(
     request: Request,
-    audio: UploadFile = File(...),
-    slot: MealSlot = Form("snack"),
+    audio: Annotated[UploadFile, File()],
+    slot: Annotated[MealSlot, Form()] = "snack",
 ) -> dict:
     settings = request.app.state.settings
     db = request.app.state.db

@@ -47,9 +47,10 @@ _PATH_TOKEN = re.compile(r"\['([^']+)'\]|\[(\d+)\]")
 def _flatten_path(deep_path: str) -> str:
     """Turn a DeepDiff `root['x'][0]['y']` path into `x.0.y`."""
     s = deep_path.removeprefix("root")
-    parts: list[str] = []
-    for m in _PATH_TOKEN.finditer(s):
-        parts.append(m.group(1) if m.group(1) is not None else m.group(2))
+    parts = [
+        m.group(1) if m.group(1) is not None else m.group(2)
+        for m in _PATH_TOKEN.finditer(s)
+    ]
     return ".".join(parts)
 
 
@@ -158,5 +159,5 @@ async def record_change(
             **d,
         }
         await db["audit_log"].insert_one(row)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("audit.record_change failed: %r", exc)

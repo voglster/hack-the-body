@@ -22,7 +22,10 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
 @router.get("/log")
 async def list_audit(
     request: Request,
-    entity: Annotated[str | None, Query(description="exact match, e.g. 'user_profile.targets'")] = None,
+    entity: Annotated[
+        str | None,
+        Query(description="exact match, e.g. 'user_profile.targets'"),
+    ] = None,
     entity_id: Annotated[str | None, Query()] = None,
     changed_path: Annotated[
         str | None,

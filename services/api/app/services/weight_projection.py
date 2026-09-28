@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 MIN_DAYS_FOR_FIT = 21
+MIN_POINTS_FOR_FIT = 3
+UNREACHABLE_MARGIN_LB = 0.5
 SECONDS_PER_WEEK = 7 * 86_400
 
 
@@ -56,7 +58,7 @@ class DecayFit:
         # and ≤1 because target should be between asymptote and start.
         # Treat "within 0.5 lb of asymptote" as effectively-unreachable;
         # otherwise tiny floating-point gaps produce huge spurious ETAs.
-        if ratio <= 0 or numer < 0.5:
+        if ratio <= 0 or numer < UNREACHABLE_MARGIN_LB:
             return None
         if ratio >= 1:
             # target is at/above the fit's starting weight → already there
@@ -109,7 +111,7 @@ def fit_decay(
     sorted. Returns None if there's insufficient data span or if no valid
     asymptote can be found.
     """
-    if len(points) < 3:
+    if len(points) < MIN_POINTS_FOR_FIT:
         return None
     pts_sorted = sorted(points, key=lambda p: p[0])
     t0 = pts_sorted[0][0]
@@ -130,7 +132,7 @@ def fit_decay(
     # Tight bounds matter: a 3-parameter exponential is poorly identifiable —
     # a "lower asymptote + slower decay" can fit noisy data nearly as well
     # as the true parameters. Empirically, clamping the lower bound to
-    # min_w − 15 lb prevents the worst overfitting without losing real cases
+    # min_w - 15 lb prevents the worst overfitting without losing real cases
     # (someone with goal 220 weighing 245 is well within 15 lb of any
     # reasonable asymptote between those values).
     lo = min_w - 15.0

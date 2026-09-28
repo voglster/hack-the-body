@@ -4,6 +4,7 @@ The kiosk gets a glance-line rendered through KIOSK_SYSTEM_PROMPT, and
 the result is cached for 15 min so 60s kiosk polling doesn't hammer
 the LLM.
 """
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
@@ -193,7 +194,6 @@ async def test_recent_excludes_kiosk_trigger_by_default(client, mock_db):
     """Kiosk insights store raw JSON in `text`; they must not appear in
     /coach/recent (which the dashboard CoachCard reads) or as history
     fed to the normal /coach/insight prompt."""
-    from datetime import UTC, datetime
     await mock_db["coach_insights"].insert_many([
         {
             "text": "Solid morning. Keep going.",

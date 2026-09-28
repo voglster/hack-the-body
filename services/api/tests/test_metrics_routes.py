@@ -1,4 +1,7 @@
-from datetime import UTC, datetime
+import math
+from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from app.models.metrics import Weight
 from app.services.metrics_repo import MetricsRepo
@@ -35,9 +38,6 @@ async def test_summary_returns_all_latest(client, mock_db):
 
 async def test_weight_projection_returns_fit(client, mock_db):
     """Seed enough synthetic data to make the decay fit, then check the route."""
-    import math
-    from datetime import timedelta
-    from app.services.metrics_repo import MetricsRepo
     repo = MetricsRepo(mock_db)
     start = datetime.now(UTC) - timedelta(days=60)
     w0, w_inf, k = 115.0, 100.0, 0.10  # kg
@@ -55,7 +55,7 @@ async def test_weight_projection_returns_fit(client, mock_db):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["fit"] is not None
-    assert body["fit"]["asymptote_lb"] == pytest_approx(
+    assert body["fit"]["asymptote_lb"] == pytest.approx(
         100.0 * 2.2046226, abs=5.0,
     )
     assert body["fit"]["n_points"] == 60
@@ -65,8 +65,6 @@ async def test_weight_projection_returns_fit(client, mock_db):
 
 
 async def test_weight_projection_returns_null_when_insufficient_data(client, mock_db):
-    from datetime import timedelta
-    from app.services.metrics_repo import MetricsRepo
     repo = MetricsRepo(mock_db)
     # Only 10 days — below MIN_DAYS_FOR_FIT
     for i in range(10):
@@ -82,8 +80,3 @@ async def test_weight_projection_returns_null_when_insufficient_data(client, moc
     body = r.json()
     assert body["fit"] is None
     assert body["reason"] == "insufficient_data"
-
-
-def pytest_approx(*a, **kw):
-    import pytest
-    return pytest.approx(*a, **kw)

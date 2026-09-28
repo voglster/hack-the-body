@@ -122,14 +122,15 @@ def test_mine_respects_dismissal():
 
 def test_mine_drops_low_confidence_noise():
     now = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
-    entries = []
     # 20 snacks at different times, only 3 with both foods together
-    for i in range(17):
-        entries.append({
+    entries = [
+        {
             "ts": now + timedelta(days=i),
             "food_id": "lonely", "food_name": "Lonely",
             "slot": "snack", "quantity_g": 50,
-        })
+        }
+        for i in range(17)
+    ]
     for i in range(17, 20):
         d = now + timedelta(days=i)
         entries.append({"ts": d, "food_id": "a", "food_name": "A",

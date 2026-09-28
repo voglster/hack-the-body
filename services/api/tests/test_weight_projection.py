@@ -1,12 +1,12 @@
 """Unit tests for the exponential-decay weight projection."""
 import math
+import random
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.services.weight_projection import (
     MIN_DAYS_FOR_FIT,
-    DecayFit,
     fit_decay,
 )
 
@@ -21,7 +21,6 @@ def _synthetic_points(
     start: datetime = datetime(2026, 4, 26, 13, 0, tzinfo=UTC),
 ) -> list[tuple[datetime, float]]:
     """Generate clean (or noisy) points following W(t) = W_inf + (W0-W_inf)*exp(-k*t)."""
-    import random
     random.seed(42)
     pts = []
     for i in range(n):

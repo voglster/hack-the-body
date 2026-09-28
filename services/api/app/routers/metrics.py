@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.auth import require_api_key
 from app.routers.profile import TARGETS_KEY
 from app.services.metrics_repo import MetricsRepo
-from app.services.weight_projection import MIN_DAYS_FOR_FIT, fit_decay
+from app.services.weight_projection import MIN_DAYS_FOR_FIT, MIN_POINTS_FOR_FIT, fit_decay
 
 KG_TO_LB = 2.2046226
 
@@ -113,11 +113,11 @@ async def weight_projection(
     if fit is None:
         span_days = (
             (pts[-1][0] - pts[0][0]).total_seconds() / 86_400
-            if len(pts) >= 2 else 0
+            if pts else 0
         )
         reason = (
             "insufficient_data"
-            if len(pts) < 3 or span_days < MIN_DAYS_FOR_FIT
+            if len(pts) < MIN_POINTS_FOR_FIT or span_days < MIN_DAYS_FOR_FIT
             else "no_decay"
         )
         return {

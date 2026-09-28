@@ -33,6 +33,7 @@ from app.services.voice.vocabulary import SpeechContext
 log = logging.getLogger(__name__)
 
 FRAME_BYTES = 3200
+_RIFF_PREAMBLE_BYTES = 12
 
 # An in-flight segment starting no later than the last settled one is that
 # segment's own superseded hypothesis, not new audio.
@@ -116,7 +117,7 @@ def _strip_wav_header(body: bytes) -> bytes:
     doesn't validate as RIFF/WAVE (missing magic, truncated chunk header)
     is treated as raw PCM rather than assumed to be a malformed WAV.
     """
-    if len(body) < 12 or body[0:4] != b"RIFF" or body[8:12] != b"WAVE":
+    if len(body) < _RIFF_PREAMBLE_BYTES or body[0:4] != b"RIFF" or body[8:12] != b"WAVE":
         return body
     offset = 12
     while offset + 8 <= len(body):
@@ -167,7 +168,9 @@ class WhisperLiveTranscriber:
         except Exception as exc:
             raise BoundaryUnavailable(f"speech backend unreachable: {exc}") from exc
 
-    async def _run(self, frames: AsyncIterator[bytes], ctx: SpeechContext) -> str:
+    async def _run(  # noqa: C901, PLR0915 — one websocket session; the receive loop shares state with send_audio
+        self, frames: AsyncIterator[bytes], ctx: SpeechContext,
+    ) -> str:
         # Imported here so an install without websockets still boots — the
         # mock path never needs it.
         from websockets.asyncio.client import connect  # noqa: PLC0415

@@ -12,7 +12,11 @@ const GRID_AREA: Record<Position, string> = {
   up: "col-start-2 row-start-1", left: "col-start-1 row-start-2", center: "col-start-2 row-start-2",
   right: "col-start-3 row-start-2", down: "col-start-2 row-start-3",
 };
-const ARROW: Record<Position, string> = { up: "▲", left: "◀", center: "●", right: "▶", down: "▼" };
+// U+FE0E asks for text presentation; without it ◀/▶ render as colour emoji beside plain ▲/▼.
+const TEXT = "\uFE0E";
+const ARROW: Record<Position, string> = {
+  up: `▲${TEXT}`, left: `◀${TEXT}`, center: "●", right: `▶${TEXT}`, down: `▼${TEXT}`,
+};
 /** The IKEA remote, drawn as it sits in the hand; tap a button to change it. */
 export function RemoteButtons() {
   const [open, setOpen] = useState(false);

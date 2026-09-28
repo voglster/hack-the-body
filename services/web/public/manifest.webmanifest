@@ -2,7 +2,7 @@
   "name": "Hack the Body",
   "short_name": "HTB",
   "description": "Self-hosted health and training dashboard.",
-  "start_url": "/",
+  "start_url": "/log",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

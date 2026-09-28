@@ -60,6 +60,7 @@ class MealEntry(BaseModel):
     servings: float | None = None  # convenience: quantity_g / food.serving_g at log time
     slot: MealSlot
     template_id: str | None = None  # if logged from a template
+    capture_id: str | None = None
     note: str | None = None
     # Snapshot of macros at log time so historical totals don't shift if the
     # food record is later edited.

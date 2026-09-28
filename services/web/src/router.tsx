@@ -3,6 +3,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { RootRedirect } from "./components/RootRedirect";
 import { Dashboard } from "./pages/Dashboard";
 import { Kiosk } from "./pages/Kiosk";
+import { LogPage } from "./pages/Log";
 import { UsualsPage } from "./pages/Usuals";
 import { WorkoutPage } from "./pages/Workout";
 import { WorkoutList } from "./pages/WorkoutList";
@@ -13,6 +14,7 @@ export const router = createBrowserRouter([
   // Static routes win over `/:tab` by react-router's specificity scoring,
   // so /kiosk, /workout, and /workouts mount their own pages rather than Dashboard.
   { path: "/kiosk", element: <Kiosk /> },
+  { path: "/log", element: <LogPage /> },
   { path: "/workout", element: <WorkoutPage /> },
   { path: "/workouts", element: <WorkoutList /> },
   { path: "/workouts/:sourceId", element: <WorkoutDetail /> },

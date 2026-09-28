@@ -61,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         admin,
         audit,
         auth,
+        capture,
         coach,
         foods,
         habits,
@@ -92,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(nudges.router)
     app.include_router(webhooks.router)
     app.include_router(audit.router)
+    app.include_router(capture.router)
 
     _mount_frontend(app)
     return app

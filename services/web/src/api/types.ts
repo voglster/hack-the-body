@@ -443,3 +443,47 @@ export interface CreateHabitRequest {
   kind: HabitKind;
   resolver?: string;
 }
+
+export type CaptureStatus = "resolved" | "pending" | "needs_confirm" | "placeholder" | "failed";
+
+export interface CaptureOption {
+  food_id: string;
+  name: string;
+  quantity_g: number;
+  score?: number;
+}
+
+export interface CaptureItem {
+  text: string;
+  status: "logged" | "ask" | "skipped";
+  via?: "phrase" | "match" | "estimate" | "confirm";
+  chosen?: CaptureOption;
+  candidates?: CaptureOption[];
+}
+
+export interface Capture {
+  id: string;
+  ts: string;
+  source: "tap" | "text" | "voice" | "button";
+  status: CaptureStatus;
+  input: { text?: string; food_id?: string; template_id?: string };
+  items?: CaptureItem[];
+  entry_ids: string[];
+  entries?: MealEntry[];
+  last_error?: string | null;
+}
+
+export interface CaptureToday {
+  captures: Capture[];
+  totals: { calories: number; protein_g: number };
+  unresolved: number;
+}
+
+export interface CaptureSuggestion {
+  kind: "food" | "template";
+  food_id?: string;
+  template_id?: string;
+  name: string;
+  quantity_g?: number;
+  category?: FoodCategory;
+}

@@ -9,6 +9,7 @@ import type {
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
   UsualSuggestionsResponse,
+  Capture, CaptureToday, CaptureSuggestion,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -64,6 +65,33 @@ async function del(path: string): Promise<void> {
 }
 
 export const api = {
+  // capture-first logging
+  captureToday: () => get<CaptureToday>("/capture/today"),
+  captureInbox: () => get<Capture[]>("/capture/inbox"),
+  captureSuggestions: () => get<CaptureSuggestion[]>("/capture/suggestions"),
+  capture: (body: {
+    text?: string; food_id?: string; quantity_g?: number;
+    template_id?: string; placeholder?: boolean; device?: string;
+  }) => post<Capture>("/capture", body),
+  confirmCapture: (id: string, body: {
+    item_index?: number; candidate_index?: number; use_estimate?: boolean;
+    skip?: boolean; text?: string;
+  }) => post<Capture>(`/capture/${id}/confirm`, body),
+  undoCapture: (id: string) => del(`/capture/${id}`),
+  captureVoice: async (audio: Blob, device?: string) => {
+    const form = new FormData();
+    form.append("audio", audio, "dictation.wav");
+    if (device) form.append("device", device);
+    const r = await fetch(`${BASE}/capture/voice`, {
+      method: "POST", headers: authHeaders(), body: form,
+    });
+    if (r.status === 401) handleUnauthorized();
+    if (r.status === 503) throw new Error("voice is unavailable — type it instead");
+    if (r.status === 422) throw new Error("didn't catch that");
+    if (!r.ok) throw new Error(`voice failed: ${r.status}`);
+    return (await r.json()) as Capture;
+  },
+
   summary: () => get<Summary>("/metrics/summary"),
   weightRange: (days = 60) => get<WeightPoint[]>(`/metrics/weight/range?days=${days}`),
   weightProjection: (goal?: number) => {

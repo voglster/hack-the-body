@@ -22,7 +22,8 @@ TIMESERIES_COLLECTIONS: dict[str, dict] = {
 REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates", "coach_insights",
                        "push_subscriptions", "parse_feedback",
-                       "strength_sets", "audit_log", "voice_entries"]
+                       "strength_sets", "audit_log", "voice_entries",
+                       "captures", "capture_phrases"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:

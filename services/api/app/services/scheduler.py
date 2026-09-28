@@ -20,9 +20,11 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
+from app.services.capture import sweep_pending
 from app.services.coach import generate_insight
 from app.services.coach_weekly import generate_weekly_review
 from app.services.nudges import PUSH_BUCKETS, nudges_push_tick
@@ -73,6 +75,13 @@ async def _nudges_push_run(settings: Settings, db: AsyncDatabase) -> None:
         logger.exception("nudges push tick: failed")
 
 
+async def _capture_sweep_run(settings: Settings, db: AsyncDatabase) -> None:
+    try:
+        await sweep_pending(settings, db)
+    except Exception:
+        logger.exception("capture sweep: failed")
+
+
 def build_scheduler(
     settings: Settings,
     db: AsyncDatabase,
@@ -105,4 +114,11 @@ def build_scheduler(
             id=f"nudges-push-{hh:02d}-{mm:02d}",
             replace_existing=True,
         )
+    sched.add_job(
+        _capture_sweep_run,
+        IntervalTrigger(minutes=5),
+        args=[settings, db],
+        id="capture-sweep",
+        replace_existing=True,
+    )
     return sched

@@ -9,7 +9,7 @@
  * the source of truth in-app.
  */
 import { useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 export type Tab = "today" | "food" | "trends" | "more";
 
@@ -45,7 +45,14 @@ export function BottomNav({ active, onChange }: {
       className="fixed bottom-0 inset-x-0 z-20 bg-neutral-950/95 backdrop-blur border-t border-neutral-900"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="max-w-6xl mx-auto grid grid-cols-4">
+      <div className="max-w-6xl mx-auto grid grid-cols-5">
+        <Link
+          to="/log"
+          className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-emerald-300 active:text-emerald-100"
+        >
+          <span className="text-base leading-none">＋</span>
+          <span className="text-[11px]">Log</span>
+        </Link>
         {TABS.map(t => {
           const isActive = t.id === active;
           return (

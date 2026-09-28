@@ -72,10 +72,15 @@ class FoodRepo:
         )
         if res.matched_count == 0:
             return None
-        await self.db["meal_entries"].update_many(
-            {"food_id": food_id},
-            {"$set": {"food_name": new_name}},
-        )
+        # Time-series collections only allow updates to the metaField, and
+        # deletes filtered on it — so cascade by delete + reinsert, keeping
+        # each entry's _id so captures and edits still point at it.
+        entries = [d async for d in self.db["meal_entries"].find({"meta.food_id": food_id})]
+        if entries:
+            await self.db["meal_entries"].delete_many({"meta.food_id": food_id})
+            for d in entries:
+                d["food_name"] = new_name
+            await self.db["meal_entries"].insert_many(entries)
         return _doc_to_dict(await self.db["foods"].find_one({"_id": _oid(food_id)}))
 
     async def get_food_by_barcode(self, barcode: str) -> dict[str, Any] | None:
@@ -108,6 +113,8 @@ class FoodRepo:
         doc = e.model_dump(exclude={"id"})
         # time-series collections require a known meta field
         doc["meta"] = {"food_id": e.food_id, "slot": e.slot}
+        if e.capture_id:
+            doc["meta"]["capture_id"] = e.capture_id
         res = await self.db["meal_entries"].insert_one(doc)
         # Time-series doesn't always allow find_one by _id; query by all fields
         stored = await self.db["meal_entries"].find_one({"_id": res.inserted_id})

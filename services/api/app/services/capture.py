@@ -610,6 +610,7 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
                         "kind": "template",
                         "template_id": ref,
                         "name": tpl["name"],
+                        "food_ids": [i["food_id"] for i in tpl["items"]],
                         "score": round(score, 3),
                     }
                 )
@@ -688,7 +689,11 @@ async def day_context(db: AsyncDatabase, limit: int = 8) -> dict[str, Any]:
         for s in grid
         if s.get("category") == "drink"
         or (s["kind"] == "food" and s["food_id"] not in eaten_foods)
-        or (s["kind"] == "template" and s["template_id"] not in eaten_templates)
+        or (
+            s["kind"] == "template"
+            and s["template_id"] not in eaten_templates
+            and not set(s["food_ids"]) <= eaten_foods
+        )
     ][:limit]
 
     def local_hm(e: dict[str, Any]) -> str:

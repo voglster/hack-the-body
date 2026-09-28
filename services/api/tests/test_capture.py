@@ -329,3 +329,28 @@ def test_one_off_meals_are_not_suggested():
         {"ts": now - timedelta(days=d), "food_id": "shake", "food_name": "shake"} for d in (3, 20)
     ]
     assert [k for k, _ in svc.score_suggestions(one_off + usual, now, tz)] == ["food:shake"]
+
+
+async def test_context_hides_usual_whose_foods_were_eaten_directly(client, monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "window_state",
+        lambda *_a: {"state": "open", "start": "11:00", "end": "19:00", "minutes_to_change": 60},
+    )
+    shake = await _food(client, "Vanilla Premier Protein Shake", 325, 160)
+    tpl = (
+        await client.post(
+            "/meals/templates",
+            headers=H,
+            json={
+                "name": "Premier Protein Shake",
+                "items": [{"food_id": shake["id"], "quantity_g": 325}],
+            },
+        )
+    ).json()
+    for d in (1, 2):
+        ts = (datetime.now(UTC) - timedelta(days=d)).isoformat()
+        await client.post("/capture", headers=H, json={"template_id": tpl["id"], "ts": ts})
+    await client.post("/capture", headers=H, json={"food_id": shake["id"]})
+    ctx = (await client.get("/capture/context", headers=H)).json()
+    assert ctx["suggestions"] == []

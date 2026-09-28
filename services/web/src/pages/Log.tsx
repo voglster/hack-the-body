@@ -176,9 +176,7 @@ function DayChips({ ctx, onWater, onVitamins, onAte }: {
       {[8, 16].map((oz) => (
         <Chip key={oz} onClick={() => onWater(oz)}>+{oz}</Chip>
       ))}
-      {ctx?.vitamins_done
-        ? <span className="text-emerald-500 px-2">✓ Vitamins</span>
-        : <Chip onClick={onVitamins}>💊 Vitamins</Chip>}
+      {ctx && !ctx.vitamins_done && <Chip onClick={onVitamins}>💊 Vitamins</Chip>}
       <Chip onClick={onAte}>🍽 I just ate</Chip>
     </div>
   );

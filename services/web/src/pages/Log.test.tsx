@@ -59,7 +59,7 @@ describe("LogPage", () => {
   it("shows the eating window and what's already done", async () => {
     renderLog();
     expect(await screen.findByText(/closes 7pm \(7h 0m left\)/)).toBeTruthy();
-    expect(screen.getByText("✓ Vitamins")).toBeTruthy();
+    expect(screen.queryByText(/Vitamins/)).toBeNull();
     expect(screen.getByText(/26\/100 oz/)).toBeTruthy();
   });
 

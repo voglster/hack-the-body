@@ -25,6 +25,14 @@ async def _food(client, name, serving_g=100.0, calories=100.0, brand=None, categ
     return r.json()
 
 
+async def _history(client, food, days=(1, 2)):
+    for d in days:
+        ts = (datetime.now(UTC) - timedelta(days=d)).isoformat()
+        await client.post(
+            "/meals/entries", headers=H, json={"food_id": food["id"], "quantity_g": 100, "ts": ts}
+        )
+
+
 @pytest.fixture
 def parsed(monkeypatch):
     box: dict = {"items": [], "error": None, "calls": 0}
@@ -192,13 +200,13 @@ def test_suggestions_favor_recent_same_time_of_day():
     entries = (
         [e("shake", d, 8) for d in range(1, 6)]
         + [e("dinner", d, 19) for d in range(1, 8)]
-        + [e("old", 50, 8) for _ in range(5)]
+        + [e("old", d, 8) for d in range(50, 55)]
         + [e("water", 1, 8) for _ in range(10)]
     )
     ranked = [k for k, _ in svc.score_suggestions(entries, now, tz)]
     assert ranked[0] == "food:shake"
     assert "food:water" not in ranked
-    assert ranked.index("food:dinner") > ranked.index("food:old") or ranked[1] == "food:dinner"
+    assert ranked.index("food:old") > ranked.index("food:shake")
 
 
 def test_infer_slot(monkeypatch):
@@ -282,11 +290,8 @@ async def test_context_hides_eaten_food_and_shows_done_things(client, monkeypatc
     yogurt = await _food(client, "Greek yogurt", 170, 100)
     salad = await _food(client, "Chicken salad", 300, 450)
     vit = await _food(client, "Vitamins", 1, 0, category="supplement")
-    old = (datetime.now(UTC) - timedelta(days=2)).isoformat()
     for f in (yogurt, salad):
-        await client.post(
-            "/meals/entries", headers=H, json={"food_id": f["id"], "quantity_g": 100, "ts": old}
-        )
+        await _history(client, f)
     await client.post("/capture", headers=H, json={"food_id": yogurt["id"]})
     await client.post("/capture", headers=H, json={"food_id": vit["id"]})
     ctx = (await client.get("/capture/context", headers=H)).json()
@@ -305,12 +310,22 @@ async def test_context_outside_window_offers_drinks_only(client, monkeypatch):
     )
     salad = await _food(client, "Chicken salad", 300, 450)
     tea = await _food(client, "Green tea", 240, 0, category="drink")
-    old = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     for f in (salad, tea):
-        await client.post(
-            "/meals/entries", headers=H, json={"food_id": f["id"], "quantity_g": 100, "ts": old}
-        )
+        await _history(client, f)
     names = [
         s["name"] for s in (await client.get("/capture/context", headers=H)).json()["suggestions"]
     ]
     assert names == ["Green tea"]
+
+
+def test_one_off_meals_are_not_suggested():
+    tz = ZoneInfo("UTC")
+    now = datetime(2026, 9, 28, 12, 0, tzinfo=tz)
+    one_off = [
+        {"ts": now - timedelta(days=1), "food_id": f"shawarma{i}", "food_name": "x"}
+        for i in range(4)
+    ]
+    usual = [
+        {"ts": now - timedelta(days=d), "food_id": "shake", "food_name": "shake"} for d in (3, 20)
+    ]
+    assert [k for k, _ in svc.score_suggestions(one_off + usual, now, tz)] == ["food:shake"]

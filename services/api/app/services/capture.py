@@ -538,6 +538,8 @@ async def sweep_pending(settings: Settings, db: AsyncDatabase) -> int:
 
 HALF_LIFE_DAYS = 14.0
 HOUR_SIGMA = 2.0
+MIN_DAYS = 2
+LOOKBACK_DAYS = 120
 _EXCLUDE_NAMES = {"water", "vitamins"}
 
 
@@ -553,8 +555,12 @@ def score_suggestions(
     now_local: datetime,
     tz: ZoneInfo,
 ) -> list[tuple[str, float]]:
-    """Rank grid keys ('food:<id>' or 'template:<id>') by recency and time-of-day."""
+    """Rank grid keys ('food:<id>' or 'template:<id>') by recency and time-of-day.
+
+    Only things eaten on MIN_DAYS distinct days qualify — a one-off restaurant
+    meal is not a usual, however recent."""
     scores: dict[str, float] = {}
+    days: dict[str, set[str]] = {}
     seen_templates: set[tuple[str, str]] = set()
     for e in entries:
         ts = e["ts"] if e["ts"].tzinfo else e["ts"].replace(tzinfo=UTC)
@@ -574,13 +580,15 @@ def score_suggestions(
                 continue
             key = f"food:{e['food_id']}"
         scores[key] = scores.get(key, 0.0) + w
-    return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        days.setdefault(key, set()).add(local.date().isoformat())
+    usual = {k: v for k, v in scores.items() if len(days[k]) >= MIN_DAYS}
+    return sorted(usual.items(), key=lambda kv: kv[1], reverse=True)
 
 
 async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]:
     tz = local_tz()
     now_local = datetime.now(tz)
-    since = datetime.now(UTC) - timedelta(days=60)
+    since = datetime.now(UTC) - timedelta(days=LOOKBACK_DAYS)
     entries = [e async for e in db["meal_entries"].find({"ts": {"$gte": since}})]
     ranked = score_suggestions(entries, now_local, tz)
     repo = FoodRepo(db)

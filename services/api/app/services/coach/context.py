@@ -13,9 +13,6 @@ from typing import Any
 
 # Minimum points needed to fit a regression slope.
 MIN_POINTS_FOR_SLOPE = 2
-# Local hour at which the eating window is considered closed; calorie
-# shortfalls vs target after this matter (mid-day pacing does not).
-EATING_WINDOW_CLOSE_HOUR = 19
 
 
 def _values(series: Sequence[dict[str, Any]], value_key: str) -> list[float]:
@@ -136,15 +133,15 @@ def bucket_metrics(
     *,
     food_totals: dict[str, Any],
     targets: dict[str, Any],
-    local_hour: int | None = None,
+    window_state: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Split metrics + food/target signals into (on_track, attention).
 
     Rules:
     - A metric whose `anomaly` field is non-None lands in `attention`.
     - All other metrics land in `on_track`.
-    - Food: calories under target by >25% lands in `attention` ONLY when
-      the eating window is effectively closed (local_hour >= 19).
+    - Food: calories under target by >25% lands in `attention` ONLY once
+      the eating window has closed (mid-day pacing does not matter).
     """
     on_track: list[str] = []
     attention: list[str] = []
@@ -158,8 +155,7 @@ def bucket_metrics(
     if (
         cal_target
         and cal_actual is not None
-        and local_hour is not None
-        and local_hour >= EATING_WINDOW_CLOSE_HOUR
+        and window_state == "after"
         and cal_actual < cal_target * 0.75
     ):
         attention.append("calories")
@@ -188,6 +184,8 @@ async def build_findings(
     )
 
     day_start, day_end = resolve_day_window(day_start, day_end)
+    if targets is None:
+        targets = await metrics_repo.db["user_profile"].find_one({"_id": "targets"}) or {}
     snapshot = await gather_context(
         metrics_repo, day_start=day_start, day_end=day_end, targets=targets,
     )
@@ -249,11 +247,18 @@ async def build_findings(
     }
 
     local_hour = snapshot.get("local_hour")
+    protein_target = (snapshot.get("targets") or {}).get("daily_protein_g")
+    protein_eaten = round(food_totals.get("protein_g") or 0)
+    snapshot["protein"] = {
+        "eaten_g": protein_eaten,
+        "daily_target_g": protein_target,
+        "remaining_g": max(protein_target - protein_eaten, 0) if protein_target else None,
+    }
     on_track, attention = bucket_metrics(
         metrics,
         food_totals=food_totals,
         targets=snapshot.get("targets") or {},
-        local_hour=local_hour,
+        window_state=snapshot["eating_window"]["state"],
     )
 
     import os  # noqa: PLC0415

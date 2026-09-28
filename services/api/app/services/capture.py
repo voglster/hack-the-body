@@ -23,6 +23,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config import Settings
 from app.models.food import Food, Macros, MealEntry, MealSlot
+from app.services.eating_window import window_bounds, window_state
 from app.services.food_parser import ParsedItem, estimate_macros, parse_food_text
 from app.services.food_repo import FoodRepo, macros_for_quantity
 
@@ -635,43 +636,15 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
 
 # ---------- day context ----------
 
-DEFAULT_WINDOW = ("11:00", "19:00")
 DEFAULT_WATER_GOAL_OZ = 100
 _WATER_OZ_G = 29.5735
-
-
-def _hhmm(value: str) -> time:
-    h, m = value.split(":")
-    return time(int(h), int(m))
-
-
-def window_state(now_local: datetime, start: str, end: str) -> dict[str, Any]:
-    """Where `now` sits in the eating window, and minutes until that changes."""
-    opens = datetime.combine(now_local.date(), _hhmm(start), tzinfo=now_local.tzinfo)
-    closes = datetime.combine(now_local.date(), _hhmm(end), tzinfo=now_local.tzinfo)
-    if now_local < opens:
-        state, change = "before", opens
-    elif now_local < closes:
-        state, change = "open", closes
-    else:
-        state, change = "after", opens + timedelta(days=1)
-    return {
-        "start": start,
-        "end": end,
-        "state": state,
-        "minutes_to_change": int((change - now_local).total_seconds() // 60),
-    }
 
 
 async def day_context(db: AsyncDatabase, limit: int = 8) -> dict[str, Any]:
     tz = local_tz()
     now_local = datetime.now(tz)
     targets = await db["user_profile"].find_one({"_id": "targets"}) or {}
-    window = window_state(
-        now_local,
-        targets.get("eating_window_start_local") or DEFAULT_WINDOW[0],
-        targets.get("eating_window_end_local") or DEFAULT_WINDOW[1],
-    )
+    window = window_state(now_local, *window_bounds(targets))
     start = local_day_start(now_local)
     entries = await FoodRepo(db).list_entries_in_range(start, start + timedelta(days=1))
     food = [e for e in entries if e.get("food_category") == "food"]

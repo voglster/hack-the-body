@@ -23,6 +23,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.config import Settings
 from app.services.coach.context import Findings, build_findings
 from app.services.coach.phase import compute_phase
+from app.services.eating_window import eating_window
 from app.services.food_repo import FoodRepo
 from app.services.llm import complete
 from app.services.metrics_repo import MetricsRepo
@@ -90,7 +91,7 @@ COACH_VOICE = (
     "\n"
     "You do NOT have recall of past conversations, past chat replies, "
     "or anything Jim said on an earlier day that is not written into "
-    "the standing profile. Never invent a memory. Never write \"you "
+    'the standing profile. Never invent a memory. Never write "you '
     'told me last week", "you said you would", or "we talked about" '
     "unless the claim is literally supported by the standing profile, "
     "a habit history, or a metric trend sitting in front of you. An "
@@ -125,9 +126,16 @@ COACH_VOICE = (
     "scale when the profile says otherwise.\n"
     "\n"
     "Units and time:\n"
-    "- Use `local.hour` (wall clock) for time-of-day reasoning. "
-    "Eating window is 11:00-19:00 local. Before 11:00 Jim is "
-    "fasting — talk about the day ahead, not eating now.\n"
+    "- Use `local.hour` (wall clock) for time-of-day reasoning.\n"
+    "- `eating_window` is precomputed and authoritative: `state` is "
+    "before (fasting), open, or after (closed for the day), and "
+    "`summary` says it in words. Repeat its times; never work out "
+    "window timing yourself. While fasting or closed, give no "
+    "advice about eating now.\n"
+    "- `protein` is precomputed: `eaten_g` so far, `daily_target_g`, "
+    "`remaining_g`. The daily target is only cleared when "
+    "`remaining_g` is 0 — hitting a front-load goal is not "
+    "clearing the target.\n"
     "- Use `local.weekday` and `local.is_weekend` for day-of-week "
     "framing. Saturday and Sunday are NOT workdays — do not say "
     '"after work", "before your meeting", "between calls", or '
@@ -446,6 +454,7 @@ async def gather_context(
         "weight": weight,
         "daily_summary": daily,
         "steps_today": today_steps,
+        "eating_window": eating_window(now_local, targets),
         "phase": {
             "phase": phase_info.phase,
             "lights_out_at": phase_info.lights_out_at.isoformat(),

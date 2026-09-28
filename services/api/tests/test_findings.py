@@ -5,6 +5,7 @@ test (later) covers the integration over real repos.
 """
 from datetime import UTC, datetime, timedelta
 from datetime import timedelta as _td
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -18,6 +19,7 @@ from app.services.coach.context import (
     trend,
 )
 from app.services.coach.habits import HabitConfig, create_habit
+from app.services.eating_window import eating_window
 from app.services.food_repo import FoodRepo
 from app.services.metrics_repo import MetricsRepo
 
@@ -152,12 +154,12 @@ def test_bucket_metrics_flags_food_under_target_after_window_closes():
     targets = {"daily_calories": 2200}
     # Mid-day — pacing is fine.
     _, attention = bucket_metrics(
-        {}, food_totals=food_totals, targets=targets, local_hour=14,
+        {}, food_totals=food_totals, targets=targets, window_state="open",
     )
     assert "calories" not in attention
     # Evening — shortfall matters.
     _, attention = bucket_metrics(
-        {}, food_totals=food_totals, targets=targets, local_hour=20,
+        {}, food_totals=food_totals, targets=targets, window_state="after",
     )
     assert "calories" in attention
 
@@ -234,3 +236,15 @@ async def test_build_findings_includes_active_habits(mock_db):
     assert "make the bed" in names
     bed = next(h for h in findings.habits if h["name"] == "make the bed")
     assert bed["status"] == "unknown"  # not marked yet
+
+
+def test_eating_window_summary_never_needs_arithmetic():
+    tz = ZoneInfo("America/Chicago")
+    at = lambda h, m=0: datetime(2026, 9, 28, h, m, tzinfo=tz)  # noqa: E731
+    assert eating_window(at(11, 15), None)["state"] == "open"
+    assert "until 19:00 (7h 45m left)" in eating_window(at(11, 15), None)["summary"]
+    assert "opens at 11:00 (in 45 min)" in eating_window(at(10, 15), None)["summary"]
+    custom = {"eating_window_start_local": "10:00", "eating_window_end_local": "18:00"}
+    late = eating_window(at(20), custom)
+    assert late["state"] == "after"
+    assert "Fasting until 10:00 tomorrow" in late["summary"]

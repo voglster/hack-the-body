@@ -7,10 +7,11 @@
  * midnight walking window — anything before 6am counts as on-pace by
  * default since most people aren't out walking yet.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
+import { useStepGoal } from "../hooks/useStepGoal";
 import type { Summary } from "../api/types";
 import { forecast, type Forecast } from "../lib/stepsForecast";
 
@@ -50,15 +51,6 @@ function makeCardProps(onOpen?: () => void): React.HTMLAttributes<HTMLElement> {
   };
 }
 
-function useStepGoal(summary: Summary | undefined): number | null {
-  // User-set step_goal_override wins over Garmin's auto-tuned step_goal.
-  // Both are optional: if neither is set, callers hide goal-relative UI.
-  const { data: targets } = useQuery({
-    queryKey: ["profile.targets"],
-    queryFn: api.getTargets,
-  });
-  return targets?.step_goal_override ?? summary?.daily_summary?.step_goal ?? null;
-}
 
 export function StepsTodayCard({ summary, todaySteps, onOpenTrends }: {
   summary: Summary | undefined;

@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Capture, CaptureContext, CaptureSuggestion, EatingWindow } from "../api/types";
+import { BottomNav } from "../components/BottomNav";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 
 const UNDO_MS = 6000;
@@ -29,6 +30,7 @@ function useWakeLock(enabled: boolean) {
 
 export function LogPage() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const kitchen = params.get("kitchen") === "1";
   const device = kitchen ? "kitchen" : "phone";
   useWakeLock(kitchen);
@@ -117,6 +119,7 @@ export function LogPage() {
       <TodayList captures={today.data?.captures ?? []} onUndo={(id) => undo.mutate(id)} />
 
       {toast && (<UndoToast toast={toast} onUndo={(id) => undo.mutate(id)} />)}
+      <BottomNav active="log" onChange={(t) => { void navigate(`/${t}`); }} />
     </div>
   );
 }
@@ -206,7 +209,6 @@ function LogHeader({ kitchen, totals, unresolved, window: w }: {
         </p>
         {w && <p className="text-sm mt-0.5"><WindowLine w={w} /></p>}
       </div>
-      <Link to="/today" className="text-neutral-500 text-sm">Dashboard →</Link>
     </header>
   );
 }
@@ -214,7 +216,7 @@ function LogHeader({ kitchen, totals, unresolved, window: w }: {
 function UndoToast({ toast, onUndo }: { toast: Toast; onUndo: (captureId: string) => void }) {
   const { captureId } = toast;
   return (
-    <div className="fixed bottom-6 inset-x-4 z-30 mx-auto max-w-md rounded-xl bg-neutral-800 border border-neutral-700
+    <div className="fixed bottom-20 inset-x-4 z-30 mx-auto max-w-md rounded-xl bg-neutral-800 border border-neutral-700
                     px-4 py-3 flex items-center justify-between shadow-lg">
       <span className="truncate">✓ {toast.label}</span>
       {captureId && (

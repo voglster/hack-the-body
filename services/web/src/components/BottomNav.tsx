@@ -38,8 +38,9 @@ export function useActiveTab(): [Tab, (t: Tab) => void] {
 }
 
 export function BottomNav({ active, onChange }: {
-  active: Tab; onChange: (t: Tab) => void;
+  active: Tab | "log"; onChange: (t: Tab) => void;
 }) {
+  const logActive = active === "log";
   return (
     <nav
       className="fixed bottom-0 inset-x-0 z-20 bg-neutral-950/95 backdrop-blur border-t border-neutral-900"
@@ -48,10 +49,13 @@ export function BottomNav({ active, onChange }: {
       <div className="max-w-6xl mx-auto grid grid-cols-5">
         <Link
           to="/log"
-          className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-emerald-300 active:text-emerald-100"
+          className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] ${
+            logActive ? "text-emerald-400" : "text-neutral-500 active:text-neutral-300"
+          }`}
+          aria-current={logActive ? "page" : undefined}
         >
           <span className="text-base leading-none">＋</span>
-          <span className="text-[11px]">Log</span>
+          <span className="text-[11px] leading-none">Log</span>
         </Link>
         {TABS.map(t => {
           const isActive = t.id === active;

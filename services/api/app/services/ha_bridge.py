@@ -58,7 +58,9 @@ class ButtonRouter:
             return None
         name = decode_tradfri(data.get("command", ""), data.get("args"))
         if not name:
-            log.info("ha bridge: unmapped %s event %s %s", remote, data.get("command"), data.get("args"))
+            log.info(
+                "ha bridge: unmapped %s event %s %s", remote, data.get("command"), data.get("args")
+            )
             return None
         key = f"{remote}/{name}"
         now = time.monotonic() if now is None else now

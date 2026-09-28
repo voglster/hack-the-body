@@ -1,9 +1,9 @@
 """Entry point: connect to MQTT, register discovery, run state + preview loops."""
+import contextlib
 import logging
 import signal
 import sys
 import threading
-from typing import Optional
 
 import paho.mqtt.client as mqtt
 
@@ -54,7 +54,7 @@ def _on_message(client: mqtt.Client, userdata: dict, msg: mqtt.MQTTMessage):
     log.info("rx %s = %r", topic, payload[:80])
     try:
         if topic.endswith("/power/set"):
-            actions.set_power(s, payload.lower() == "on")
+            actions.set_power(s, on=payload.lower() == "on")
         elif topic.endswith("/brightness/set"):
             try:
                 actions.set_brightness(s, int(payload))
@@ -72,11 +72,11 @@ def _on_message(client: mqtt.Client, userdata: dict, msg: mqtt.MQTTMessage):
         elif topic.endswith("/type/set"):
             actions.type_text(s, payload)
         _publish_state(client, s, force=True)
-    except Exception as e:
-        log.exception("error handling %s: %s", topic, e)
+    except Exception:
+        log.exception("error handling %s", topic)
 
 
-_last_state: dict[str, Optional[object]] = {}
+_last_state: dict[str, object | None] = {}
 
 
 def _publish_state(client: mqtt.Client, s: Settings, *, force: bool = False) -> None:
@@ -160,10 +160,8 @@ def run() -> None:
 
     _stop.wait()
 
-    try:
+    with contextlib.suppress(Exception):
         client.publish(_t(s, "availability"), "offline", qos=1, retain=True).wait_for_publish(2)
-    except Exception:
-        pass
     client.loop_stop()
     client.disconnect()
     log.info("clean shutdown")

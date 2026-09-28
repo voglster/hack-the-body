@@ -9,7 +9,8 @@ import logging
 import os
 import re
 import subprocess
-from typing import Optional
+import tempfile
+from pathlib import Path
 
 import httpx
 from PIL import Image
@@ -17,6 +18,8 @@ from PIL import Image
 from .config import Settings
 
 log = logging.getLogger(__name__)
+
+SCREENSHOT_PATH = Path(tempfile.gettempdir()) / "htb-screen.png"
 
 
 def _x_env(s: Settings) -> dict[str, str]:
@@ -28,7 +31,9 @@ def _x_env(s: Settings) -> dict[str, str]:
 
 def _run(cmd: list[str], *, env: dict | None = None, timeout: float = 10) -> tuple[int, str, str]:
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        p = subprocess.run(
+            cmd, capture_output=True, text=True, env=env, timeout=timeout, check=False,
+        )
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         log.warning("timeout running %s", cmd)
@@ -49,12 +54,12 @@ def init_display(s: Settings) -> None:
     _run(["xset", "dpms", "0", "0", "0"], env=env)
 
 
-def set_power(s: Settings, on: bool) -> None:
+def set_power(s: Settings, *, on: bool) -> None:
     cmd = ["xset", "dpms", "force", "on" if on else "off"]
     _run(cmd, env=_x_env(s))
 
 
-def get_power(s: Settings) -> Optional[bool]:
+def get_power(s: Settings) -> bool | None:
     """Returns True if monitor is on, False if off/standby/suspend, None if unknown."""
     rc, out, _ = _run(["xset", "q"], env=_x_env(s))
     if rc != 0:
@@ -72,7 +77,7 @@ def set_brightness(_s: Settings, value: int) -> None:
     _run(["ddcutil", "--sleep-multiplier=2", "setvcp", "10", str(value)], timeout=15)
 
 
-def get_brightness(_s: Settings) -> Optional[int]:
+def get_brightness(_s: Settings) -> int | None:
     rc, out, _ = _run(["ddcutil", "--sleep-multiplier=2", "getvcp", "10"], timeout=15)
     if rc != 0:
         return None
@@ -82,7 +87,7 @@ def get_brightness(_s: Settings) -> Optional[int]:
 
 # --- Browser controls via xdotool / Chrome DevTools Protocol ---------------
 
-def _chromium_window_id(s: Settings) -> Optional[str]:
+def _chromium_window_id(s: Settings) -> str | None:
     rc, out, _ = _run(["xdotool", "search", "--name", "Chromium"], env=_x_env(s))
     if rc != 0 or not out.strip():
         rc, out, _ = _run(["xdotool", "search", "--class", "chromium"], env=_x_env(s))
@@ -149,7 +154,7 @@ def _navigate_xdotool(s: Settings, url: str) -> bool:
     return True
 
 
-def get_url(s: Settings) -> Optional[str]:
+def get_url(s: Settings) -> str | None:
     """Best-effort current page URL via CDP."""
     try:
         tabs = httpx.get(f"http://127.0.0.1:{s.chromium_cdp_port}/json", timeout=2).json()
@@ -167,17 +172,17 @@ def reboot(_s: Settings) -> None:
 
 # --- Screenshot ------------------------------------------------------------
 
-def screenshot_jpeg(s: Settings) -> Optional[bytes]:
+def screenshot_jpeg(s: Settings) -> bytes | None:
     """Capture screen, downscale, return JPEG bytes. None on failure."""
     rc, _out, err = _run(
-        ["scrot", "-o", "-q", "90", "/tmp/htb-screen.png"], env=_x_env(s), timeout=10
+        ["scrot", "-o", "-q", "90", str(SCREENSHOT_PATH)], env=_x_env(s), timeout=10
     )
     if rc != 0:
         log.debug("scrot failed: %s", err)
         return None
     try:
-        with Image.open("/tmp/htb-screen.png") as im:
-            im = im.convert("RGB")
+        with Image.open(SCREENSHOT_PATH) as raw:
+            im = raw.convert("RGB")
             w, h = im.size
             if w > s.preview_max_width:
                 ratio = s.preview_max_width / w

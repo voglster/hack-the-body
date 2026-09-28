@@ -1,6 +1,6 @@
 """MQTT Discovery configs. Published once on connect (retained) so HA auto-creates entities."""
 import json
-from typing import Iterable
+from collections.abc import Iterable
 
 from .config import Settings
 

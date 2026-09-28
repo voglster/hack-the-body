@@ -14,7 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3",
-  "ruff>=0.7",
+  "ruff>=0.16.1,<0.17",
 ]
 
 [project.scripts]
@@ -22,6 +22,25 @@ htb-pi-agent = "htb_pi_agent.main:run"
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "D", "ANN", "FA", "COM812", "ISC001",
+  "EM101", "EM102", "TRY003", "G004", "BLE001", "PLR0913",
+  "RUF012", "S311", "TD", "FIX", "TRY300", "TC", "PGH003", "ERA001", "CPY",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "PT", "INP001", "SLF001"]
+"src/htb_pi_agent/actions.py" = ["S603", "S607"]  # shells out to fixed system tools on PATH (xset, ddcutil, xdotool, scrot)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

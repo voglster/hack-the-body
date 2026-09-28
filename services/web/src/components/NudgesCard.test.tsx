@@ -20,14 +20,14 @@ function wrap(ui: React.ReactNode) {
 
 describe("NudgesCard", () => {
   it("renders nothing when no nudges fire", async () => {
-    (api.fetchNudges as any).mockResolvedValue({ nudges: [], generated_at: "x" });
+    vi.mocked(api.fetchNudges).mockResolvedValue({ nudges: [], generated_at: "x" });
     const { container } = render(wrap(<NudgesCard />));
     await waitFor(() => expect(api.fetchNudges).toHaveBeenCalled());
     expect(container.textContent ?? "").toBe("");
   });
 
   it("renders a row per fired nudge", async () => {
-    (api.fetchNudges as any).mockResolvedValue({
+    vi.mocked(api.fetchNudges).mockResolvedValue({
       nudges: [
         { id: "vitamins_missing", kind: "vitamin", severity: "warn",
           title: "Vitamins not taken yet", body: "It's past noon.",
@@ -44,14 +44,14 @@ describe("NudgesCard", () => {
   });
 
   it("dismisses a nudge optimistically", async () => {
-    (api.fetchNudges as any).mockResolvedValue({
+    vi.mocked(api.fetchNudges).mockResolvedValue({
       nudges: [
         { id: "vitamins_missing", kind: "vitamin", severity: "warn",
           title: "Vitamins not taken yet", body: "x", dismissable: true },
       ],
       generated_at: "x",
     });
-    (api.dismissNudge as any).mockResolvedValue({ ok: true });
+    vi.mocked(api.dismissNudge).mockResolvedValue({ ok: true });
 
     render(wrap(<NudgesCard />));
     const row = await screen.findByText("Vitamins not taken yet");

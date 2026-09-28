@@ -404,7 +404,7 @@ export interface NudgesResponse {
 
 export interface DismissNudgeReq {
   nudge_id: string;
-  until: "end_of_day" | string;
+  until: "end_of_day" | (string & {});
 }
 
 export interface TodayTotals {

@@ -30,7 +30,7 @@ export function WorkoutList() {
     return <div className="p-4 text-neutral-500">No workouts in the last 30 days.</div>;
   }
 
-  const grouped: Array<[string, Workout[]]> = [];
+  const grouped: [string, Workout[]][] = [];
   let last: string | null = null;
   for (const w of rows) {
     const k = dayKey(w.ts);

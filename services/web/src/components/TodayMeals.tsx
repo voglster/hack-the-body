@@ -236,7 +236,7 @@ function UsualsBar({ templates, manage, onToggleManage, onLog, onDelete, logging
               <button
                 onClick={() => {
                   if (confirm(`Delete usual "${tpl.name}"?`)) {
-                    onDelete(tpl.id!);
+                    onDelete(tpl.id);
                   }
                 }}
                 disabled={deletingPending}

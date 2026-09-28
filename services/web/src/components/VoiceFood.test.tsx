@@ -25,9 +25,9 @@ vi.mock("../hooks/useVoiceRecorder", () => ({
       state,
       seconds: 0,
       start: () => { setState("recording"); },
-      stop: async () => {
+      stop: () => {
         setState("idle");
-        return new Blob(["x"], { type: "audio/wav" });
+        return Promise.resolve(new Blob(["x"], { type: "audio/wav" }));
       },
     };
   },

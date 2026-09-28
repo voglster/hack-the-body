@@ -24,7 +24,7 @@ describe("encodeWav", () => {
     expect(fmt).toBe("WAVE");
   });
 
-  it("emits 16-bit samples after the 44-byte header", async () => {
+  it("emits 16-bit samples after the 44-byte header", () => {
     const blob = encodeWav(new Float32Array([0, 0.5, -0.5]), 16000);
     expect(blob.size).toBe(44 + 3 * 2);
   });

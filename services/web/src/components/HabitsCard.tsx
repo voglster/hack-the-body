@@ -104,7 +104,7 @@ function NewHabitForm({ onCreated }: { onCreated: () => void }) {
         {create.isPending ? "adding…" : "add habit"}
       </button>
       {create.error && (
-        <div className="text-xs text-red-400">{(create.error as Error).message}</div>
+        <div className="text-xs text-red-400">{create.error.message}</div>
       )}
     </form>
   );
@@ -136,7 +136,7 @@ export function HabitsCard() {
           ))}
         </div>
       )}
-      <NewHabitForm onCreated={() => qc.invalidateQueries({ queryKey: ["habits.today"] })} />
+      <NewHabitForm onCreated={() => { void qc.invalidateQueries({ queryKey: ["habits.today"] }); }} />
     </div>
   );
 }

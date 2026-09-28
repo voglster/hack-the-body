@@ -8,7 +8,7 @@ describe("DayNav", () => {
   it("shows 'Today' label and disables forward chevron when on today", () => {
     render(<DayNav day={todayLocalISO()} onChange={vi.fn()} />);
     expect(screen.getByText("Today")).toBeTruthy();
-    expect((screen.getByLabelText("next day") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLButtonElement>("next day").disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "jump to today" })).toBeNull();
   });
 
@@ -23,7 +23,7 @@ describe("DayNav", () => {
   it("disables ◀ at the 30-day floor", () => {
     const floor = shiftLocalISO(todayLocalISO(), -30);
     render(<DayNav day={floor} onChange={vi.fn()} />);
-    expect((screen.getByLabelText("previous day") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLButtonElement>("previous day").disabled).toBe(true);
   });
 
   it("shows the today jump button on past days and uses it", () => {

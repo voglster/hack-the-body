@@ -30,7 +30,7 @@ export function WorkoutPage() {
     );
   }
 
-  if (active && active.status === "active") {
+  if (active?.status === "active") {
     return <Navigate to={`/workouts/${encodeURIComponent(active.source_id)}`} replace />;
   }
 

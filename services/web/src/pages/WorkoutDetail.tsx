@@ -81,8 +81,7 @@ export function WorkoutDetail() {
   });
 
   const isLiveActive =
-    active != null &&
-    active.status === "active" &&
+    active?.status === "active" &&
     active.source_id === sourceId;
 
   if (isLoading) {

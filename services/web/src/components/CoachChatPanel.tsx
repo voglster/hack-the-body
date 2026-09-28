@@ -106,7 +106,7 @@ export function CoachChatPanel() {
         </button>
       </form>
       {send.error && (
-        <div className="text-xs text-red-400">{(send.error as Error).message}</div>
+        <div className="text-xs text-red-400">{send.error.message}</div>
       )}
     </div>
   );

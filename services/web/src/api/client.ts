@@ -9,7 +9,7 @@ import type {
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
   UsualSuggestionsResponse,
-  Capture, CaptureContext, CaptureToday, CaptureSuggestion, LoggingStatus,
+  Capture, CaptureContext, CaptureToday, CaptureSuggestion, LoggingStatus, RemoteButton,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -71,6 +71,18 @@ export const api = {
   captureSuggestions: () => get<CaptureSuggestion[]>("/capture/suggestions"),
   captureContext: () => get<CaptureContext>("/capture/context"),
   loggingStatus: () => get<LoggingStatus>("/capture/status"),
+  remoteButtons: () => get<RemoteButton[]>("/capture/buttons"),
+  setRemoteButton: async (b: RemoteButton): Promise<RemoteButton> => {
+    const { button, ...mapping } = b;
+    const r = await fetch(`${BASE}/capture/buttons/${button}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(mapping),
+    });
+    if (r.status === 401) handleUnauthorized();
+    if (!r.ok) throw new Error(`save button failed: ${r.status}`);
+    return (await r.json()) as RemoteButton;
+  },
   capture: (body: {
     text?: string; food_id?: string; quantity_g?: number;
     template_id?: string; placeholder?: boolean; device?: string;

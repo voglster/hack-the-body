@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import type { Capture, CaptureContext, CaptureSuggestion, EatingWindow } from "../api/types";
 import { BottomNav } from "../components/BottomNav";
 import { CaptureBar } from "../components/CaptureBar";
+import { RemoteButtons } from "../components/RemoteButtons";
 import { useReloadOnDeploy } from "../hooks/useReloadOnDeploy";
 
 const UNDO_MS = 6000;
@@ -120,6 +121,7 @@ export function LogPage() {
       {ctx.data && <ClosedNote w={ctx.data.window} />}
 
       <TodayList captures={today.data?.captures ?? []} onUndo={(id) => undo.mutate(id)} />
+      <RemoteButtons />
 
       {toast && (<UndoToast toast={toast} onUndo={(id) => undo.mutate(id)} />)}
       <BottomNav active="log" onChange={(t) => { void navigate(`/${t}`); }} />

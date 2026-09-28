@@ -513,3 +513,15 @@ export interface LoggingStatus {
     untracked_weeks: number;
   };
 }
+
+export type ButtonAction = "food" | "water" | "habit" | "placeholder" | "undo";
+
+export interface RemoteButton {
+  button: string;           // "<remote>/<center|up|down|left|right>"
+  action: ButtonAction;
+  label: string;
+  food_id?: string;
+  quantity_g?: number;
+  habit?: string;
+  oz?: number;
+}

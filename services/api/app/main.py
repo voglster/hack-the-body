@@ -17,6 +17,15 @@ from app.services.scheduler import build_scheduler
 
 logger = logging.getLogger(__name__)
 
+# Uvicorn only configures its own loggers; without this every app-level
+# info line (scheduler, HA bridge presses, capture resolution) is dropped.
+_app_log = logging.getLogger("app")
+if not _app_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    _app_log.addHandler(_handler)
+    _app_log.setLevel(logging.INFO)
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 

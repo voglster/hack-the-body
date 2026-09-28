@@ -16,9 +16,13 @@ vi.mock("../api/client", () => ({
           { food_id: "f1", name: "Chocolate Premier", quantity_g: 325 },
           { food_id: "f2", name: "Vanilla Premier", quantity_g: 325 }] }] },
     ]),
-    captureSuggestions: vi.fn().mockResolvedValue([
-      { kind: "food", food_id: "f2", name: "Vanilla Premier Shake", quantity_g: 325 },
-    ]),
+    captureContext: vi.fn().mockResolvedValue({
+      now_local: "2026-09-28T12:00:00-05:00",
+      window: { start: "11:00", end: "19:00", state: "open", minutes_to_change: 420 },
+      vitamins_done: true, water_oz: 26, water_goal_oz: 100, meals: ["breakfast"],
+      first_food_at: "11:30", last_food_at: "11:30",
+      suggestions: [{ kind: "food", food_id: "f2", name: "Vanilla Premier Shake", quantity_g: 325 }],
+    }),
     capture: vi.fn().mockResolvedValue({ id: "c1", status: "resolved", input: {}, entry_ids: ["e1"] }),
     confirmCapture: vi.fn().mockResolvedValue({}),
     undoCapture: vi.fn().mockResolvedValue(undefined),
@@ -50,6 +54,13 @@ describe("LogPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Chocolate Premier" }));
     await waitFor(() => expect(api.confirmCapture).toHaveBeenCalledWith(
       "c9", { item_index: 0, candidate_index: 0 }));
+  });
+
+  it("shows the eating window and what's already done", async () => {
+    renderLog();
+    expect(await screen.findByText(/closes 7pm \(7h 0m left\)/)).toBeTruthy();
+    expect(screen.getByText("✓ Vitamins")).toBeTruthy();
+    expect(screen.getByText(/26\/100 oz/)).toBeTruthy();
   });
 
   it("typed text is captured without waiting on a parse", async () => {

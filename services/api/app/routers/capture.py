@@ -173,6 +173,12 @@ async def inbox(request: Request) -> list[dict]:
     return [svc.capture_to_dict(c) async for c in cur]
 
 
+@router.get("/context")
+async def context(request: Request) -> dict:
+    """What the Log screen needs to fit the moment: eating window, what's done, a filtered grid."""
+    return await svc.day_context(request.app.state.db)
+
+
 @router.get("/suggestions")
 async def suggestions(request: Request, limit: int = 8) -> list[dict]:
     return await svc.suggestions(request.app.state.db, limit=limit)

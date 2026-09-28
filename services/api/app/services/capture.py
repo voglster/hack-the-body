@@ -63,19 +63,36 @@ def local_tz() -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def infer_slot(ts: datetime, category: str = "food") -> MealSlot:
+def infer_slot(ts: datetime, category: str = "food", *, first_meal: bool = False) -> MealSlot:
+    """The first meal of the day is breakfast whenever it lands (an 11:30
+    break-fast under an eating window); later meals go by the clock."""
     if category == "supplement":
         return "supplement"
     if category == "drink":
         return "snack"
     t = ts.astimezone(local_tz()).time()
-    if t < time(10, 30):
+    if t < time(10, 30) or (first_meal and t < time(14, 0)):
         return "breakfast"
     if t < time(14, 30):
         return "lunch"
     if time(17, 0) <= t < time(21, 0):
         return "dinner"
     return "snack"
+
+
+def local_day_start(ts: datetime) -> datetime:
+    local = ts.astimezone(local_tz())
+    return datetime.combine(local.date(), time.min, tzinfo=local_tz()).astimezone(UTC)
+
+
+async def _slot_for(db: AsyncDatabase, ts: datetime, category: str) -> MealSlot:
+    earlier = await db["meal_entries"].find_one(
+        {
+            "ts": {"$gte": local_day_start(ts), "$lt": ts},
+            "food_category": "food",
+        }
+    )
+    return infer_slot(ts, category, first_meal=earlier is None)
 
 
 def normalize(text: str) -> str:
@@ -205,7 +222,7 @@ async def log_food(
         food_category=category,
         quantity_g=quantity_g,
         servings=quantity_g / float(food.get("serving_g") or 100.0),
-        slot=infer_slot(ts, category),
+        slot=await _slot_for(db, ts, category),
         template_id=template_id,
         macros=macros_for_quantity(food, quantity_g),
         capture_id=capture_id,
@@ -236,7 +253,7 @@ async def _log_estimate(
         food_category="food",
         quantity_g=1.0,
         servings=item.servings,
-        slot=infer_slot(ts),
+        slot=await _slot_for(db, ts, "food"),
         macros=macros,
         capture_id=capture_id,
     )
@@ -605,3 +622,79 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
         if len(out) >= limit:
             break
     return out
+
+
+# ---------- day context ----------
+
+DEFAULT_WINDOW = ("11:00", "19:00")
+DEFAULT_WATER_GOAL_OZ = 100
+_WATER_OZ_G = 29.5735
+
+
+def _hhmm(value: str) -> time:
+    h, m = value.split(":")
+    return time(int(h), int(m))
+
+
+def window_state(now_local: datetime, start: str, end: str) -> dict[str, Any]:
+    """Where `now` sits in the eating window, and minutes until that changes."""
+    opens = datetime.combine(now_local.date(), _hhmm(start), tzinfo=now_local.tzinfo)
+    closes = datetime.combine(now_local.date(), _hhmm(end), tzinfo=now_local.tzinfo)
+    if now_local < opens:
+        state, change = "before", opens
+    elif now_local < closes:
+        state, change = "open", closes
+    else:
+        state, change = "after", opens + timedelta(days=1)
+    return {
+        "start": start,
+        "end": end,
+        "state": state,
+        "minutes_to_change": int((change - now_local).total_seconds() // 60),
+    }
+
+
+async def day_context(db: AsyncDatabase, limit: int = 8) -> dict[str, Any]:
+    tz = local_tz()
+    now_local = datetime.now(tz)
+    targets = await db["user_profile"].find_one({"_id": "targets"}) or {}
+    window = window_state(
+        now_local,
+        targets.get("eating_window_start_local") or DEFAULT_WINDOW[0],
+        targets.get("eating_window_end_local") or DEFAULT_WINDOW[1],
+    )
+    start = local_day_start(now_local)
+    entries = await FoodRepo(db).list_entries_in_range(start, start + timedelta(days=1))
+    food = [e for e in entries if e.get("food_category") == "food"]
+    water_g = sum(
+        e.get("quantity_g") or 0 for e in entries if normalize(e.get("food_name", "")) == "water"
+    )
+    eaten_foods = {e["food_id"] for e in food}
+    eaten_templates = {e["template_id"] for e in food if e.get("template_id")}
+
+    grid = await suggestions(db, limit=40)
+    if window["state"] != "open":
+        grid = [s for s in grid if s.get("category") == "drink"]
+    grid = [
+        s
+        for s in grid
+        if s.get("category") == "drink"
+        or (s["kind"] == "food" and s["food_id"] not in eaten_foods)
+        or (s["kind"] == "template" and s["template_id"] not in eaten_templates)
+    ][:limit]
+
+    def local_hm(e: dict[str, Any]) -> str:
+        ts = e["ts"] if e["ts"].tzinfo else e["ts"].replace(tzinfo=UTC)
+        return ts.astimezone(tz).strftime("%H:%M")
+
+    return {
+        "now_local": now_local.isoformat(),
+        "window": window,
+        "vitamins_done": any(e.get("food_category") == "supplement" for e in entries),
+        "water_oz": round(water_g / _WATER_OZ_G),
+        "water_goal_oz": targets.get("daily_water_oz") or DEFAULT_WATER_GOAL_OZ,
+        "meals": sorted({e["slot"] for e in food}),
+        "first_food_at": local_hm(food[0]) if food else None,
+        "last_food_at": local_hm(food[-1]) if food else None,
+        "suggestions": grid,
+    }

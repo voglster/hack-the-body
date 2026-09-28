@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Capture, CaptureSuggestion } from "../api/types";
+import type { Capture, CaptureContext, CaptureSuggestion, EatingWindow } from "../api/types";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 
 const UNDO_MS = 6000;
@@ -41,7 +41,7 @@ export function LogPage() {
       q.state.data?.captures.some((c) => c.status === "pending") ? 2000 : 30_000,
   });
   const inbox = useQuery({ queryKey: ["capture.inbox"], queryFn: api.captureInbox, refetchInterval: 30_000 });
-  const grid = useQuery({ queryKey: ["capture.suggestions"], queryFn: api.captureSuggestions, staleTime: 5 * 60_000 });
+  const ctx = useQuery({ queryKey: ["capture.context"], queryFn: api.captureContext, refetchInterval: 60_000 });
 
   const [toast, setToast] = useState<Toast | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +50,7 @@ export function LogPage() {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["capture.today"] });
     void qc.invalidateQueries({ queryKey: ["capture.inbox"] });
+    void qc.invalidateQueries({ queryKey: ["capture.context"] });
     void qc.invalidateQueries({ queryKey: ["meals.today.entries"] });
     void qc.invalidateQueries({ queryKey: ["meals.today.totals"] });
   };
@@ -94,21 +95,13 @@ export function LogPage() {
     capture.mutate({ body, label: s.name });
   };
 
-  const big = kitchen ? "text-lg" : "text-base";
-
   return (
     <div className={`min-h-screen bg-neutral-950 text-neutral-100 ${kitchen ? "p-6" : "p-4"} pb-28`}>
-      <LogHeader kitchen={kitchen} totals={today.data?.totals} unresolved={today.data?.unresolved ?? 0} />
+      <LogHeader kitchen={kitchen} totals={today.data?.totals} unresolved={today.data?.unresolved ?? 0}
+                 window={ctx.data?.window} />
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {[8, 16].map((oz) => (
-          <Chip key={oz} onClick={() => water.mutate(oz)}>💧 +{oz} oz</Chip>
-        ))}
-        <Chip onClick={() => vitamins.mutate()}>💊 Vitamins</Chip>
-        <Chip onClick={() => capture.mutate({ body: { placeholder: true }, label: "Ate something — fill in later" })}>
-          🍽 I just ate
-        </Chip>
-      </div>
+      <DayChips ctx={ctx.data} onWater={(oz) => water.mutate(oz)} onVitamins={() => vitamins.mutate()}
+                onAte={() => capture.mutate({ body: { placeholder: true }, label: "Ate something — fill in later" })} />
 
       <Inbox captures={inbox.data ?? []} onChanged={refresh} />
 
@@ -116,20 +109,10 @@ export function LogPage() {
                   onError={setError} />
       {error && <p className="text-amber-400 text-sm mt-2">{error}</p>}
 
-      <section className={`grid gap-3 mt-4 ${kitchen ? "grid-cols-4" : "grid-cols-2 md:grid-cols-4"}`}>
-        {(grid.data ?? []).map((s) => (
-          <button
-            key={`${s.kind}:${s.food_id ?? s.template_id}`}
-            onClick={() => tapSuggestion(s)}
-            disabled={capture.isPending}
-            className={`rounded-2xl bg-neutral-800 active:bg-emerald-700 px-3 ${kitchen ? "py-8" : "py-6"} ${big}
-              font-medium text-left leading-tight disabled:opacity-60`}
-          >
-            {s.name}
-            {s.kind === "template" && <span className="block text-xs text-neutral-400 mt-1">usual</span>}
-          </button>
-        ))}
-      </section>
+      <SuggestionGrid items={ctx.data?.suggestions ?? []} kitchen={kitchen} disabled={capture.isPending}
+                      onTap={tapSuggestion} />
+
+      {ctx.data && <ClosedNote w={ctx.data.window} />}
 
       <TodayList captures={today.data?.captures ?? []} onUndo={(id) => undo.mutate(id)} />
 
@@ -138,8 +121,82 @@ export function LogPage() {
   );
 }
 
-function LogHeader({ kitchen, totals, unresolved }: {
+function clock(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const suffix = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m ? `${h12}:${String(m).padStart(2, "0")}${suffix}` : `${h12}${suffix}`;
+}
+
+function duration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function WindowLine({ w }: { w: EatingWindow }) {
+  if (w.state === "open") {
+    return <span className="text-emerald-400">Eating window open · closes {clock(w.end)} ({duration(w.minutes_to_change)} left)</span>;
+  }
+  if (w.state === "before") {
+    return <span className="text-sky-400">Fasting · window opens {clock(w.start)} (in {duration(w.minutes_to_change)})</span>;
+  }
+  return <span className="text-neutral-500">Window closed at {clock(w.end)} · fasting till {clock(w.start)}</span>;
+}
+
+function SuggestionGrid({ items, kitchen, disabled, onTap }: {
+  items: CaptureSuggestion[]; kitchen: boolean; disabled: boolean; onTap: (s: CaptureSuggestion) => void;
+}) {
+  return (
+    <section className={`grid gap-3 mt-4 ${kitchen ? "grid-cols-4" : "grid-cols-2 md:grid-cols-4"}`}>
+      {items.map((s) => (
+        <button
+          key={`${s.kind}:${s.food_id ?? s.template_id}`}
+          onClick={() => onTap(s)}
+          disabled={disabled}
+          className={`rounded-2xl bg-neutral-800 active:bg-emerald-700 px-3 ${kitchen ? "py-8 text-lg" : "py-6"}
+            font-medium text-left leading-tight disabled:opacity-60`}
+        >
+          {s.name}
+          {s.kind === "template" && <span className="block text-xs text-neutral-400 mt-1">usual</span>}
+        </button>
+      ))}
+    </section>
+  );
+}
+
+function DayChips({ ctx, onWater, onVitamins, onAte }: {
+  ctx?: CaptureContext; onWater: (oz: number) => void; onVitamins: () => void; onAte: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      <span className="text-neutral-400 tabular-nums">
+        💧 {ctx?.water_oz ?? 0}/{ctx?.water_goal_oz ?? 100} oz
+      </span>
+      {[8, 16].map((oz) => (
+        <Chip key={oz} onClick={() => onWater(oz)}>+{oz}</Chip>
+      ))}
+      {ctx?.vitamins_done
+        ? <span className="text-emerald-500 px-2">✓ Vitamins</span>
+        : <Chip onClick={onVitamins}>💊 Vitamins</Chip>}
+      <Chip onClick={onAte}>🍽 I just ate</Chip>
+    </div>
+  );
+}
+
+function ClosedNote({ w }: { w: EatingWindow }) {
+  if (w.state === "open") return null;
+  return (
+    <p className="text-neutral-500 mt-3">
+      Eating window {w.state === "before" ? "opens" : "reopens"} at {clock(w.start)}. Water, coffee, tea only.
+      Anything you do eat still gets logged.
+    </p>
+  );
+}
+
+function LogHeader({ kitchen, totals, unresolved, window: w }: {
   kitchen: boolean; totals?: { calories: number; protein_g: number }; unresolved: number;
+  window?: EatingWindow;
 }) {
   return (
     <header className="flex items-baseline justify-between mb-4">
@@ -149,6 +206,7 @@ function LogHeader({ kitchen, totals, unresolved }: {
           {totals ? `${Math.round(totals.calories)} kcal · ${Math.round(totals.protein_g)} g protein` : "…"}
           {unresolved > 0 && <span className="text-amber-400"> · +{unresolved} unresolved</span>}
         </p>
+        {w && <p className="text-sm mt-0.5"><WindowLine w={w} /></p>}
       </div>
       <Link to="/today" className="text-neutral-500 text-sm">Dashboard →</Link>
     </header>

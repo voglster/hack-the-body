@@ -355,6 +355,8 @@ export interface UserTargets {
   goal_weight_lb: number | null;
   weekly_loss_rate_min_lb: number | null;
   weekly_loss_rate_max_lb: number | null;
+  eating_window_start_local?: string | null;
+  eating_window_end_local?: string | null;
   updated_at?: string;
 }
 
@@ -486,4 +488,23 @@ export interface CaptureSuggestion {
   name: string;
   quantity_g?: number;
   category?: FoodCategory;
+}
+
+export interface EatingWindow {
+  start: string;
+  end: string;
+  state: "before" | "open" | "after";
+  minutes_to_change: number;
+}
+
+export interface CaptureContext {
+  now_local: string;
+  window: EatingWindow;
+  vitamins_done: boolean;
+  water_oz: number;
+  water_goal_oz: number;
+  meals: MealSlot[];
+  first_food_at: string | null;
+  last_food_at: string | null;
+  suggestions: CaptureSuggestion[];
 }

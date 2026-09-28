@@ -85,7 +85,14 @@ class Targets(BaseModel):
         ),
     )
 
-    @field_validator("lights_out_local")
+    eating_window_start_local: str | None = Field(
+        default=None, description="Local 'HH:MM' the eating window opens. None = 11:00.",
+    )
+    eating_window_end_local: str | None = Field(
+        default=None, description="Local 'HH:MM' the eating window closes. None = 19:00.",
+    )
+
+    @field_validator("lights_out_local", "eating_window_start_local", "eating_window_end_local")
     @classmethod
     def _check_hhmm(cls, v: str | None) -> str | None:
         if v is not None and not _HHMM_RE.match(v):
@@ -107,6 +114,8 @@ def _serialize(doc: dict[str, Any] | None) -> dict[str, Any]:
         "weekly_loss_rate_min_lb": doc.get("weekly_loss_rate_min_lb"),
         "weekly_loss_rate_max_lb": doc.get("weekly_loss_rate_max_lb"),
         "lights_out_local": doc.get("lights_out_local"),
+        "eating_window_start_local": doc.get("eating_window_start_local"),
+        "eating_window_end_local": doc.get("eating_window_end_local"),
         "updated_at": doc.get("updated_at"),
     }
 

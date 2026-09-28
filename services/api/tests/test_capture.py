@@ -249,3 +249,68 @@ async def test_macro_less_foods_are_not_match_targets(client, parsed, monkeypatc
     parsed["items"] = [ParsedItem(name="Burger")]
     await client.post("/capture", headers=H, json={"text": "burger"})
     assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 700
+
+
+def test_window_state():
+    tz = ZoneInfo("UTC")
+    at = lambda h, m=0: datetime(2026, 9, 28, h, m, tzinfo=tz)  # noqa: E731
+    assert svc.window_state(at(9, 40), "11:00", "19:00") == {
+        "start": "11:00",
+        "end": "19:00",
+        "state": "before",
+        "minutes_to_change": 80,
+    }
+    assert svc.window_state(at(15), "11:00", "19:00")["state"] == "open"
+    after = svc.window_state(at(20), "11:00", "19:00")
+    assert after["state"] == "after"
+    assert after["minutes_to_change"] == 15 * 60
+
+
+def test_first_meal_is_breakfast_even_late(monkeypatch):
+    monkeypatch.setenv("TZ", "UTC")
+    ts = datetime(2026, 9, 28, 11, 30, tzinfo=UTC)
+    assert svc.infer_slot(ts, first_meal=True) == "breakfast"
+    assert svc.infer_slot(ts) == "lunch"
+
+
+async def test_context_hides_eaten_food_and_shows_done_things(client, monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "window_state",
+        lambda *_a: {"state": "open", "start": "11:00", "end": "19:00", "minutes_to_change": 60},
+    )
+    yogurt = await _food(client, "Greek yogurt", 170, 100)
+    salad = await _food(client, "Chicken salad", 300, 450)
+    vit = await _food(client, "Vitamins", 1, 0, category="supplement")
+    old = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    for f in (yogurt, salad):
+        await client.post(
+            "/meals/entries", headers=H, json={"food_id": f["id"], "quantity_g": 100, "ts": old}
+        )
+    await client.post("/capture", headers=H, json={"food_id": yogurt["id"]})
+    await client.post("/capture", headers=H, json={"food_id": vit["id"]})
+    ctx = (await client.get("/capture/context", headers=H)).json()
+    names = [s["name"] for s in ctx["suggestions"]]
+    assert "Chicken salad" in names
+    assert "Greek yogurt" not in names
+    assert ctx["vitamins_done"] is True
+    assert ctx["window"]["state"] == "open"
+
+
+async def test_context_outside_window_offers_drinks_only(client, monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "window_state",
+        lambda *_a: {"state": "after", "start": "11:00", "end": "19:00", "minutes_to_change": 900},
+    )
+    salad = await _food(client, "Chicken salad", 300, 450)
+    tea = await _food(client, "Green tea", 240, 0, category="drink")
+    old = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    for f in (salad, tea):
+        await client.post(
+            "/meals/entries", headers=H, json={"food_id": f["id"], "quantity_g": 100, "ts": old}
+        )
+    names = [
+        s["name"] for s in (await client.get("/capture/context", headers=H)).json()["suggestions"]
+    ]
+    assert names == ["Green tea"]

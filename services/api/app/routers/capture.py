@@ -191,11 +191,12 @@ async def list_buttons(request: Request) -> list[dict]:
 
 
 class ButtonMappingReq(BaseModel):
-    action: Literal["food", "water", "habit", "placeholder", "undo"]
+    action: Literal["food", "usual", "water", "habit", "placeholder", "undo"]
     label: str
     food_id: str | None = None
     quantity_g: float | None = Field(default=None, gt=0)
     habit: str | None = None
+    template_id: str | None = None
     oz: float | None = Field(default=None, gt=0)
 
 

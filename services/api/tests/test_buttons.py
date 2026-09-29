@@ -1,3 +1,4 @@
+from app.config import Settings
 from app.services import buttons
 from app.services.ha_bridge import ButtonRouter
 
@@ -85,3 +86,57 @@ def test_router_decodes_tradfri_and_debounces():
     assert router.button_for(event, now=10.4) is None
     assert router.button_for(event, now=11.5) == f"{REMOTE}/right"
     assert router.button_for({**event, "device_ieee": "aa"}, now=20.0) is None
+
+
+async def test_usual_button_logs_every_item_and_undoes_together(client, mock_db):
+    await _seed(client, mock_db)
+    yogurt = (
+        await client.post(
+            "/foods",
+            headers=H,
+            json={
+                "name": "Greek yogurt",
+                "serving_g": 170,
+                "per_serving": {"calories": 100, "protein_g": 18},
+            },
+        )
+    ).json()
+    chia = (
+        await client.post(
+            "/foods",
+            headers=H,
+            json={"name": "Chia", "serving_g": 10, "per_serving": {"calories": 53, "protein_g": 2}},
+        )
+    ).json()
+    tpl = (
+        await client.post(
+            "/meals/templates",
+            headers=H,
+            json={
+                "name": "Breakfast Yogurt",
+                "items": [
+                    {"food_id": yogurt["id"], "quantity_g": 170},
+                    {"food_id": chia["id"], "quantity_g": 10},
+                ],
+            },
+        )
+    ).json()
+    await client.put(
+        "/capture/buttons/habit_remote_2/left",
+        headers=H,
+        json={"action": "usual", "label": "Yogurt bowl", "template_id": tpl["id"]},
+    )
+    r = await client.post("/capture/button", headers=H, json={"button": "habit_remote_2/left"})
+    assert r.json()["say"] == "Yogurt bowl logged."
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 153
+    await client.put(
+        "/capture/buttons/habit_remote_2/down", headers=H, json={"action": "undo", "label": "Undo"}
+    )
+    await client.post("/capture/button", headers=H, json={"button": "habit_remote_2/down"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 0
+
+
+def test_both_remotes_are_bridged_by_default():
+    names = Settings().ha_remote_names
+    assert names["00:0b:57:ff:fe:98:2b:ea"] == "habit_remote_2"
+    assert names["d0:cf:5e:ff:fe:23:62:6c"] == REMOTE

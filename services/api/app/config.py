@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     # `ha_remotes` maps ZHA device IEEE → remote name: "ieee=name,ieee=name".
     ha_url: str = "https://hass.home.vogelcc.com"
     ha_token: str = ""
-    ha_remotes: str = "d0:cf:5e:ff:fe:23:62:6c=habit_remote_1"
+    ha_remotes: str = (
+        "d0:cf:5e:ff:fe:23:62:6c=habit_remote_1,00:0b:57:ff:fe:98:2b:ea=habit_remote_2"
+    )
     ha_speak_script: str = "script.office_announce"
 
     @property

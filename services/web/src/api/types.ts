@@ -514,7 +514,7 @@ export interface LoggingStatus {
   };
 }
 
-export type ButtonAction = "food" | "water" | "habit" | "placeholder" | "undo";
+export type ButtonAction = "food" | "usual" | "water" | "habit" | "placeholder" | "undo";
 
 export interface RemoteButton {
   button: string;           // "<remote>/<center|up|down|left|right>"
@@ -523,5 +523,6 @@ export interface RemoteButton {
   food_id?: string;
   quantity_g?: number;
   habit?: string;
+  template_id?: string;
   oz?: number;
 }

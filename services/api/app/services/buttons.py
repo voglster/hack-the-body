@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.services import capture as cap
@@ -149,6 +150,35 @@ async def _log(db: AsyncDatabase, mapping: dict[str, Any], button: str, label: s
     return f"{label} logged."
 
 
+async def _log_usual(db: AsyncDatabase, mapping: dict[str, Any], button: str, label: str) -> str:
+    tpl = await db["meal_templates"].find_one({"_id": ObjectId(mapping["template_id"])})
+    if not tpl:
+        return f"{label} isn't a saved usual any more."
+    c = await cap.create_capture(
+        db,
+        source="button",
+        device="ha",
+        status="resolved",
+        payload={"button": button, "template_id": mapping["template_id"]},
+    )
+    now = datetime.now(UTC)
+    ids = [
+        (
+            await cap.log_food(
+                db,
+                food_id=i["food_id"],
+                quantity_g=i["quantity_g"],
+                ts=now,
+                capture_id=c["id"],
+                template_id=mapping["template_id"],
+            )
+        )["id"]
+        for i in tpl["items"]
+    ]
+    await cap.set_fields(db, c["id"], entry_ids=ids, resolved_at=now, label=label)
+    return f"{label} logged."
+
+
 async def press(db: AsyncDatabase, button: str) -> dict[str, Any]:
     mapping = await db[BUTTONS].find_one({"button": button})
     if not mapping:
@@ -161,6 +191,8 @@ async def press(db: AsyncDatabase, button: str) -> dict[str, Any]:
         say = await _habit(db, mapping, label)
     elif action == "placeholder":
         say = await _placeholder(db, button, label)
+    elif action == "usual":
+        say = await _log_usual(db, mapping, button, label)
     else:
         say = await _log(db, mapping, button, label)
     return {"say": say, "button": button}

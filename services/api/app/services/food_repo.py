@@ -15,6 +15,10 @@ from app.models.food import Food, Macros, MealEntry, MealTemplate
 logger = logging.getLogger(__name__)
 
 
+# Merged-away duplicates keep their history but stay out of search.
+ACTIVE: dict[str, Any] = {"retired_into": {"$exists": False}}
+
+
 def _oid(s: str) -> ObjectId:
     return ObjectId(s)
 
@@ -92,7 +96,7 @@ class FoodRepo:
         # text index search; fall back to regex if no text index (e.g. mongomock)
         try:
             cur = self.db["foods"].find(
-                {"$text": {"$search": query}},
+                {"$text": {"$search": query}, **ACTIVE},
                 {"score": {"$meta": "textScore"}},
             ).sort([("score", {"$meta": "textScore"})]).limit(limit)
             rows = [_doc_to_dict(d) async for d in cur]
@@ -104,7 +108,7 @@ class FoodRepo:
             {"$or": [
                 {"name": {"$regex": query, "$options": "i"}},
                 {"brand": {"$regex": query, "$options": "i"}},
-            ]}
+            ], **ACTIVE}
         ).limit(limit)
         return [_doc_to_dict(d) async for d in cur]  # type: ignore[return-value]
 

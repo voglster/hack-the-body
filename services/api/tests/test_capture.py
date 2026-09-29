@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from bson import ObjectId
 
 from app.routers import capture as router_mod
 from app.services import capture as svc
@@ -405,3 +406,21 @@ async def test_saved_usuals_always_get_a_button(client, monkeypatch):
         "name": "Protein Bar", "items": [{"food_id": b["id"], "quantity_g": 30}]})
     ctx = (await client.get("/capture/context", headers=H)).json()
     assert [s["name"] for s in ctx["suggestions"]][:2] == ["Breakfast Yogurt", "Protein Bar"]
+
+
+async def test_retired_duplicates_are_not_matched_searched_or_suggested(client, parsed, mock_db):
+    keep = await _food(client, "Edamame, shelled, salted (1/4 cup)", 1, 50)
+    dup = await _food(client, "Edemame", 1, 500)
+    await _history(client, dup)
+    await mock_db["foods"].update_one({"_id": ObjectId(dup["id"])}, {"$set": {"retired_into": keep["id"]}})
+
+    parsed["items"] = [ParsedItem(name="edemame")]
+    await client.post("/capture", headers=H, json={"text": "edemame"})
+    cap = (await client.get("/capture/today", headers=H)).json()["captures"][0]
+    assert all(e["food_id"] != dup["id"] for e in cap.get("entries", []))
+
+    found = (await client.get("/foods/search?q=Edemame", headers=H)).json()
+    assert dup["id"] not in [f["id"] for f in found]
+
+    grid = await svc.suggestions(mock_db)
+    assert [s["food_id"] for s in grid if s["kind"] == "food"] == [keep["id"]]

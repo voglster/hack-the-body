@@ -31,6 +31,8 @@ log = logging.getLogger(__name__)
 
 CAPTURES = "captures"
 PHRASES = "capture_phrases"
+# A retired food is a merged-away duplicate: history keeps it, matching and suggestions don't.
+ACTIVE_FOOD: dict[str, Any] = {"retired_into": {"$exists": False}}
 EVENTS = "capture_events"
 
 AUTO_MATCH = 0.80
@@ -181,7 +183,7 @@ async def _distinct_foods(db: AsyncDatabase, usage: dict[str, int]) -> list[dict
     """One food per normalized name — paste/voice logging left many duplicates,
     and identical names would otherwise read as an ambiguous match."""
     best: dict[str, dict[str, Any]] = {}
-    async for d in db["foods"].find():
+    async for d in db["foods"].find(ACTIVE_FOOD):
         d["id"] = str(d.pop("_id"))
         if (
             d.get("category", "food") == "food"
@@ -644,6 +646,12 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
     now_local = datetime.now(tz)
     since = datetime.now(UTC) - timedelta(days=LOOKBACK_DAYS)
     entries = [e async for e in db["meal_entries"].find({"ts": {"$gte": since}})]
+    retired = {
+        str(f["_id"]): f["retired_into"]
+        async for f in db["foods"].find({"retired_into": {"$exists": True}}, {"retired_into": 1})
+    }
+    for e in entries:
+        e["food_id"] = retired.get(e["food_id"], e["food_id"])
     ranked = score_suggestions(entries, now_local, tz)
     # Saved usuals are the user's own picks: they always get a button,
     # trailing the ranked ones when they haven't been eaten lately.

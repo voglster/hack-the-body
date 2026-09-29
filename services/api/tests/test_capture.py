@@ -371,3 +371,21 @@ def test_has_stated_macros():
     assert svc.has_stated_macros("eggs, 30g protein")
     assert svc.has_stated_macros("Crepe Shell: 250\n2 Eggs: 150")
     assert not svc.has_stated_macros("2 eggs and 10 oz water")
+
+
+async def test_time_of_day_words_dont_break_a_learned_phrase(client, parsed, mock_db):
+    shake = await _food(client, "Vanilla Premier Protein Shake", 325, 160)
+    await svc.learn_phrase(mock_db, "shake", [{"food_id": shake["id"], "quantity_g": 325}])
+    parsed["items"] = [ParsedItem(name="Morning Shake", calories=350)]
+    await client.post("/capture", headers=H, json={"text": "I just did my morning shake"})
+    entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
+    assert entry["food_id"] == shake["id"]
+
+
+async def test_one_generic_word_asks_before_picking_a_specific_variant(client, parsed):
+    await _food(client, "Almond Milk Latte", 1, 110)
+    parsed["items"] = [ParsedItem(name="Latte", calories=190)]
+    await client.post("/capture", headers=H, json={"text": "16 latte"})
+    cap = (await client.get("/capture/today", headers=H)).json()["captures"][0]
+    assert cap["status"] == "needs_confirm"
+    assert cap["items"][0]["candidates"][0]["name"] == "Almond Milk Latte"

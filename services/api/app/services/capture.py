@@ -37,6 +37,7 @@ ASK_FLOOR = 0.55
 AMBIGUITY_MARGIN = 0.05
 MAX_ATTEMPTS = 5
 TOKEN_FUZZ = 0.85
+NARROW_NAME_TOKENS = 2
 
 _FLUID_OZ_G = 29.5735
 _UNIT_G = {
@@ -287,9 +288,28 @@ async def learn_phrase(db: AsyncDatabase, phrase: str, items: list[dict[str, Any
     )
 
 
+# Words that describe *when* or *whose*, not *what*: "my morning shake" is the shake.
+_MODIFIERS = {
+    "morning", "afternoon", "evening", "night", "breakfast", "lunch", "dinner",
+    "usual", "normal", "regular", "typical", "daily", "standard", "my", "the", "a", "an",
+}
+
+
+def strip_modifiers(text: str) -> str:
+    return " ".join(t for t in normalize(text).split() if t not in _MODIFIERS)
+
+
 async def _phrase(db: AsyncDatabase, text: str) -> list[dict[str, Any]] | None:
-    doc = await db[PHRASES].find_one({"phrase": normalize(text)})
-    return doc["items"] if doc else None
+    for key in dict.fromkeys((normalize(text), strip_modifiers(text))):
+        doc = await db[PHRASES].find_one({"phrase": key}) if key else None
+        if doc:
+            return doc["items"]
+    return None
+
+
+def narrows(query: str, food: dict[str, Any]) -> bool:
+    """One generic word ("latte") against a specific variant ("Almond Milk Latte")."""
+    return len(_tokens(query)) == 1 and len(_tokens(food.get("name", ""))) > NARROW_NAME_TOKENS
 
 
 async def set_fields(db: AsyncDatabase, capture_id: str, **fields: Any) -> None:
@@ -381,7 +401,7 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
             and top.score - runner_up.score < AMBIGUITY_MARGIN
             and runner_up.score >= AUTO_MATCH
         )
-        if top and top.score >= AUTO_MATCH and not ambiguous:
+        if top and top.score >= AUTO_MATCH and not ambiguous and not narrows(name, top.food):
             qty = _quantity_for(top.food, item, explicit_g, last_qty)
             entry_ids.append(
                 (

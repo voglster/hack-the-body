@@ -324,12 +324,25 @@ def strip_modifiers(text: str) -> str:
     return " ".join(t for t in normalize(text).split() if t not in _MODIFIERS)
 
 
+async def _live_items(
+    db: AsyncDatabase, items: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """A phrase's foods, following merges; None if any of them was retired outright."""
+    out = []
+    for item in items:
+        food = await db["foods"].find_one({"_id": ObjectId(item["food_id"])}, {"retired_into": 1})
+        if food is None or ("retired_into" in food and not food["retired_into"]):
+            return None
+        out.append({**item, "food_id": food.get("retired_into") or item["food_id"]})
+    return out
+
+
 async def _phrase(db: AsyncDatabase, text: str) -> list[dict[str, Any]] | None:
     core = " ".join(t for t in _tokens(text) if t not in _MODIFIERS)
     for key in dict.fromkeys((normalize(text), strip_modifiers(text), core)):
         doc = await db[PHRASES].find_one({"phrase": key}) if key else None
-        if doc:
-            return doc["items"]
+        if doc and (items := await _live_items(db, doc["items"])):
+            return items
     return None
 
 
@@ -458,6 +471,7 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
                     "candidates": [
                         _option(c.food, _quantity_for(c.food, item, explicit_g, last_qty), c.score)
                         for c in ranked[:3]
+                        if c.score >= ASK_FLOOR
                     ],
                     "estimate": {
                         "name": item.name,
@@ -614,6 +628,10 @@ async def undo_capture(db: AsyncDatabase, capture_id: str) -> bool:
         "label": capture_label(cap, await _entries_for(db, capture_id)),
     })
     invented = {e["food_id"] for e in await _entries_for(db, capture_id)}
+    # An undo says the guess was wrong: forget any phrase this capture taught.
+    for item in cap.get("items") or []:
+        if item.get("via") == "match":
+            await db[PHRASES].delete_one({"phrase": normalize(item["text"]), "uses": {"$lte": 1}})
     await db["meal_entries"].delete_many({"meta.capture_id": capture_id})
     await db[CAPTURES].delete_one({"_id": cap["_id"]})
     await _retire_orphans(db, invented)

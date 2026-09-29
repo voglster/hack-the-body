@@ -472,3 +472,27 @@ async def test_undo_retires_a_food_the_capture_invented(client, parsed, mock_db,
     invented = await mock_db["foods"].find_one({"name": "mystery casserole"})
     await client.delete(f"/capture/{cap['id']}", headers=H)
     assert "retired_into" in await mock_db["foods"].find_one({"_id": invented["_id"]})
+
+
+async def test_undo_forgets_a_phrase_the_capture_taught(client, parsed, mock_db):
+    await _food(client, "Almond Milk Latte", 1, 110)
+    parsed["items"] = [ParsedItem(name="almond latte")]
+    cap = (await client.post("/capture", headers=H, json={"text": "almond latte"})).json()
+    assert await mock_db["capture_phrases"].find_one({"phrase": "almond latte"})
+    await client.delete(f"/capture/{cap['id']}", headers=H)
+    assert await mock_db["capture_phrases"].find_one({"phrase": "almond latte"}) is None
+
+
+async def test_phrase_to_a_retired_food_is_ignored_or_follows_the_merge(client, parsed, mock_db):
+    keep = await _food(client, "White rice, cooked", 1, 205)
+    junk = await _food(client, "a cup of rice", 1, 206)
+    merged = await _food(client, "Rice 100g", 1, 130)
+    foods = mock_db["foods"]
+    await foods.update_one({"_id": ObjectId(junk["id"])}, {"$set": {"retired_into": None}})
+    await foods.update_one({"_id": ObjectId(merged["id"])}, {"$set": {"retired_into": keep["id"]}})
+    await svc.learn_phrase(mock_db, "a cup of rice", [{"food_id": junk["id"], "quantity_g": 1}])
+    await svc.learn_phrase(mock_db, "rice", [{"food_id": merged["id"], "quantity_g": 1}])
+    parsed["items"] = [ParsedItem(name="a cup of rice")]
+    await client.post("/capture", headers=H, json={"text": "a cup of rice"})
+    entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
+    assert entry["food_id"] == keep["id"]

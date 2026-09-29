@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Coroutine
 from typing import Any
 
 import httpx
@@ -33,16 +34,27 @@ def _ws_url(base: str) -> str:
 
 
 async def speak(settings: Settings, message: str) -> None:
-    domain, _, name = settings.ha_speak_script.partition(".")
+    """Start the announce script and return — `script.turn_on` doesn't wait for
+    the speech to finish, which calling the script service directly does."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(
-                f"{settings.ha_url.rstrip('/')}/api/services/{domain}/{name}",
+            r = await client.post(
+                f"{settings.ha_url.rstrip('/')}/api/services/script/turn_on",
                 headers={"Authorization": f"Bearer {settings.ha_token}"},
-                json={"message": message},
+                json={"entity_id": settings.ha_speak_script, "variables": {"message": message}},
             )
+            r.raise_for_status()
     except httpx.HTTPError as exc:
-        log.warning("ha bridge: speak failed: %s", exc)
+        log.warning("ha bridge: speak failed: %r", exc)
+
+
+_tasks: set[asyncio.Task[None]] = set()
+
+
+def _background(coro: Coroutine[Any, Any, None]) -> None:
+    task = asyncio.create_task(coro)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
 
 
 class ButtonRouter:
@@ -91,7 +103,8 @@ async def _session(settings: Settings, db: AsyncDatabase, router: ButtonRouter) 
                 log.exception("ha bridge: press %s failed", button)
                 result = {"say": "Sorry, that didn't log."}
             log.info("ha bridge: %s -> %s", button, result.get("say"))
-            await speak(settings, result["say"])
+            # Don't hold the next press hostage to the speaker.
+            _background(speak(settings, result["say"]))
 
 
 async def run_bridge(settings: Settings, db: AsyncDatabase) -> None:

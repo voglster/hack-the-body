@@ -1,5 +1,7 @@
+import httpx
+
 from app.config import Settings
-from app.services import buttons
+from app.services import buttons, ha_bridge
 from app.services.ha_bridge import ButtonRouter
 
 H = {"X-API-Key": "test-key"}
@@ -140,3 +142,18 @@ def test_both_remotes_are_bridged_by_default():
     names = Settings().ha_remote_names
     assert names["00:0b:57:ff:fe:98:2b:ea"] == "habit_remote_2"
     assert names["d0:cf:5e:ff:fe:23:62:6c"] == REMOTE
+
+
+async def test_speak_starts_the_script_without_waiting(monkeypatch):
+    sent = {}
+
+    async def fake_post(_self, url, **kw):
+        sent["url"], sent["json"] = url, kw["json"]
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    settings = Settings(ha_token="t", ha_url="https://ha.test")
+    await ha_bridge.speak(settings, "Water. 16 ounces today.")
+    assert sent["url"] == "https://ha.test/api/services/script/turn_on"
+    assert sent["json"] == {"entity_id": "script.office_announce",
+                            "variables": {"message": "Water. 16 ounces today."}}

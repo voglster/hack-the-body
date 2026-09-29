@@ -592,8 +592,8 @@ def score_suggestions(
 ) -> list[tuple[str, float]]:
     """Rank grid keys ('food:<id>' or 'template:<id>') by recency and time-of-day.
 
-    Only things eaten on MIN_DAYS distinct days qualify — a one-off restaurant
-    meal is not a usual, however recent."""
+    Foods qualify once eaten on MIN_DAYS distinct days — a one-off restaurant
+    meal is not a usual, however recent. Saved usuals (templates) always do."""
     scores: dict[str, float] = {}
     days: dict[str, set[str]] = {}
     seen_templates: set[tuple[str, str]] = set()
@@ -616,7 +616,10 @@ def score_suggestions(
             key = f"food:{e['food_id']}"
         scores[key] = scores.get(key, 0.0) + w
         days.setdefault(key, set()).add(local.date().isoformat())
-    usual = {k: v for k, v in scores.items() if len(days[k]) >= MIN_DAYS}
+    usual = {
+        k: v for k, v in scores.items()
+        if k.startswith("template:") or len(days[k]) >= MIN_DAYS
+    }
     return sorted(usual.items(), key=lambda kv: kv[1], reverse=True)
 
 
@@ -626,6 +629,11 @@ async def suggestions(db: AsyncDatabase, limit: int = 8) -> list[dict[str, Any]]
     since = datetime.now(UTC) - timedelta(days=LOOKBACK_DAYS)
     entries = [e async for e in db["meal_entries"].find({"ts": {"$gte": since}})]
     ranked = score_suggestions(entries, now_local, tz)
+    # Saved usuals are the user's own picks: they always get a button,
+    # trailing the ranked ones when they haven't been eaten lately.
+    seen = {key for key, _ in ranked}
+    ranked += [(f"template:{t['_id']}", 0.0) async for t in db["meal_templates"].find()
+               if f"template:{t['_id']}" not in seen]
     repo = FoodRepo(db)
     last_qty: dict[str, float] = {}
     for e in sorted(entries, key=lambda e: e["ts"]):

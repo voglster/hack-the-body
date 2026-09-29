@@ -389,3 +389,19 @@ async def test_one_generic_word_asks_before_picking_a_specific_variant(client, p
     cap = (await client.get("/capture/today", headers=H)).json()["captures"][0]
     assert cap["status"] == "needs_confirm"
     assert cap["items"][0]["candidates"][0]["name"] == "Almond Milk Latte"
+
+
+async def test_saved_usuals_always_get_a_button(client, monkeypatch):
+    monkeypatch.setattr(svc, "window_state", lambda *_a: {"state": "open", "start": "11:00",
+                                                          "end": "19:00", "minutes_to_change": 60})
+    a = await _food(client, "Greek yogurt", 170, 100)
+    b = await _food(client, "Granola", 30, 160)
+    fresh = (await client.post("/meals/templates", headers=H, json={
+        "name": "Breakfast Yogurt", "items": [
+            {"food_id": a["id"], "quantity_g": 170}, {"food_id": b["id"], "quantity_g": 30}]})).json()
+    yesterday = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    await client.post("/capture", headers=H, json={"template_id": fresh["id"], "ts": yesterday})
+    await client.post("/meals/templates", headers=H, json={
+        "name": "Protein Bar", "items": [{"food_id": b["id"], "quantity_g": 30}]})
+    names = [s["name"] for s in (await client.get("/capture/context", headers=H)).json()["suggestions"]]
+    assert names[:2] == ["Breakfast Yogurt", "Protein Bar"]

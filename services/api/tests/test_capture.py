@@ -396,12 +396,12 @@ async def test_saved_usuals_always_get_a_button(client, monkeypatch):
                                                           "end": "19:00", "minutes_to_change": 60})
     a = await _food(client, "Greek yogurt", 170, 100)
     b = await _food(client, "Granola", 30, 160)
-    fresh = (await client.post("/meals/templates", headers=H, json={
-        "name": "Breakfast Yogurt", "items": [
-            {"food_id": a["id"], "quantity_g": 170}, {"food_id": b["id"], "quantity_g": 30}]})).json()
+    bowl = {"name": "Breakfast Yogurt", "items": [
+        {"food_id": a["id"], "quantity_g": 170}, {"food_id": b["id"], "quantity_g": 30}]}
+    fresh = (await client.post("/meals/templates", headers=H, json=bowl)).json()
     yesterday = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     await client.post("/capture", headers=H, json={"template_id": fresh["id"], "ts": yesterday})
     await client.post("/meals/templates", headers=H, json={
         "name": "Protein Bar", "items": [{"food_id": b["id"], "quantity_g": 30}]})
-    names = [s["name"] for s in (await client.get("/capture/context", headers=H)).json()["suggestions"]]
-    assert names[:2] == ["Breakfast Yogurt", "Protein Bar"]
+    ctx = (await client.get("/capture/context", headers=H)).json()
+    assert [s["name"] for s in ctx["suggestions"]][:2] == ["Breakfast Yogurt", "Protein Bar"]

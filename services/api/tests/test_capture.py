@@ -425,3 +425,29 @@ async def test_retired_duplicates_are_not_matched_searched_or_suggested(client, 
 
     grid = await svc.suggestions(mock_db)
     assert [s["food_id"] for s in grid if s["kind"] == "food"] == [keep["id"]]
+
+
+async def test_learned_phrase_scales_by_count(client, parsed, mock_db):
+    egg = await _food(client, "Egg, large", 1, 72)
+    await svc.learn_phrase(mock_db, "eggs", [{"food_id": egg["id"], "quantity_g": 1}])
+    parsed["items"] = [ParsedItem(name="eggs", servings=2)]
+    await client.post("/capture", headers=H, json={"text": "2 eggs"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 144
+
+
+async def test_measure_words_describe_amount_not_food(client, parsed):
+    rice = await _food(client, "White rice, cooked", 1, 205)
+    parsed["items"] = [ParsedItem(name="a cup of rice")]
+    await client.post("/capture", headers=H, json={"text": "a cup of rice"})
+    cap = (await client.get("/capture/today", headers=H)).json()["captures"][0]
+    names = [c["name"] for i in cap.get("items", []) for c in i.get("candidates", [])]
+    logged = [e["food_id"] for e in cap.get("entries", [])]
+    assert rice["id"] in logged or "White rice, cooked" in names
+
+
+async def test_grams_never_become_a_count_on_a_per_unit_food(client, parsed, mock_db):
+    rice = await _food(client, "White rice, cooked", 1, 205)
+    await svc.learn_phrase(mock_db, "rice", [{"food_id": rice["id"], "quantity_g": 1}])
+    parsed["items"] = [ParsedItem(name="1 cup rice")]
+    await client.post("/capture", headers=H, json={"text": "1 cup rice"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 205

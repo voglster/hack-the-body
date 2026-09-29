@@ -63,6 +63,9 @@ _STATED_MACROS_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _STOPWORDS = {"a", "an", "the", "of", "some", "my", "with", "and", "fl"}
+# How much, not what: "a cup of rice" is rice.
+_MEASURES = {"cup", "cups", "bowl", "bowls", "plate", "plates", "handful", "handfuls", "piece",
+             "pieces", "slice", "slices", "serving", "servings", "glass", "scoop", "scoops"}
 
 
 def local_tz() -> ZoneInfo:
@@ -114,7 +117,7 @@ def normalize(text: str) -> str:
 
 
 def _tokens(text: str) -> list[str]:
-    return [t for t in normalize(text).split() if t not in _STOPWORDS]
+    return [t for t in normalize(text).split() if t not in _STOPWORDS and t not in _MEASURES]
 
 
 def split_quantity(name: str) -> tuple[str, float | None]:
@@ -197,14 +200,33 @@ async def _distinct_foods(db: AsyncDatabase, usage: dict[str, int]) -> list[dict
     return list(best.values())
 
 
+def _per_unit(food: dict[str, Any]) -> bool:
+    """Stored per piece/cup/portion (serving_g of 1), so quantity is a count, not grams."""
+    return float(food.get("serving_g") or 100.0) <= 1.0
+
+
+def scaled_quantity(
+    food: dict[str, Any], base_qty: float, item: ParsedItem, explicit_g: float | None
+) -> float:
+    """The amount to log: stated grams for gram-based foods, otherwise a count.
+
+    Grams never become a count on a per-unit food — '1 cup' (236 g) of a
+    per-cup rice is one cup, not 236.
+    """
+    if explicit_g and not _per_unit(food):
+        return explicit_g
+    if explicit_g and "cup" in (food.get("serving_label") or "").lower():
+        return round(explicit_g / _UNIT_G["cup"], 2)
+    count = item.servings if item.servings and item.servings != 1.0 else 1.0
+    return base_qty * count
+
+
 def _quantity_for(
     food: dict[str, Any], item: ParsedItem, explicit_g: float | None, last_qty: dict[str, float]
 ) -> float:
-    if explicit_g:
-        return explicit_g
     serving = float(food.get("serving_g") or 100.0)
-    if item.servings and item.servings != 1.0:
-        return serving * item.servings
+    if explicit_g or (item.servings and item.servings != 1.0):
+        return scaled_quantity(food, serving, item, explicit_g)
     return last_qty.get(food["id"]) or serving
 
 
@@ -385,7 +407,12 @@ async def resolve_capture(settings: Settings, db: AsyncDatabase, capture_id: str
                         await log_food(
                             db,
                             food_id=li["food_id"],
-                            quantity_g=explicit_g or li["quantity_g"],
+                            quantity_g=scaled_quantity(
+                                await db["foods"].find_one({"_id": ObjectId(li["food_id"])}) or {},
+                                li["quantity_g"],
+                                item,
+                                explicit_g,
+                            ),
                             ts=ts,
                             capture_id=capture_id,
                         )

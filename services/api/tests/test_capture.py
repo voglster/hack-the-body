@@ -451,3 +451,24 @@ async def test_grams_never_become_a_count_on_a_per_unit_food(client, parsed, moc
     parsed["items"] = [ParsedItem(name="1 cup rice")]
     await client.post("/capture", headers=H, json={"text": "1 cup rice"})
     assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 205
+
+
+async def test_phrase_found_under_measure_words(client, parsed, mock_db):
+    rice = await _food(client, "White rice, cooked", 1, 205)
+    await svc.learn_phrase(mock_db, "rice", [{"food_id": rice["id"], "quantity_g": 1}])
+    parsed["items"] = [ParsedItem(name="a cup of rice")]
+    await client.post("/capture", headers=H, json={"text": "a cup of rice"})
+    entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
+    assert entry["food_id"] == rice["id"]
+
+
+async def test_undo_retires_a_food_the_capture_invented(client, parsed, mock_db, monkeypatch):
+    async def fake_estimate(_settings, item):
+        return ParsedItem(name=item.name, calories=400)
+
+    monkeypatch.setattr(svc, "estimate_macros", fake_estimate)
+    parsed["items"] = [ParsedItem(name="mystery casserole")]
+    cap = (await client.post("/capture", headers=H, json={"text": "mystery casserole"})).json()
+    invented = await mock_db["foods"].find_one({"name": "mystery casserole"})
+    await client.delete(f"/capture/{cap['id']}", headers=H)
+    assert "retired_into" in await mock_db["foods"].find_one({"_id": invented["_id"]})

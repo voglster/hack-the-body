@@ -325,7 +325,8 @@ def strip_modifiers(text: str) -> str:
 
 
 async def _phrase(db: AsyncDatabase, text: str) -> list[dict[str, Any]] | None:
-    for key in dict.fromkeys((normalize(text), strip_modifiers(text))):
+    core = " ".join(t for t in _tokens(text) if t not in _MODIFIERS)
+    for key in dict.fromkeys((normalize(text), strip_modifiers(text), core)):
         doc = await db[PHRASES].find_one({"phrase": key}) if key else None
         if doc:
             return doc["items"]
@@ -593,6 +594,17 @@ async def _entries_for(db: AsyncDatabase, capture_id: str) -> list[dict[str, Any
     return [e async for e in db["meal_entries"].find({"meta.capture_id": capture_id})]
 
 
+async def _retire_orphans(db: AsyncDatabase, food_ids: set[str]) -> None:
+    """A food a capture invented, now eaten by nobody, would otherwise match next time."""
+    for fid in food_ids:
+        if await db["meal_entries"].find_one({"food_id": fid}):
+            continue
+        await db["foods"].update_one(
+            {"_id": ObjectId(fid), "source": "capture"},
+            {"$set": {"retired_into": None, "retired_at": datetime.now(UTC)}},
+        )
+
+
 async def undo_capture(db: AsyncDatabase, capture_id: str) -> bool:
     cap = await db[CAPTURES].find_one({"_id": ObjectId(capture_id)})
     if not cap:
@@ -601,8 +613,10 @@ async def undo_capture(db: AsyncDatabase, capture_id: str) -> bool:
         "at": datetime.now(UTC), "kind": "undone", "source": cap.get("source"),
         "label": capture_label(cap, await _entries_for(db, capture_id)),
     })
+    invented = {e["food_id"] for e in await _entries_for(db, capture_id)}
     await db["meal_entries"].delete_many({"meta.capture_id": capture_id})
     await db[CAPTURES].delete_one({"_id": cap["_id"]})
+    await _retire_orphans(db, invented)
     return True
 
 

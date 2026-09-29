@@ -526,3 +526,12 @@ export interface RemoteButton {
   template_id?: string;
   oz?: number;
 }
+
+export interface RecentActivity {
+  at: string;
+  kind: "logged" | "undone" | "pending" | "needs_confirm" | "placeholder" | "failed";
+  label: string;
+  source: "tap" | "text" | "voice" | "button" | null;
+  kcal: number | null;
+  water_oz: number | null;
+}

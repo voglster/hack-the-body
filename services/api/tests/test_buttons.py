@@ -157,3 +157,13 @@ async def test_speak_starts_the_script_without_waiting(monkeypatch):
     assert sent["url"] == "https://ha.test/api/services/script/turn_on"
     assert sent["json"] == {"entity_id": "script.office_announce",
                             "variables": {"message": "Water. 16 ounces today."}}
+
+
+async def test_recent_shows_logs_and_undos(client, mock_db):
+    await _seed(client, mock_db)
+    await _press(client, "up")
+    await _press(client, "right")
+    await _press(client, "down")
+    feed = (await client.get("/capture/recent", headers=H)).json()
+    assert [(r["kind"], r["label"]) for r in feed] == [("undone", "Shake"), ("logged", "Water")]
+    assert feed[1]["water_oz"] == 16

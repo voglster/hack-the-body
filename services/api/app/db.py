@@ -23,7 +23,7 @@ REGULAR_COLLECTIONS = ["workouts", "user_profile", "ingestion_log",
                        "foods", "meal_templates", "coach_insights",
                        "push_subscriptions", "parse_feedback",
                        "strength_sets", "audit_log", "voice_entries",
-                       "captures", "capture_phrases"]
+                       "captures", "capture_phrases", "capture_events"]
 
 
 async def ensure_collections(db: AsyncDatabase) -> None:
@@ -81,6 +81,7 @@ async def ensure_collections(db: AsyncDatabase) -> None:
     )
     # Voice dictations: time-ordered, and aged out after 90 days. Long enough
     # to look back across a training block; transcripts are tiny.
+    await db["capture_events"].create_index("at", expireAfterSeconds=86400)
     await db["voice_entries"].create_index([("created_at", -1)])
     await db["voice_entries"].create_index(
         "created_at", expireAfterSeconds=90 * 24 * 3600,

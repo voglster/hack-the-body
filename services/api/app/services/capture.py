@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 
 CAPTURES = "captures"
 PHRASES = "capture_phrases"
+EVENTS = "capture_events"
 
 AUTO_MATCH = 0.80
 ASK_FLOOR = 0.55
@@ -552,10 +553,25 @@ async def create_capture(
     return capture_to_dict(doc)
 
 
+def capture_label(cap: dict[str, Any], entries: list[dict[str, Any]]) -> str:
+    """What a person would call this capture: its button label, the foods, or the words."""
+    names = ", ".join(e["food_name"] for e in entries)
+    typed = (cap.get("input") or {}).get("text")
+    return cap.get("label") or names or typed or "Ate something"
+
+
+async def _entries_for(db: AsyncDatabase, capture_id: str) -> list[dict[str, Any]]:
+    return [e async for e in db["meal_entries"].find({"meta.capture_id": capture_id})]
+
+
 async def undo_capture(db: AsyncDatabase, capture_id: str) -> bool:
     cap = await db[CAPTURES].find_one({"_id": ObjectId(capture_id)})
     if not cap:
         return False
+    await db[EVENTS].insert_one({
+        "at": datetime.now(UTC), "kind": "undone", "source": cap.get("source"),
+        "label": capture_label(cap, await _entries_for(db, capture_id)),
+    })
     await db["meal_entries"].delete_many({"meta.capture_id": capture_id})
     await db[CAPTURES].delete_one({"_id": cap["_id"]})
     return True
@@ -726,3 +742,36 @@ async def day_context(db: AsyncDatabase, limit: int = 8) -> dict[str, Any]:
         "last_food_at": local_hm(food[-1]) if food else None,
         "suggestions": grid,
     }
+
+
+# ---------- recent activity (kiosk feed) ----------
+
+RECENT_MINUTES = 3
+
+
+def _aware(ts: datetime) -> datetime:
+    return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
+
+
+async def recent_activity(db: AsyncDatabase, minutes: int = RECENT_MINUTES) -> list[dict[str, Any]]:
+    """Everything logged or undone in the last few minutes, newest first."""
+    since = datetime.now(UTC) - timedelta(minutes=minutes)
+    out: list[dict[str, Any]] = []
+    async for cap in db[CAPTURES].find({"created_at": {"$gte": since}}):
+        entries = await _entries_for(db, str(cap["_id"]))
+        kcal = sum((e.get("macros") or {}).get("calories") or 0 for e in entries)
+        water_oz = sum(e.get("quantity_g") or 0 for e in entries if e.get("food_name") == "Water")
+        out.append({
+            "at": _aware(cap["created_at"]).isoformat(),
+            "kind": {"resolved": "logged"}.get(cap["status"], cap["status"]),
+            "label": capture_label(cap, entries),
+            "source": cap.get("source"),
+            "kcal": round(kcal) or None,
+            "water_oz": round(water_oz / _WATER_OZ_G) or None,
+        })
+    out.extend([
+        {"at": _aware(ev["at"]).isoformat(), "kind": ev["kind"], "label": ev["label"],
+         "source": ev.get("source"), "kcal": None, "water_oz": None}
+        async for ev in db[EVENTS].find({"at": {"$gte": since}})
+    ])
+    return sorted(out, key=lambda r: r["at"], reverse=True)

@@ -9,7 +9,7 @@ import type {
   NudgesResponse, DismissNudgeReq,
   Habit, HabitStatusToday, HabitStatusValue,
   UsualSuggestionsResponse,
-  Capture, CaptureContext, CaptureToday, CaptureSuggestion, LoggingStatus, RemoteButton,
+  Capture, CaptureContext, CaptureToday, CaptureSuggestion, LoggingStatus, RemoteButton, RecentActivity,
 } from "./types";
 import { clearApiKey, getApiKey } from "../lib/auth";
 import { localDayBoundsUTC, todayLocalISO } from "../lib/tz";
@@ -71,6 +71,7 @@ export const api = {
   captureSuggestions: () => get<CaptureSuggestion[]>("/capture/suggestions"),
   captureContext: () => get<CaptureContext>("/capture/context"),
   loggingStatus: () => get<LoggingStatus>("/capture/status"),
+  recentActivity: () => get<RecentActivity[]>("/capture/recent"),
   remoteButtons: () => get<RemoteButton[]>("/capture/buttons"),
   setRemoteButton: async (b: RemoteButton): Promise<RemoteButton> => {
     const { button, ...mapping } = b;

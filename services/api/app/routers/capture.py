@@ -209,6 +209,12 @@ async def set_button(remote: str, name: str, req: ButtonMappingReq, request: Req
     return doc
 
 
+@router.get("/recent")
+async def recent(request: Request) -> list[dict]:
+    """The last few minutes of logs and undos, for the kiosk's confirmation strip."""
+    return await svc.recent_activity(request.app.state.db)
+
+
 @router.get("/status")
 async def logging_status(request: Request) -> dict:
     """Days logged this week, lapse state, and weight on tracked vs untracked weeks."""

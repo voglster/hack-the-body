@@ -7,6 +7,7 @@ import { KioskHero } from "../components/kiosk/KioskHero";
 import { KioskLogging } from "../components/kiosk/KioskLogging";
 import { KioskStepsPace } from "../components/kiosk/KioskStepsPace";
 import { KioskOpenList } from "../components/kiosk/KioskOpenList";
+import { KioskRecent } from "../components/kiosk/KioskRecent";
 import { KioskRecoverySentence } from "../components/kiosk/KioskRecoverySentence";
 import { KioskTagline } from "../components/kiosk/KioskTagline";
 import { KioskTopBar } from "../components/kiosk/KioskTopBar";
@@ -28,6 +29,7 @@ export function Kiosk() {
   return (
     <div className={wrapperClass}>
       <KioskTopBar />
+      <KioskRecent />
       <KioskHero />
       <KioskCoachLine />
       {!windDownMode && <KioskOpenList />}

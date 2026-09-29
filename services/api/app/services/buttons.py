@@ -102,7 +102,7 @@ async def _undo_last(db: AsyncDatabase) -> str:
     since = datetime.now(UTC) - UNDO_WINDOW
     last = await db[cap.CAPTURES].find_one(
         {"source": "button", "created_at": {"$gte": since}},
-        sort=[("created_at", -1)],
+        sort=[("created_at", -1), ("_id", -1)],
     )
     if not last:
         return "Nothing to undo."

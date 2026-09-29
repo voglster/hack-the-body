@@ -412,7 +412,8 @@ async def test_retired_duplicates_are_not_matched_searched_or_suggested(client, 
     keep = await _food(client, "Edamame, shelled, salted (1/4 cup)", 1, 50)
     dup = await _food(client, "Edemame", 1, 500)
     await _history(client, dup)
-    await mock_db["foods"].update_one({"_id": ObjectId(dup["id"])}, {"$set": {"retired_into": keep["id"]}})
+    retire = {"$set": {"retired_into": keep["id"]}}
+    await mock_db["foods"].update_one({"_id": ObjectId(dup["id"])}, retire)
 
     parsed["items"] = [ParsedItem(name="edemame")]
     await client.post("/capture", headers=H, json={"text": "edemame"})

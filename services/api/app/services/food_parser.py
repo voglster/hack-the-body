@@ -119,38 +119,60 @@ async def parse_food_text(settings: Settings, text: str) -> list[ParsedItem]:
     return out
 
 
-ESTIMATE_PROMPT = """Estimate the nutrition for one typical US portion of: {NAME}
+ESTIMATE_PROMPT = """Estimate the nutrition for exactly this amount, as eaten: {NAME}
+
+- The amount is what the text says: "6 homemade fries" means six fries, not six
+  portions. With no amount given, assume one typical US portion.
+- A stated weight may include parts that weren't eaten (bone, shell, pit, peel)
+  when the text says so; count only the edible part.
 
 Return ONLY a JSON object, no prose:
 {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}
 JSON:"""
+ESTIMATE_TIMEOUT_S = 60.0
+ESTIMATE_ATTEMPTS = 2
+
+
+def describe_amount(item: ParsedItem) -> str:
+    """'homemade fries' x6 -> '6 homemade fries'; a name that carries its own amount stays."""
+    n = item.servings or 1.0
+    if n == 1.0 or any(ch.isdigit() for ch in item.name):
+        return item.name
+    return f"{n:g} {item.name}"
 
 
 async def estimate_macros(settings: Settings, item: ParsedItem) -> ParsedItem:
-    """Fill an item's missing macros with a typical-portion estimate, scaled by servings."""
-    completion = await complete(
-        settings,
-        messages=[{"role": "user", "content": ESTIMATE_PROMPT.replace("{NAME}", item.name)}],
-        temperature=0.1,
-        max_tokens=300,
-    )
+    """Fill an item's missing macros with an estimate for the amount as stated."""
+    prompt = ESTIMATE_PROMPT.replace("{NAME}", describe_amount(item))
+    for attempt in range(ESTIMATE_ATTEMPTS):
+        try:
+            completion = await complete(
+                settings,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=300,
+                timeout_s=ESTIMATE_TIMEOUT_S,
+            )
+            break
+        except Exception:
+            if attempt == ESTIMATE_ATTEMPTS - 1:
+                raise
     raw = completion.text
     start, end = raw.find("{"), raw.rfind("}")
     try:
         data = json.loads(raw[start : end + 1]) if start != -1 and end > start else {}
     except json.JSONDecodeError:
         data = {}
-    n = item.servings or 1.0
 
-    def scaled(key: str) -> float | None:
+    def value(key: str) -> float | None:
         v = _coerce_float(data.get(key))
-        return round(v * n, 1) if v is not None else None
+        return round(v, 1) if v is not None else None
 
     return ParsedItem(
         name=item.name,
         servings=item.servings,
-        calories=scaled("calories"),
-        protein_g=scaled("protein_g"),
-        carbs_g=scaled("carbs_g"),
-        fat_g=scaled("fat_g"),
+        calories=value("calories"),
+        protein_g=value("protein_g"),
+        carbs_g=value("carbs_g"),
+        fat_g=value("fat_g"),
     )

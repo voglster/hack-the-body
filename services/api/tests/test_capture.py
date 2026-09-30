@@ -6,6 +6,7 @@ from bson import ObjectId
 
 from app.routers import capture as router_mod
 from app.services import capture as svc
+from app.services import food_parser
 from app.services.food_parser import ParsedItem
 
 H = {"X-API-Key": "test-key"}
@@ -496,3 +497,40 @@ async def test_phrase_to_a_retired_food_is_ignored_or_follows_the_merge(client, 
     await client.post("/capture", headers=H, json={"text": "a cup of rice"})
     entry = (await client.get("/capture/today", headers=H)).json()["captures"][0]["entries"][0]
     assert entry["food_id"] == keep["id"]
+
+
+async def test_counted_items_are_estimated_as_stated_not_multiplied(client, parsed, monkeypatch):
+    prompts = []
+
+    async def fake_complete(_settings, *, messages, **_kw):
+        prompts.append(messages[0]["content"])
+
+        class C:
+            text = '{"calories": 150, "protein_g": 2, "carbs_g": 20, "fat_g": 7}'
+        return C()
+
+    monkeypatch.setattr(food_parser, "complete", fake_complete)
+    parsed["items"] = [ParsedItem(name="homemade fries", servings=6)]
+    await client.post("/capture", headers=H, json={"text": "6 homemade fries"})
+    assert "exactly this amount, as eaten: 6 homemade fries" in prompts[0]
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 150
+
+
+async def test_failed_estimate_is_repaired_by_the_sweep(
+    client, parsed, settings, mock_db, monkeypatch,
+):
+    calls = {"n": 0}
+
+    async def flaky_estimate(_settings, item):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("llm slow")
+        return ParsedItem(name=item.name, calories=450, protein_g=45)
+
+    monkeypatch.setattr(svc, "estimate_macros", flaky_estimate)
+    parsed["items"] = [ParsedItem(name="chicken thighs, 300 g bone-in")]
+    await client.post("/capture", headers=H, json={"text": "chicken thighs"})
+    assert (await client.get("/capture/today", headers=H)).json()["totals"]["calories"] == 0
+    await svc.sweep_pending(settings, mock_db)
+    today = (await client.get("/capture/today", headers=H)).json()
+    assert today["totals"] == {"calories": 450, "protein_g": 45}

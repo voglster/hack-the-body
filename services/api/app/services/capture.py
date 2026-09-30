@@ -638,7 +638,38 @@ async def undo_capture(db: AsyncDatabase, capture_id: str) -> bool:
     return True
 
 
+REPAIR_WINDOW = timedelta(days=2)
+
+
+async def repair_unestimated(settings: Settings, db: AsyncDatabase) -> int:
+    """Fill in estimates that failed (LLM timeout) — a blank-calorie entry silently
+    undercounts the day, so retry until it has numbers."""
+    since = datetime.now(UTC) - REPAIR_WINDOW
+    repaired = 0
+    repo = FoodRepo(db)
+    async for food in db["foods"].find({
+        "source": "capture", "per_serving.calories": None, "created_at": {"$gte": since},
+        **ACTIVE_FOOD,
+    }):
+        fid = str(food["_id"])
+        try:
+            est = await estimate_macros(settings, ParsedItem(name=food["name"]))
+        except Exception as exc:  # still down; next sweep tries again
+            log.warning("repair %s: estimate failed: %s", fid, exc)
+            continue
+        if est.calories is None:
+            continue
+        macros = Macros(calories=est.calories, protein_g=est.protein_g,
+                        carbs_g=est.carbs_g, fat_g=est.fat_g).model_dump()
+        await db["foods"].update_one({"_id": food["_id"]}, {"$set": {"per_serving": macros}})
+        async for e in db["meal_entries"].find({"food_id": fid}):
+            await repo.update_entry_time(str(e["_id"]), extra_fields={"macros": macros})
+        repaired += 1
+    return repaired
+
+
 async def sweep_pending(settings: Settings, db: AsyncDatabase) -> int:
+    await repair_unestimated(settings, db)
     n = 0
     async for cap in db[CAPTURES].find({"status": "pending"}):
         await resolve_capture(settings, db, str(cap["_id"]))
